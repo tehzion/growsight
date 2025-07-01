@@ -410,6 +410,12 @@ GRANT EXECUTE ON FUNCTION check_org_access(TEXT) TO authenticated;
 COMMENT ON FUNCTION get_user_org_context() IS 'Securely retrieves user context from JWT claims to avoid RLS recursion';
 COMMENT ON FUNCTION check_org_access(TEXT) IS 'Validates if current user can access specified organization data';
 
+-- Create migrations table if it doesn't exist
+CREATE TABLE IF NOT EXISTS migrations (
+    name text PRIMARY KEY,
+    executed_at timestamptz DEFAULT now()
+);
+
 -- Migration complete
 INSERT INTO migrations (name, executed_at) VALUES ('20250701000000_fix_critical_rls_policies', NOW())
 ON CONFLICT (name) DO NOTHING;

@@ -45,15 +45,49 @@ CREATE INDEX IF NOT EXISTS idx_question_competencies_question_id ON question_com
 CREATE INDEX IF NOT EXISTS idx_question_competencies_competency_id ON question_competencies(competency_id);
 
 -- Create triggers for updated_at
-CREATE TRIGGER update_competencies_updated_at
-BEFORE UPDATE ON competencies
-FOR EACH ROW
-EXECUTE FUNCTION update_updated_at_column();
+DO $$
+BEGIN
+  -- Ensure update_updated_at_column function exists
+  IF NOT EXISTS (SELECT 1 FROM pg_proc WHERE proname = 'update_updated_at_column') THEN
+    CREATE OR REPLACE FUNCTION update_updated_at_column()
+    RETURNS TRIGGER AS '
+    BEGIN
+      NEW.updated_at = CURRENT_TIMESTAMP;
+      RETURN NEW;
+    END;
+    ' LANGUAGE plpgsql;
+  END IF;
+  
+  -- Drop and recreate triggers to avoid conflicts
+  DROP TRIGGER IF EXISTS update_competencies_updated_at ON competencies;
+  DROP TRIGGER IF EXISTS update_question_competencies_updated_at ON question_competencies;
+  
+  CREATE TRIGGER update_competencies_updated_at
+    BEFORE UPDATE ON competencies
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
 
-CREATE TRIGGER update_question_competencies_updated_at
-BEFORE UPDATE ON question_competencies
-FOR EACH ROW
-EXECUTE FUNCTION update_updated_at_column();
+  CREATE TRIGGER update_question_competencies_updated_at
+    BEFORE UPDATE ON question_competencies
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+END $$;
+
+-- Create has_org_admin_permission function if it doesn't exist
+CREATE OR REPLACE FUNCTION has_org_admin_permission(user_id uuid, permission_name text)
+RETURNS boolean
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+BEGIN
+  -- Simple check if user is org_admin or super_admin
+  RETURN EXISTS (
+    SELECT 1 FROM users
+    WHERE id = user_id
+    AND role IN ('org_admin', 'super_admin')
+  );
+END;
+$$;
 
 -- RLS Policies for competencies
 CREATE POLICY "Super admins can manage all competencies"

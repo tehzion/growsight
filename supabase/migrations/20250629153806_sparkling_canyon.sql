@@ -90,10 +90,26 @@ USING (
 );
 
 -- Create trigger for updated_at
-CREATE TRIGGER update_pdf_branding_settings_updated_at
-  BEFORE UPDATE ON pdf_branding_settings
-  FOR EACH ROW
-  EXECUTE FUNCTION update_updated_at_column();
+DO $$
+BEGIN
+  -- Ensure update_updated_at_column function exists
+  IF NOT EXISTS (SELECT 1 FROM pg_proc WHERE proname = 'update_updated_at_column') THEN
+    CREATE OR REPLACE FUNCTION update_updated_at_column()
+    RETURNS TRIGGER AS '
+    BEGIN
+      NEW.updated_at = CURRENT_TIMESTAMP;
+      RETURN NEW;
+    END;
+    ' LANGUAGE plpgsql;
+  END IF;
+  
+  -- Drop and recreate trigger to avoid conflicts
+  DROP TRIGGER IF EXISTS update_pdf_branding_settings_updated_at ON pdf_branding_settings;
+  CREATE TRIGGER update_pdf_branding_settings_updated_at
+    BEFORE UPDATE ON pdf_branding_settings
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+END $$;
 
 -- Create function to get PDF branding settings
 CREATE OR REPLACE FUNCTION get_pdf_branding_settings(org_id uuid)

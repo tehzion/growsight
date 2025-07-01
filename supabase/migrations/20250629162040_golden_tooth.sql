@@ -279,21 +279,45 @@ WITH CHECK (
   )
 );
 
+-- Ensure update_updated_at_column function exists before creating triggers
+DO $$
+BEGIN
+  -- Create the function if it doesn't exist
+  IF NOT EXISTS (SELECT 1 FROM pg_proc WHERE proname = 'update_updated_at_column') THEN
+    CREATE OR REPLACE FUNCTION update_updated_at_column()
+    RETURNS TRIGGER AS '
+    BEGIN
+      NEW.updated_at = CURRENT_TIMESTAMP;
+      RETURN NEW;
+    END;
+    ' LANGUAGE plpgsql;
+  END IF;
+END $$;
+
 -- Create triggers for updated_at columns
-CREATE TRIGGER update_departments_updated_at
-  BEFORE UPDATE ON departments
-  FOR EACH ROW
-  EXECUTE FUNCTION update_updated_at_column();
+DO $$
+BEGIN
+  -- Drop triggers if they exist to avoid conflicts
+  DROP TRIGGER IF EXISTS update_departments_updated_at ON departments;
+  DROP TRIGGER IF EXISTS update_import_logs_updated_at ON import_logs;
+  DROP TRIGGER IF EXISTS update_export_logs_updated_at ON export_logs;
+  
+  -- Create triggers
+  CREATE TRIGGER update_departments_updated_at
+    BEFORE UPDATE ON departments
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
 
-CREATE TRIGGER update_import_logs_updated_at
-  BEFORE UPDATE ON import_logs
-  FOR EACH ROW
-  EXECUTE FUNCTION update_updated_at_column();
+  CREATE TRIGGER update_import_logs_updated_at
+    BEFORE UPDATE ON import_logs
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
 
-CREATE TRIGGER update_export_logs_updated_at
-  BEFORE UPDATE ON export_logs
-  FOR EACH ROW
-  EXECUTE FUNCTION update_updated_at_column();
+  CREATE TRIGGER update_export_logs_updated_at
+    BEFORE UPDATE ON export_logs
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+END $$;
 
 -- Create function to import users from CSV
 CREATE OR REPLACE FUNCTION import_users_from_csv(

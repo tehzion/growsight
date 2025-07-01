@@ -384,6 +384,12 @@ GRANT EXECUTE ON FUNCTION assign_staff_to_organization(UUID, TEXT, UUID, UUID, U
 GRANT EXECUTE ON FUNCTION add_profile_tag(UUID, TEXT, TEXT, JSONB, UUID) TO authenticated;
 GRANT EXECUTE ON FUNCTION track_user_behavior(UUID, TEXT, JSONB, TEXT, UUID) TO authenticated;
 
+-- Ensure migrations table exists
+CREATE TABLE IF NOT EXISTS migrations (
+    name text PRIMARY KEY,
+    executed_at timestamptz DEFAULT now()
+);
+
 -- Migration complete
 INSERT INTO migrations (name, executed_at) VALUES ('20250701000001_fix_org_staff_management', NOW())
 ON CONFLICT (name) DO NOTHING;
