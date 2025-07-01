@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { BarChart4, TrendingUp, TrendingDown, CheckCircle, Lock, Eye, EyeOff, Download, Calendar, Award, Target, Zap, Tag } from 'lucide-react';
+import ProfileTags from '../../components/profile/ProfileTags';
 import { BarChart, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine, Bar } from 'recharts';
 import { useAuthStore } from '../../stores/authStore';
 import { useResultStore } from '../../stores/resultStore';
@@ -545,6 +546,9 @@ const UserResults = () => {
               )}
             </CardContent>
           </Card>
+
+          {/* Profile Tags */}
+          <ProfileTags assessmentResults={overallStats} />
 
           {/* Strengths and Development Areas */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

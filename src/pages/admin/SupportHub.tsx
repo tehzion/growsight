@@ -57,7 +57,7 @@ const SupportHub: React.FC = () => {
   
   useEffect(() => {
     if (user) {
-      fetchTickets(user.id, user.role);
+      fetchTickets(user.id, user.role, user.organizationId);
       
       if (isSuperAdmin || isOrgAdmin) {
         fetchUsers(user.organizationId);
@@ -183,6 +183,54 @@ const SupportHub: React.FC = () => {
     if (!userId) return 'Unassigned';
     const user = users.find(u => u.id === userId);
     return user ? `${user.firstName} ${user.lastName}` : 'Unknown User';
+  };
+
+  const getUserDepartment = (userId?: string) => {
+    if (!userId) return 'N/A';
+    const user = users.find(u => u.id === userId);
+    if (!user) return 'Unknown';
+    
+    // Mock department data based on user ID
+    const departmentMap: Record<string, string> = {
+      '3': 'Engineering',
+      '4': 'Marketing',
+      '5': 'Sales',
+      '2': 'Human Resources',
+      '7': 'Technology'
+    };
+    return departmentMap[userId] || 'General';
+  };
+
+  const getUserJobTitle = (userId?: string) => {
+    if (!userId) return 'N/A';
+    const user = users.find(u => u.id === userId);
+    if (!user) return 'Unknown';
+    
+    // Mock job title data based on user ID
+    const jobTitleMap: Record<string, string> = {
+      '3': 'Software Engineer',
+      '4': 'Marketing Manager',
+      '5': 'Sales Representative',
+      '2': 'HR Director',
+      '7': 'Tech Lead'
+    };
+    return jobTitleMap[userId] || 'Staff Member';
+  };
+
+  const getUserLocation = (userId?: string) => {
+    if (!userId) return 'N/A';
+    const user = users.find(u => u.id === userId);
+    if (!user) return 'Unknown';
+    
+    // Mock location data based on user ID
+    const locationMap: Record<string, string> = {
+      '3': 'San Francisco, CA',
+      '4': 'New York, NY',
+      '5': 'Chicago, IL',
+      '2': 'New York, NY',
+      '7': 'Austin, TX'
+    };
+    return locationMap[userId] || 'Remote';
   };
   
   const getTicketAge = (createdAt: string) => {
@@ -372,6 +420,11 @@ const SupportHub: React.FC = () => {
                           <span>
                             {isStaff ? 'You' : getUserName(ticket.staffMemberId)}
                           </span>
+                          {(isSuperAdmin || isOrgAdmin) && (
+                            <span className="ml-2 text-gray-400">
+                              • {ticket.organizationId}
+                            </span>
+                          )}
                         </div>
                         <div>
                           {getCategoryBadge(ticket.category)}
@@ -466,7 +519,7 @@ const SupportHub: React.FC = () => {
                   )}
                 </div>
                 
-                <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-4 text-sm text-gray-500">
+                <div className="mt-3 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 text-sm text-gray-500">
                   <div className="flex items-center">
                     <User className="h-4 w-4 mr-1" />
                     <span>From: {isStaff ? 'You' : getUserName(selectedTicket.staffMemberId)}</span>
@@ -479,7 +532,46 @@ const SupportHub: React.FC = () => {
                     <Calendar className="h-4 w-4 mr-1" />
                     <span>Created: {new Date(selectedTicket.createdAt).toLocaleDateString()}</span>
                   </div>
+                  <div className="flex items-center">
+                    <Tag className="h-4 w-4 mr-1" />
+                    <span>Org: {selectedTicket.organizationId}</span>
+                  </div>
                 </div>
+                
+                {/* Additional Details for Super Admin and Org Admin */}
+                {(isSuperAdmin || isOrgAdmin) && (
+                  <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                    <h4 className="text-sm font-medium text-blue-800 mb-2">Ticket Details</h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs text-blue-700">
+                      <div>
+                        <span className="font-medium">Organization:</span> {selectedTicket.organizationId}
+                      </div>
+                      <div>
+                        <span className="font-medium">Staff Member:</span> {getUserName(selectedTicket.staffMemberId)}
+                      </div>
+                      {isSuperAdmin && (
+                        <>
+                          <div>
+                            <span className="font-medium">Department:</span> {getUserDepartment(selectedTicket.staffMemberId)}
+                          </div>
+                          <div>
+                            <span className="font-medium">Job Title:</span> {getUserJobTitle(selectedTicket.staffMemberId)}
+                          </div>
+                        </>
+                      )}
+                      {isOrgAdmin && (
+                        <>
+                          <div>
+                            <span className="font-medium">Department:</span> {getUserDepartment(selectedTicket.staffMemberId)}
+                          </div>
+                          <div>
+                            <span className="font-medium">Location:</span> {getUserLocation(selectedTicket.staffMemberId)}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                )}
                 
                 {selectedTicket.description && (
                   <div className="mt-4 p-3 bg-gray-50 rounded-lg text-sm text-gray-700">

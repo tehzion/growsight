@@ -64,6 +64,31 @@ const mockTickets: SupportTicket[] = [
     createdAt: new Date(Date.now() - 36 * 60 * 60 * 1000).toISOString(),
     updatedAt: new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString(),
     satisfactionRating: 5
+  },
+  // Org Admin tickets for Super Admin to see
+  {
+    id: 'ticket-4',
+    staffMemberId: '2', // Michael Chen (Org Admin)
+    organizationId: 'demo-org-1',
+    subject: 'Need guidance on organization settings',
+    description: 'I need help configuring the organization branding and settings for our company.',
+    priority: 'normal',
+    category: 'consultation',
+    status: 'open',
+    createdAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
+    updatedAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString()
+  },
+  {
+    id: 'ticket-5',
+    staffMemberId: '7', // Alex Rodriguez (Org Admin)
+    organizationId: 'demo-org-2',
+    subject: 'Request for advanced analytics features',
+    description: 'We would like to discuss implementing advanced analytics features for our organization.',
+    priority: 'normal',
+    category: 'consultation',
+    status: 'in_progress',
+    createdAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
+    updatedAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString()
   }
 ];
 
@@ -154,7 +179,7 @@ export const useSupportStore = create<SupportState>()(
       isLoading: false,
       error: null,
       
-      fetchTickets: async (userId: string, role: string) => {
+      fetchTickets: async (userId: string, role: string, organizationId?: string) => {
         set({ isLoading: true, error: null });
         try {
           await new Promise(resolve => setTimeout(resolve, 500));
@@ -166,17 +191,21 @@ export const useSupportStore = create<SupportState>()(
           // If we already have tickets, use those, otherwise use mock data
           let allTickets = currentTickets.length > 0 ? currentTickets : mockTickets;
           
-          // Filter tickets based on user role
+          // Filter tickets based on user role and organization
           let filteredTickets: SupportTicket[];
           
           if (role === 'super_admin') {
-            // Super admins see all tickets
-            filteredTickets = allTickets;
+            // Super admins see tickets from org admins only (not staff tickets)
+            filteredTickets = allTickets.filter(t => {
+              // Only show tickets where the staff member is an org_admin
+              const isOrgAdminTicket = t.staffMemberId === '2' || t.staffMemberId === '7'; // Org admin IDs
+              return isOrgAdminTicket;
+            });
           } else if (role === 'org_admin') {
-            // Org admins see tickets from their organization
-            const orgId = allTickets.find(t => t.assignedToId === userId)?.organizationId || 'demo-org-1';
+            // Org admins see tickets from their organization (staff, department, etc.)
+            const userOrgId = organizationId || 'demo-org-1';
             filteredTickets = allTickets.filter(t => 
-              t.organizationId === orgId || t.assignedToId === userId
+              t.organizationId === userOrgId
             );
           } else {
             // Regular staff see only their own tickets

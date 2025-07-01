@@ -26,8 +26,7 @@ import AssessmentBuilder from './pages/admin/AssessmentBuilder';
 import AssessmentForm from './pages/user/AssessmentForm';
 import { config, validateEnvironment } from './config/environment';
 import SystemSettings from './pages/admin/SystemSettings';
-import SystemHealth from './pages/admin/SystemHealth';
-import AuditLog from './pages/admin/AuditLog';
+
 import AccessRequests from './pages/admin/AccessRequests';
 import Branding from './pages/admin/Branding';
 
@@ -168,16 +167,7 @@ function App() {
                 <SystemSettings />
               </ErrorBoundary>
             } />
-            <Route path="/system-health" element={
-              <ErrorBoundary>
-                <SystemHealth />
-              </ErrorBoundary>
-            } />
-            <Route path="/audit-log" element={
-              <ErrorBoundary>
-                <AuditLog />
-              </ErrorBoundary>
-            } />
+
             <Route path="/access-requests" element={
               <ErrorBoundary>
                 <AccessRequests />
