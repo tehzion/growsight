@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { BarChart4, TrendingUp, TrendingDown, CheckCircle, Lock, Eye, EyeOff, Download, Calendar, Award, Target, Zap, Tag } from 'lucide-react';
+import { BarChart, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine, Bar } from 'recharts';
 import { useAuthStore } from '../../stores/authStore';
 import { useResultStore } from '../../stores/resultStore';
 import { Card, CardHeader, CardTitle, CardContent } from '../../components/ui/Card';
@@ -8,9 +10,10 @@ import PDFExportButton from '../../components/ui/PDFExportButton';
 import Button from '../../components/ui/Button';
 
 const UserResults = () => {
+  const navigate = useNavigate();
   const { user } = useAuthStore();
   const { results, fetchResults, isLoading } = useResultStore();
-  const [activeTab, setActiveTab] = useState<'overview' | 'detailed' | 'development' | 'competencies'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'detailed' | 'analytics' | 'competencies'>('overview');
   
   useEffect(() => {
     if (user) {
@@ -154,6 +157,40 @@ const UserResults = () => {
   };
 
   const overallStats = calculateOverallStats();
+
+  // Helper function to get alignment badge
+  const getAlignmentBadge = (alignment: string) => {
+    switch (alignment) {
+      case 'aligned':
+        return (
+          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-success-100 text-success-800">
+            <CheckCircle className="h-3 w-3 mr-1" />
+            Aligned
+          </span>
+        );
+      case 'blind_spot':
+        return (
+          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-warning-100 text-warning-800">
+            <EyeOff className="h-3 w-3 mr-1" />
+            Blind Spot
+          </span>
+        );
+      case 'hidden_strength':
+        return (
+          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-primary-100 text-primary-800">
+            <Eye className="h-3 w-3 mr-1" />
+            Hidden Strength
+          </span>
+        );
+      default:
+        return (
+          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+            <CheckCircle className="h-3 w-3 mr-1" />
+            Aligned
+          </span>
+        );
+    }
+  };
 
   // Get section with highest and lowest average ratings
   const getHighestRatedSection = () => {
@@ -307,15 +344,15 @@ const UserResults = () => {
               </button>
             )}
             <button
-              onClick={() => setActiveTab('development')}
+              onClick={() => setActiveTab('analytics')}
               className={`py-2 px-1 border-b-2 font-medium text-sm flex items-center space-x-2 ${
-                activeTab === 'development'
+                activeTab === 'analytics'
                   ? 'border-primary-500 text-primary-600'
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
               }`}
             >
-              <Zap className="h-4 w-4 mr-1" />
-              Development Plan
+              <BarChart4 className="h-4 w-4 mr-1" />
+              Analytics
             </button>
           </nav>
         </div>
@@ -914,230 +951,190 @@ const UserResults = () => {
         </div>
       )}
 
-      {/* Development Plan Tab */}
-      {activeTab === 'development' && overallStats && (
+      {/* Analytics Tab */}
+      {activeTab === 'analytics' && overallStats && (
         <div className="space-y-6">
-          {/* Development Plan Overview */}
+          {/* Personal Assessment Analytics */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center">
-                <Zap className="h-5 w-5 mr-2 text-primary-600" />
-                Personal Development Plan
+                <BarChart4 className="h-5 w-5 mr-2 text-primary-600" />
+                Personal Assessment Analytics
               </CardTitle>
             </CardHeader>
             <CardContent>
               <div className="space-y-6">
-                <div className="bg-primary-50 p-4 rounded-lg border border-primary-200">
-                  <h3 className="font-medium text-primary-800 mb-3">How to Use This Plan</h3>
-                  <div className="text-sm text-primary-700 space-y-2">
-                    <p>1. Review your assessment results to understand your strengths and development areas</p>
-                    <p>2. Set SMART goals (Specific, Measurable, Achievable, Relevant, Time-bound)</p>
-                    <p>3. Identify specific actions and resources needed</p>
-                    <p>4. Track your progress and adjust as needed</p>
-                    <p>5. Schedule regular check-ins with your manager or mentor</p>
-                  </div>
-                </div>
-
-                {/* Development Areas */}
-                <div>
-                  <h3 className="text-lg font-medium text-gray-900 mb-4">Priority Development Areas</h3>
-                  <div className="space-y-4">
-                    {overallStats.developmentAreas.length > 0 ? (
-                      overallStats.developmentAreas.map((area, index) => (
-                        <div key={index} className="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
-                          <div className="bg-warning-50 px-4 py-3 border-b border-warning-200">
-                            <div className="flex justify-between items-center">
-                              <h4 className="font-medium text-gray-900">{area.text}</h4>
-                              <span className="text-sm font-medium text-warning-700">{area.avgReviewerRating.toFixed(1)}/7</span>
-                            </div>
-                            {/* Show competencies if available */}
-                            {area.competencies && area.competencies.length > 0 && (
-                              <div className="mt-2 flex flex-wrap gap-1">
-                                {area.competencies.map(comp => (
-                                  <span key={comp.id} className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-warning-50 text-warning-700 border border-warning-200">
-                                    <Tag className="h-3 w-3 mr-1" />
-                                    {comp.name}
-                                  </span>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                          <div className="p-4">
-                            <div className="mb-4">
-                              <h5 className="text-sm font-medium text-gray-700 mb-2">Suggested Actions:</h5>
-                              <ul className="text-sm text-gray-600 space-y-1 list-disc list-inside">
-                                <li>Take online courses or workshops focused on this skill</li>
-                                <li>Seek mentorship from colleagues who excel in this area</li>
-                                <li>Practice this skill in low-risk situations to build confidence</li>
-                                <li>Request specific feedback on your progress in this area</li>
-                              </ul>
-                            </div>
-                            <div>
-                              <h5 className="text-sm font-medium text-gray-700 mb-2">Resources:</h5>
-                              <div className="text-sm text-gray-600 space-y-1">
-                                <p>• Internal training: "Mastering {area.text.split(' ')[0]}" workshop</p>
-                                <p>• Recommended book: "The Complete Guide to {area.text.split(' ')[0]}"</p>
-                                <p>• Online course: "{area.text} Fundamentals"</p>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      ))
-                    ) : (
-                      <div className="text-center py-6 text-gray-500">
-                        No development areas identified
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Blind Spots */}
-                <div>
-                  <h3 className="text-lg font-medium text-gray-900 mb-4 flex items-center">
-                    <EyeOff className="h-5 w-5 mr-2 text-warning-600" />
-                    Blind Spots to Address
-                  </h3>
-                  <div className="space-y-4">
-                    {overallStats.blindSpots.length > 0 ? (
-                      overallStats.blindSpots.map((area, index) => (
-                        <div key={index} className="p-4 bg-warning-50 border border-warning-200 rounded-lg">
-                          <div className="flex justify-between items-center mb-2">
-                            <h4 className="font-medium text-gray-900">{area.text}</h4>
-                            <div className="flex items-center space-x-2">
-                              <div className="text-sm text-warning-700">
-                                <span>Self: {area.selfRating.toFixed(1)}</span>
-                                <span className="mx-1">vs</span>
-                                <span>Others: {area.avgReviewerRating.toFixed(1)}</span>
-                              </div>
-                              <span className="text-sm font-medium text-warning-700">Gap: +{area.gap.toFixed(1)}</span>
-                            </div>
-                          </div>
-                          <p className="text-sm text-warning-700 mb-3">
-                            You rated yourself higher in this area than your reviewers did. This may indicate a blind spot where your self-perception differs from how others see you.
-                          </p>
-                          <div className="text-sm text-warning-700">
-                            <strong>Recommendation:</strong> Seek specific feedback on this area and be open to others' perspectives.
-                          </div>
-                          {/* Show competencies if available */}
-                          {area.competencies && area.competencies.length > 0 && (
-                            <div className="mt-2 flex flex-wrap gap-1">
-                              {area.competencies.map(comp => (
-                                <span key={comp.id} className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-warning-50 text-warning-700 border border-warning-200">
-                                  <Tag className="h-3 w-3 mr-1" />
-                                  {comp.name}
-                                </span>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      ))
-                    ) : (
-                      <div className="text-center py-6 text-gray-500">
-                        No significant blind spots identified
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Strengths to Leverage */}
-                <div>
-                  <h3 className="text-lg font-medium text-gray-900 mb-4 flex items-center">
-                    <Award className="h-5 w-5 mr-2 text-success-600" />
-                    Strengths to Leverage
-                  </h3>
-                  <div className="space-y-4">
-                    {overallStats.topStrengths.length > 0 ? (
-                      overallStats.topStrengths.map((strength, index) => (
-                        <div key={index} className="p-4 bg-success-50 border border-success-200 rounded-lg">
-                          <div className="flex justify-between items-center mb-2">
-                            <h4 className="font-medium text-gray-900">{strength.text}</h4>
-                            <span className="text-sm font-medium text-success-700">{strength.avgReviewerRating.toFixed(1)}/7</span>
-                          </div>
-                          <p className="text-sm text-success-700 mb-3">
-                            This is one of your highest-rated areas. Consider how you can leverage this strength to contribute more effectively to your team and organization.
-                          </p>
-                          <div className="text-sm text-success-700">
-                            <strong>Recommendation:</strong> Look for opportunities to mentor others in this area or take on projects where this strength can create significant impact.
-                          </div>
-                          {/* Show competencies if available */}
-                          {strength.competencies && strength.competencies.length > 0 && (
-                            <div className="mt-2 flex flex-wrap gap-1">
-                              {strength.competencies.map(comp => (
-                                <span key={comp.id} className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-success-50 text-success-700 border border-success-200">
-                                  <Tag className="h-3 w-3 mr-1" />
-                                  {comp.name}
-                                </span>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      ))
-                    ) : (
-                      <div className="text-center py-6 text-gray-500">
-                        No significant strengths identified
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Action Plan Template */}
-                <div>
-                  <h3 className="text-lg font-medium text-gray-900 mb-4">Personal Action Plan</h3>
-                  <div className="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
-                    <div className="bg-primary-50 px-4 py-3 border-b border-primary-200">
-                      <h4 className="font-medium text-primary-800">Development Goals</h4>
-                    </div>
-                    <div className="p-4">
-                      <div className="space-y-4">
-                        <div className="border border-gray-200 rounded-lg p-4">
-                          <h5 className="font-medium text-gray-900 mb-2">Goal 1: Improve {overallStats.developmentAreas[0]?.text || 'your lowest-rated area'}</h5>
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                            <div>
-                              <label className="block text-gray-700 font-medium mb-1">Specific Actions:</label>
-                              <textarea 
-                                className="w-full border border-gray-300 rounded-md p-2 text-sm" 
-                                rows={3}
-                                placeholder="List 2-3 specific actions you will take..."
-                              ></textarea>
-                            </div>
-                            <div>
-                              <label className="block text-gray-700 font-medium mb-1">Success Measures:</label>
-                              <textarea 
-                                className="w-full border border-gray-300 rounded-md p-2 text-sm" 
-                                rows={3}
-                                placeholder="How will you know you've improved?"
-                              ></textarea>
-                            </div>
-                          </div>
-                          <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                            <div>
-                              <label className="block text-gray-700 font-medium mb-1">Resources Needed:</label>
-                              <input 
-                                type="text" 
-                                className="w-full border border-gray-300 rounded-md p-2 text-sm"
-                                placeholder="Training, mentoring, etc."
-                              />
-                            </div>
-                            <div>
-                              <label className="block text-gray-700 font-medium mb-1">Target Date:</label>
-                              <input 
-                                type="date" 
-                                className="w-full border border-gray-300 rounded-md p-2 text-sm"
-                              />
-                            </div>
-                          </div>
-                        </div>
+                {/* Rating Distribution Chart */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  <div>
+                    <h3 className="text-lg font-medium text-gray-900 mb-4">Rating Distribution</h3>
+                    <div className="space-y-3">
+                      {[5, 4, 3, 2, 1].map(rating => {
+                        const count = userResults.flatMap(section => section.questions)
+                          .filter(q => Math.round(q.avgReviewerRating) === rating).length;
+                        const percentage = userResults.length > 0 ? 
+                          (count / userResults.flatMap(section => section.questions).length) * 100 : 0;
                         
-                        <Button variant="outline" className="w-full">
-                          + Add Another Goal
-                        </Button>
+                        return (
+                          <div key={rating} className="flex items-center space-x-3">
+                            <span className="w-12 text-sm font-medium">{rating} star</span>
+                            <div className="flex-1 bg-gray-200 rounded-full h-2">
+                              <div 
+                                className={`h-2 rounded-full ${
+                                  rating >= 4 ? 'bg-green-500' : 
+                                  rating === 3 ? 'bg-yellow-500' : 'bg-red-500'
+                                }`}
+                                style={{ width: `${percentage}%` }}
+                              ></div>
+                            </div>
+                            <span className="w-12 text-sm text-gray-600">{count}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  
+                  <div>
+                    <h3 className="text-lg font-medium text-gray-900 mb-4">Self vs Others Perception</h3>
+                    <div className="space-y-4">
+                      <div className="grid grid-cols-3 gap-4 text-center">
+                        <div className="p-3 bg-blue-50 rounded-lg">
+                          <div className="text-2xl font-bold text-blue-600">
+                            {overallStats.alignedCount}
+                          </div>
+                          <div className="text-sm text-blue-700">Aligned</div>
+                          <div className="text-xs text-gray-600">Self & others agree</div>
+                        </div>
+                        <div className="p-3 bg-orange-50 rounded-lg">
+                          <div className="text-2xl font-bold text-orange-600">
+                            {overallStats.blindSpotCount}
+                          </div>
+                          <div className="text-sm text-orange-700">Blind Spots</div>
+                          <div className="text-xs text-gray-600">You rate higher</div>
+                        </div>
+                        <div className="p-3 bg-green-50 rounded-lg">
+                          <div className="text-2xl font-bold text-green-600">
+                            {overallStats.hiddenStrengthCount}
+                          </div>
+                          <div className="text-sm text-green-700">Hidden Strengths</div>
+                          <div className="text-xs text-gray-600">Others rate higher</div>
+                        </div>
                       </div>
                       
-                      <div className="mt-4 flex justify-end">
-                        <Button>
-                          Save Development Plan
-                        </Button>
+                      <div className="mt-4">
+                        <div className="flex items-center justify-between text-sm">
+                          <span>Self-Rating Average:</span>
+                          <span className="font-medium">{overallStats.avgSelfRating.toFixed(1)}/5</span>
+                        </div>
+                        <div className="flex items-center justify-between text-sm mt-1">
+                          <span>Others' Rating Average:</span>
+                          <span className="font-medium">{overallStats.avgReviewerRating.toFixed(1)}/5</span>
+                        </div>
+                        <div className="flex items-center justify-between text-sm mt-1 pt-2 border-t">
+                          <span>Overall Gap:</span>
+                          <span className={`font-medium ${
+                            Math.abs(overallStats.avgSelfRating - overallStats.avgReviewerRating) <= 0.5 
+                              ? 'text-green-600' : 'text-orange-600'
+                          }`}>
+                            {(overallStats.avgSelfRating - overallStats.avgReviewerRating).toFixed(1)}
+                          </span>
+                        </div>
                       </div>
+
+                {/* Performance Trend Analysis */}
+                <div>
+                  <h3 className="text-lg font-medium text-gray-900 mb-4">Performance Insights</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="bg-white border border-gray-200 rounded-lg p-4">
+                      <h4 className="font-medium text-gray-900 mb-3">Top Performing Areas</h4>
+                      <div className="space-y-2">
+                        {overallStats.topStrengths.slice(0, 3).map((strength, index) => (
+                          <div key={index} className="flex items-center justify-between p-2 bg-green-50 rounded">
+                            <span className="text-sm text-gray-900">{strength.text}</span>
+                            <span className="text-sm font-medium text-green-600">{strength.avgReviewerRating.toFixed(1)}/7</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    
+                    <div className="bg-white border border-gray-200 rounded-lg p-4">
+                      <h4 className="font-medium text-gray-900 mb-3">Areas for Growth</h4>
+                      <div className="space-y-2">
+                        {overallStats.developmentAreas.slice(0, 3).map((area, index) => (
+                          <div key={index} className="flex items-center justify-between p-2 bg-orange-50 rounded">
+                            <span className="text-sm text-gray-900">{area.text}</span>
+                            <span className="text-sm font-medium text-orange-600">{area.avgReviewerRating.toFixed(1)}/7</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Competency Breakdown */}
+                {hasCompetencyData && (
+                  <div>
+                    <h3 className="text-lg font-medium text-gray-900 mb-4">Competency Performance</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {overallStats.competencyResults.slice(0, 6).map(comp => (
+                        <div key={comp.competencyId} className="bg-white border border-gray-200 rounded-lg p-4">
+                          <h4 className="font-medium text-gray-900 mb-2">{comp.competencyName}</h4>
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-sm text-gray-600">Rating:</span>
+                            <span className="font-medium">{comp.reviewerAverage.toFixed(1)}/7</span>
+                          </div>
+                          <div className="w-full bg-gray-200 rounded-full h-2 mb-2">
+                            <div 
+                              className={`h-2 rounded-full ${
+                                comp.reviewerAverage >= 5 ? 'bg-green-500' :
+                                comp.reviewerAverage >= 4 ? 'bg-yellow-500' : 'bg-red-500'
+                              }`}
+                              style={{ width: `${(comp.reviewerAverage / 7) * 100}%` }}
+                            ></div>
+                          </div>
+                          <div className="text-xs text-gray-500">
+                            {comp.alignment === 'blind_spot' ? 'Potential blind spot' :
+                             comp.alignment === 'hidden_strength' ? 'Hidden strength' :
+                             'Well-aligned'}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Data-Driven Insights */}
+                <div>
+                  <h3 className="text-lg font-medium text-gray-900 mb-4">Key Data Insights</h3>
+                  <div className="space-y-4">
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                      <h4 className="font-medium text-blue-800 mb-2">Assessment Completion</h4>
+                      <p className="text-sm text-blue-700">
+                        You have completed assessments covering {overallStats.totalQuestions} individual criteria 
+                        across {userResults.length} competency areas.
+                      </p>
+                    </div>
+                    
+                    <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
+                      <h4 className="font-medium text-purple-800 mb-2">Self-Awareness Level</h4>
+                      <p className="text-sm text-purple-700">
+                        {overallStats.alignedPercentage > 70 ? 
+                          'Excellent self-awareness: Your self-perception aligns well with others\' views.' :
+                          overallStats.alignedPercentage > 50 ?
+                          'Good self-awareness: Some areas where perceptions differ.' :
+                          'Opportunity for improved self-awareness: Consider seeking more feedback.'}
+                      </p>
+                    </div>
+                    
+                    <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                      <h4 className="font-medium text-green-800 mb-2">Performance Distribution</h4>
+                      <p className="text-sm text-green-700">
+                        {overallStats.avgReviewerRating >= 5 ?
+                          'Strong overall performance across assessed areas.' :
+                          overallStats.avgReviewerRating >= 4 ?
+                          'Solid performance with room for targeted improvement.' :
+                          'Development opportunities identified in multiple areas.'}
+                      </p>
                     </div>
                   </div>
                 </div>

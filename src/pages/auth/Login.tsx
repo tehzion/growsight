@@ -299,16 +299,6 @@ const Login = () => {
         <p className="text-xs text-primary-700 mt-1">
           If you don't know your Organization ID, please contact your administrator or support team.
         </p>
-        
-        {/* Demo Organization IDs */}
-        <div className="mt-3 text-xs">
-          <p className="font-medium text-primary-800">Demo Organization IDs:</p>
-          <ul className="mt-1 space-y-1 text-primary-700">
-            <li>• <strong>demo-org-1</strong>: Acme Corporation</li>
-            <li>• <strong>demo-org-2</strong>: TechStart Solutions</li>
-            <li>• <strong>demo-org-3</strong>: Global Enterprises</li>
-          </ul>
-        </div>
       </div>
     </div>
   );

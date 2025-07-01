@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Palette, Save, CheckCircle, AlertTriangle, Image, Upload, FileText, Eye, EyeOff, RefreshCw } from 'lucide-react';
+import { Palette, Save, CheckCircle, AlertTriangle, Image, Upload, FileText, Eye, EyeOff, RefreshCw, Building2 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import FormInput from '../../components/ui/FormInput';
@@ -10,8 +10,10 @@ import PDFBrandingSettings from '../../components/ui/PDFBrandingSettings';
 
 const Branding: React.FC = () => {
   const { user } = useAuthStore();
-  const { currentOrganization } = useOrganizationStore();
+  const { organizations, currentOrganization, fetchOrganizations } = useOrganizationStore();
   const { pdfSettings, updatePDFSettings } = usePDFExportStore();
+  
+  const [selectedOrgId, setSelectedOrgId] = useState<string>(currentOrganization?.id || '');
   
   const [activeTab, setActiveTab] = useState<'pdf' | 'web'>('pdf');
   const [isLoading, setIsLoading] = useState(false);
@@ -32,6 +34,16 @@ const Branding: React.FC = () => {
     darkMode: false
   });
 
+  const isSuperAdmin = user?.role === 'super_admin';
+  const selectedOrg = organizations.find(org => org.id === selectedOrgId);
+
+  useEffect(() => {
+    // Fetch organizations for super admin
+    if (isSuperAdmin) {
+      fetchOrganizations();
+    }
+  }, [isSuperAdmin, fetchOrganizations]);
+
   useEffect(() => {
     // Initialize web branding with PDF settings for consistency
     setWebBranding(prev => ({
@@ -39,9 +51,22 @@ const Branding: React.FC = () => {
       logoUrl: pdfSettings.logoUrl || '',
       primaryColor: pdfSettings.primaryColor,
       secondaryColor: pdfSettings.secondaryColor,
-      companyName: pdfSettings.companyName
+      companyName: selectedOrg?.name || pdfSettings.companyName
     }));
-  }, [pdfSettings]);
+  }, [pdfSettings, selectedOrg]);
+
+  // Redirect if not super admin
+  if (!isSuperAdmin) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="text-center">
+          <AlertTriangle className="h-12 w-12 text-warning-500 mx-auto mb-4" />
+          <h2 className="text-xl font-semibold text-gray-900 mb-2">Access Denied</h2>
+          <p className="text-gray-600">Only super administrators can access branding settings.</p>
+        </div>
+      </div>
+    );
+  }
 
   const handleSave = async () => {
     setIsLoading(true);
@@ -90,63 +115,89 @@ const Branding: React.FC = () => {
     setWebBranding(prev => ({ ...prev, [field]: value }));
   };
 
-  const isSuperAdmin = user?.role === 'super_admin';
-  const isOrgAdmin = user?.role === 'org_admin';
-
   return (
     <div className="space-y-6">
-      <div className="border-b border-gray-200 pb-4 flex justify-between items-center">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Branding Settings</h1>
-          <p className="text-sm text-gray-500 mt-1">
-            Customize the appearance of your 360° Feedback Platform
-          </p>
+      <div className="border-b border-gray-200 pb-4">
+        <div className="flex justify-between items-center mb-4">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">Branding Settings</h1>
+            <p className="text-sm text-gray-500 mt-1">
+              Customize PDF and web branding for organizations
+            </p>
+          </div>
         </div>
-        <div className="flex space-x-2">
-          <Button
-            variant="outline"
-            onClick={() => {
-              if (activeTab === 'pdf') {
-                // Reset PDF settings to defaults
-                updatePDFSettings({
-                  logoUrl: '',
-                  companyName: currentOrganization?.name || '360° Feedback Platform',
-                  primaryColor: '#2563EB',
-                  secondaryColor: '#7E22CE',
-                  footerText: `© ${new Date().getFullYear()} ${currentOrganization?.name || '360° Feedback Platform'}. All rights reserved.`,
-                  includeTimestamp: true,
-                  includePageNumbers: true,
-                  defaultTemplate: 'standard'
-                });
-              } else {
-                // Reset web branding to defaults
-                setWebBranding({
-                  logoUrl: '',
-                  favicon: '',
-                  primaryColor: '#2563EB',
-                  secondaryColor: '#7E22CE',
-                  accentColor: '#14B8A6',
-                  companyName: currentOrganization?.name || '360° Feedback Platform',
-                  emailFooter: `© ${new Date().getFullYear()} ${currentOrganization?.name || '360° Feedback Platform'}. All rights reserved.`,
-                  fontFamily: 'Inter',
-                  buttonStyle: 'rounded',
-                  darkMode: false
-                });
-              }
-            }}
-            leftIcon={<RefreshCw className="h-4 w-4" />}
-          >
-            Reset to Defaults
-          </Button>
-          <Button
-            onClick={handleSave}
-            isLoading={isLoading}
-            leftIcon={<Save className="h-4 w-4" />}
-          >
-            Save Changes
-          </Button>
+        
+        {/* Organization Selector for Super Admin */}
+        <div className="mb-4">
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Select Organization
+          </label>
+          <div className="relative">
+            <Building2 className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <select
+              value={selectedOrgId}
+              onChange={(e) => setSelectedOrgId(e.target.value)}
+              className="pl-10 w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+            >
+              <option value="">Select an organization...</option>
+              {organizations.map((org) => (
+                <option key={org.id} value={org.id}>
+                  {org.name}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
       </div>
+
+      {selectedOrgId && (
+        <div className="space-y-6">
+          <div className="flex justify-between items-center">
+            <div className="flex space-x-2">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  if (activeTab === 'pdf') {
+                    // Reset PDF settings to defaults
+                    updatePDFSettings({
+                      logoUrl: '',
+                      companyName: selectedOrg?.name || '360° Feedback Platform',
+                      primaryColor: '#2563EB',
+                      secondaryColor: '#7E22CE',
+                      footerText: `© ${new Date().getFullYear()} ${selectedOrg?.name || '360° Feedback Platform'}. All rights reserved.`,
+                      includeTimestamp: true,
+                      includePageNumbers: true,
+                      defaultTemplate: 'standard'
+                    });
+                  } else {
+                    // Reset web branding to defaults
+                    setWebBranding({
+                      logoUrl: '',
+                      favicon: '',
+                      primaryColor: '#2563EB',
+                      secondaryColor: '#7E22CE',
+                      accentColor: '#14B8A6',
+                      companyName: selectedOrg?.name || '360° Feedback Platform',
+                      emailFooter: `© ${new Date().getFullYear()} ${selectedOrg?.name || '360° Feedback Platform'}. All rights reserved.`,
+                      fontFamily: 'Inter',
+                      buttonStyle: 'rounded',
+                      darkMode: false
+                    });
+                  }
+                }}
+                leftIcon={<RefreshCw className="h-4 w-4" />}
+              >
+                Reset to Defaults
+              </Button>
+              <Button
+                onClick={handleSave}
+                isLoading={isLoading}
+                leftIcon={<Save className="h-4 w-4" />}
+              >
+                Save Changes
+              </Button>
+            </div>
+          </div>
 
       {/* Status Messages */}
       {saveStatus === 'saved' && (
@@ -614,44 +665,34 @@ const Branding: React.FC = () => {
                 </div>
               </div>
 
-              {/* System-wide settings notice for Super Admin */}
-              {isSuperAdmin && (
-                <div className="bg-primary-50 p-4 rounded-lg border border-primary-200 mt-6">
-                  <div className="flex items-start">
-                    <AlertTriangle className="h-5 w-5 text-primary-600 mt-0.5 mr-3" />
-                    <div>
-                      <h4 className="text-sm font-medium text-primary-800">System-Wide Branding</h4>
-                      <p className="text-sm text-primary-700 mt-1">
-                        As a Super Admin, the branding changes you make will apply system-wide as the default for all organizations that haven't set their own branding.
-                      </p>
-                      <p className="text-sm text-primary-700 mt-1">
-                        Individual organizations can override these settings if they have the appropriate permissions.
-                      </p>
-                    </div>
+              {/* Organization-specific notice for Super Admin */}
+              <div className="bg-primary-50 p-4 rounded-lg border border-primary-200 mt-6">
+                <div className="flex items-start">
+                  <AlertTriangle className="h-5 w-5 text-primary-600 mt-0.5 mr-3" />
+                  <div>
+                    <h4 className="text-sm font-medium text-primary-800">Organization Branding</h4>
+                    <p className="text-sm text-primary-700 mt-1">
+                      These branding settings will apply to <strong>{selectedOrg?.name}</strong> and all its users.
+                    </p>
+                    <p className="text-sm text-primary-700 mt-1">
+                      Changes will affect both the web interface and PDF exports for this organization.
+                    </p>
                   </div>
                 </div>
-              )}
-
-              {/* Organization-specific notice for Org Admin */}
-              {isOrgAdmin && (
-                <div className="bg-primary-50 p-4 rounded-lg border border-primary-200 mt-6">
-                  <div className="flex items-start">
-                    <Eye className="h-5 w-5 text-primary-600 mt-0.5 mr-3" />
-                    <div>
-                      <h4 className="text-sm font-medium text-primary-800">Organization Branding</h4>
-                      <p className="text-sm text-primary-700 mt-1">
-                        These branding settings will apply to all users in your organization: <strong>{currentOrganization?.name}</strong>.
-                      </p>
-                      <p className="text-sm text-primary-700 mt-1">
-                        Changes will affect both the web interface and PDF exports for your organization.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              )}
+              </div>
             </div>
           </CardContent>
         </Card>
+      )}
+        </div>
+      )}
+
+      {!selectedOrgId && (
+        <div className="text-center py-12">
+          <Building2 className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+          <h3 className="text-lg font-medium text-gray-900 mb-2">Select an Organization</h3>
+          <p className="text-gray-600">Choose an organization to customize its PDF and web branding settings.</p>
+        </div>
       )}
     </div>
   );

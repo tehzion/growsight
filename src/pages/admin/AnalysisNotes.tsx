@@ -27,6 +27,7 @@ import { useUserStore } from '../../stores/userStore';
 import { useOrganizationStore } from '../../stores/organizationStore';
 import { useProfileStore } from '../../stores/profileStore';
 import { useNotificationStore } from '../../stores/notificationStore';
+import { assessmentTaggingService } from '../../services/assessmentTaggingService';
 
 interface AnalysisNote {
   id: string;
@@ -433,6 +434,44 @@ const AnalysisNotes: React.FC = () => {
       tag: ''
     });
   };
+
+  // Generate organization-wide behavior and style tags
+  const handleGenerateOrgTags = async () => {
+    if (!isSuperAdmin || !currentOrganization) {
+      addNotification({
+        title: 'Access Denied',
+        message: 'Only super admins can generate organization-wide tags',
+        type: 'error'
+      });
+      return;
+    }
+
+    try {
+      setSaveStatus('saving');
+      const orgStyle = await assessmentTaggingService.generateOrganizationStyleProfile(
+        currentOrganization.id,
+        user?.id
+      );
+      
+      setSaveStatus('saved');
+      addNotification({
+        title: 'Tags Generated',
+        message: `Organization-wide behavior and style tags have been generated for ${currentOrganization.name}`,
+        type: 'success'
+      });
+
+      // Log the organization style for debugging
+      console.log('Generated organization style:', orgStyle);
+      
+    } catch (error) {
+      setSaveStatus('error');
+      addNotification({
+        title: 'Error',
+        message: `Failed to generate organization tags: ${(error as Error).message}`,
+        type: 'error'
+      });
+    }
+  };
   
   return (
     <div className="space-y-6">
@@ -444,12 +483,24 @@ const AnalysisNotes: React.FC = () => {
           </p>
         </div>
         {canManageNotes && !isCreating && !isEditing && (
-          <Button
-            onClick={handleCreate}
-            leftIcon={<Plus className="h-4 w-4" />}
-          >
-            Create Note
-          </Button>
+          <div className="flex gap-3">
+            {isSuperAdmin && (
+              <Button
+                onClick={handleGenerateOrgTags}
+                variant="outline"
+                leftIcon={<Tag className="h-4 w-4" />}
+                isLoading={saveStatus === 'saving'}
+              >
+                Generate Org Tags
+              </Button>
+            )}
+            <Button
+              onClick={handleCreate}
+              leftIcon={<Plus className="h-4 w-4" />}
+            >
+              Create Note
+            </Button>
+          </div>
         )}
       </div>
       

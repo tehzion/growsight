@@ -17,12 +17,14 @@ import {
   RefreshCw,
   Activity,
   Target,
-  Tag
+  Tag,
+  AlertTriangle
 } from 'lucide-react';
 import { useAuthStore } from '../stores/authStore';
 import { useOrganizationStore } from '../stores/organizationStore';
 import { useUserStore } from '../stores/userStore';
 import { useDashboardStore } from '../stores/dashboardStore';
+import { useResultStore } from '../stores/resultStore';
 import Button from '../components/ui/Button';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card';
 
@@ -31,11 +33,13 @@ const Dashboard = () => {
   const { currentOrganization } = useOrganizationStore();
   const { users, fetchUsers } = useUserStore();
   const { analytics, organizationAnalytics, fetchAnalytics, fetchAllOrganizationAnalytics, isLoading, clearAnalytics, error, clearError } = useDashboardStore();
+  const { results, fetchResults } = useResultStore();
   const navigate = useNavigate();
   const [refreshing, setRefreshing] = useState(false);
   
   const isSuperAdmin = user?.role === 'super_admin';
   const isOrgAdmin = user?.role === 'org_admin';
+  const isSubscriber = user?.role === 'subscriber';
   
   useEffect(() => {
     // Clear previous analytics when user changes
@@ -44,11 +48,14 @@ const Dashboard = () => {
     if (isSuperAdmin) {
       fetchAnalytics(); // Fetch aggregated data
       fetchAllOrganizationAnalytics(); // Fetch individual org data
+    } else if (isSubscriber && user) {
+      // For subscribers, fetch their personal results
+      fetchResults(user.id);
     } else if (user?.organizationId) {
       fetchAnalytics(user.organizationId);
       fetchUsers(user.organizationId);
     }
-  }, [user, isSuperAdmin, fetchAnalytics, fetchAllOrganizationAnalytics, fetchUsers, clearAnalytics]);
+  }, [user, isSuperAdmin, isSubscriber, fetchAnalytics, fetchAllOrganizationAnalytics, fetchUsers, fetchResults, clearAnalytics]);
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -60,6 +67,8 @@ const Dashboard = () => {
           fetchAnalytics(),
           fetchAllOrganizationAnalytics()
         ]);
+      } else if (isSubscriber && user) {
+        await fetchResults(user.id);
       } else if (user?.organizationId) {
         await fetchAnalytics(user.organizationId);
       }
@@ -138,6 +147,7 @@ const Dashboard = () => {
           <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
           <p className="text-sm text-gray-500 mt-1">
             {isSuperAdmin ? 'System-wide analytics and control center' : 
+             isSubscriber ? 'Your personal assessment progress and insights' :
              `${currentOrganization?.name || 'Organization'} management dashboard`}
           </p>
         </div>
@@ -643,7 +653,8 @@ const Dashboard = () => {
             </CardContent>
           </Card>
         )}
-      </div>
+        </div>
+      )}
     </div>
   );
 };
