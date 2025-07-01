@@ -29,6 +29,7 @@ import SystemSettings from './pages/admin/SystemSettings';
 
 import AccessRequests from './pages/admin/AccessRequests';
 import Branding from './pages/admin/Branding';
+import OrganizationBrandingPage from './pages/admin/OrganizationBrandingPage';
 
 import CompetencyManager from './pages/admin/CompetencyManager';
 import SupportHub from './pages/admin/SupportHub';
@@ -176,6 +177,11 @@ function App() {
             <Route path="/branding" element={
               <ErrorBoundary>
                 <Branding />
+              </ErrorBoundary>
+            } />
+            <Route path="/admin/branding" element={
+              <ErrorBoundary>
+                <OrganizationBrandingPage />
               </ErrorBoundary>
             } />
             

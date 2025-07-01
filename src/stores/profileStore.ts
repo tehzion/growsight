@@ -6,23 +6,52 @@ import { isDemoMode } from '../config/environment';
 import SecureLogger from '../lib/secureLogger';
 import AccessControl from '../lib/accessControl';
 
-interface UserProfile {
-  userId: string;
+export interface Profile {
+  id: string;
+  user_id: string;
+  first_name: string;
+  last_name: string;
+  email: string;
   phone?: string;
-  jobTitle?: string;
-  location?: string;
+  position?: string;
+  department?: string;
   bio?: string;
-  avatarUrl?: string;
-  timezone?: string;
-  dateFormat?: string;
+  avatar_url?: string;
+  date_of_birth?: string;
+  hire_date?: string;
+  emergency_contact?: {
+    name: string;
+    relationship: string;
+    phone: string;
+  };
   skills?: string[];
-  interests?: string[];
   certifications?: string[];
-  yearsOfExperience?: string;
-  education?: string;
-  preferredLanguage?: string;
-  departmentId?: string;
-  organizationId?: string;
+  education?: {
+    degree: string;
+    institution: string;
+    year: string;
+  }[];
+  work_experience?: {
+    company: string;
+    position: string;
+    start_date: string;
+    end_date?: string;
+    description: string;
+  }[];
+  preferences?: {
+    theme: 'light' | 'dark' | 'system';
+    language: string;
+    notifications: {
+      email: boolean;
+      push: boolean;
+      sms: boolean;
+    };
+  };
+  is_first_login: boolean;
+  profile_completed: boolean;
+  completion_percentage: number;
+  created_at: string;
+  updated_at: string;
 }
 
 interface ProfileTag {
@@ -63,17 +92,19 @@ interface StaffAssignment {
 }
 
 interface ProfileState {
-  profile: UserProfile | null;
+  profile: Profile | null;
   profileTags: ProfileTag[];
   behaviors: UserBehavior[];
   staffAssignments: StaffAssignment[];
   isFirstLogin: boolean;
   isLoading: boolean;
   error: string | null;
+  profileCompleted: boolean;
+  completionPercentage: number;
   
   // Profile management
-  fetchProfile: (userId: string, currentUserId?: string) => Promise<void>;
-  updateProfile: (data: Partial<Omit<UserProfile, 'userId'>>, currentUserId?: string) => Promise<void>;
+  fetchProfile: (userId: string) => Promise<void>;
+  updateProfile: (updates: Partial<Profile>) => Promise<void>;
   
   // Tag management
   fetchProfileTags: (userId: string, currentUserId?: string) => Promise<void>;
@@ -91,24 +122,55 @@ interface ProfileState {
   updateStaffAssignment: (assignmentId: string, data: Partial<StaffAssignment>, currentUserId?: string) => Promise<void>;
   
   // Utility functions
-  setFirstLoginComplete: () => void;
+  markFirstLoginComplete: () => Promise<void>;
+  calculateCompletionPercentage: () => number;
+  resetProfile: () => void;
   clearError: () => void;
 }
 
 // Default profile for demo mode
-const defaultProfile: UserProfile = {
-  userId: 'demo-user',
+const defaultProfile: Profile = {
+  id: 'demo-user',
+  user_id: 'demo-user',
+  first_name: 'John',
+  last_name: 'Doe',
+  email: 'john.doe@example.com',
   phone: '+1 (555) 123-4567',
-  jobTitle: 'Software Engineer',
-  location: 'San Francisco, CA',
+  position: 'Software Engineer',
+  department: 'Engineering',
   bio: 'Experienced software engineer with a passion for building user-friendly applications.',
+  avatar_url: 'https://example.com/john-doe.jpg',
+  date_of_birth: '1990-05-15',
+  hire_date: '2015-06-01',
+  emergency_contact: {
+    name: 'Jane Doe',
+    relationship: 'Spouse',
+    phone: '+1 (555) 555-5555'
+  },
   skills: ['JavaScript', 'React', 'TypeScript', 'Node.js'],
-  interests: ['Web Development', 'UI/UX Design', 'Open Source'],
   certifications: ['AWS Certified Developer', 'Scrum Master'],
-  yearsOfExperience: '5-10',
-  education: 'bachelor',
-  preferredLanguage: 'en',
-  organizationId: 'demo-org-1',
+  education: [
+    { degree: 'Bachelor of Science', institution: 'University of Tech', year: '2010' },
+    { degree: 'Master of Science', institution: 'University of Design', year: '2012' }
+  ],
+  work_experience: [
+    { company: 'Tech Solutions', position: 'Software Engineer', start_date: '2015-06-01', end_date: '2018-05-31', description: 'Developed and maintained web applications' },
+    { company: 'Design Co', position: 'UI/UX Designer', start_date: '2018-06-01', description: 'Designed user interfaces and prototypes' }
+  ],
+  preferences: {
+    theme: 'system',
+    language: 'en',
+    notifications: {
+      email: true,
+      push: true,
+      sms: false
+    }
+  },
+  is_first_login: true,
+  profile_completed: false,
+  completion_percentage: 0,
+  created_at: new Date().toISOString(),
+  updated_at: new Date().toISOString()
 };
 
 // Default tags for demo mode
@@ -145,6 +207,28 @@ const defaultProfileTags: ProfileTag[] = [
   },
 ];
 
+const REQUIRED_FIELDS = [
+  'first_name',
+  'last_name',
+  'email',
+  'position',
+  'department',
+  'phone',
+  'date_of_birth',
+  'hire_date',
+  'emergency_contact',
+  'bio',
+  'avatar_url'
+];
+
+const OPTIONAL_FIELDS = [
+  'skills',
+  'certifications',
+  'education',
+  'work_experience',
+  'preferences'
+];
+
 export const useProfileStore = create<ProfileState>()(
   persist(
     (set, get) => ({
@@ -152,59 +236,50 @@ export const useProfileStore = create<ProfileState>()(
       profileTags: [],
       behaviors: [],
       staffAssignments: [],
-      isFirstLogin: true,
+      isFirstLogin: false,
       isLoading: false,
       error: null,
+      profileCompleted: false,
+      completionPercentage: 0,
       
-      fetchProfile: async (userId: string, currentUserId?: string) => {
+      fetchProfile: async (userId: string) => {
         set({ isLoading: true, error: null });
         try {
           if (isDemoMode) {
             // In demo mode, return default profile
             await new Promise(resolve => setTimeout(resolve, 300));
             set({ 
-              profile: { ...defaultProfile, userId },
+              profile: { ...defaultProfile, user_id: userId },
+              isFirstLogin: true,
+              profileCompleted: false,
+              completionPercentage: 0,
               isLoading: false 
             });
           } else {
             // Validate access
-            if (currentUserId && !AccessControl.validateUserAccess({ id: currentUserId } as any, userId, 'fetchProfile', true)) {
+            if (!AccessControl.validateUserAccess({ id: userId } as any, userId, 'fetchProfile', true)) {
               throw new Error('Access denied to user profile');
             }
 
             const { data, error } = await supabase
-              .from('users')
-              .select(`
-                id, email, first_name, last_name, organization_id, department_id,
-                phone, job_title, location, bio, avatar_url, timezone, date_format,
-                skills, interests, certifications, years_of_experience, 
-                education, preferred_language
-              `)
-              .eq('id', userId)
+              .from('profiles')
+              .select('*')
+              .eq('user_id', userId)
               .single();
 
             if (error) throw handleSupabaseError(error);
 
-            const profile: UserProfile = {
-              userId: data.id,
-              phone: data.phone,
-              jobTitle: data.job_title,
-              location: data.location,
-              bio: data.bio,
-              avatarUrl: data.avatar_url,
-              timezone: data.timezone,
-              dateFormat: data.date_format,
-              skills: data.skills || [],
-              interests: data.interests || [],
-              certifications: data.certifications || [],
-              yearsOfExperience: data.years_of_experience,
-              education: data.education,
-              preferredLanguage: data.preferred_language,
-              departmentId: data.department_id,
-              organizationId: data.organization_id,
-            };
+            const completionPercentage = get().calculateCompletionPercentage();
+            const isFirstLogin = data.is_first_login || false;
+            const profileCompleted = data.profile_completed || false;
 
-            set({ profile, isLoading: false });
+            set({
+              profile: data,
+              isFirstLogin,
+              profileCompleted,
+              completionPercentage,
+              isLoading: false
+            });
           }
         } catch (error) {
           SecureLogger.error('Failed to fetch profile', error);
@@ -215,13 +290,12 @@ export const useProfileStore = create<ProfileState>()(
         }
       },
       
-      updateProfile: async (data, currentUserId?: string) => {
+      updateProfile: async (updates: Partial<Profile>) => {
         set({ isLoading: true, error: null });
         try {
-          const { profile } = get();
-          
-          if (!profile) {
-            throw new Error('No profile loaded');
+          const currentProfile = get().profile;
+          if (!currentProfile) {
+            throw new Error('No profile to update');
           }
           
           if (isDemoMode) {
@@ -231,45 +305,46 @@ export const useProfileStore = create<ProfileState>()(
             set(state => ({
               profile: {
                 ...state.profile!,
-                ...data
+                ...updates
               },
               isLoading: false
             }));
           } else {
             // Validate access
-            if (currentUserId && !AccessControl.validateUserAccess({ id: currentUserId } as any, profile.userId, 'updateProfile', false)) {
+            if (!AccessControl.validateUserAccess({ id: currentProfile.user_id } as any, currentProfile.user_id, 'updateProfile', false)) {
               throw new Error('Access denied to update profile');
             }
 
-            const { error } = await supabase
-              .from('users')
-              .update({
-                phone: data.phone,
-                job_title: data.jobTitle,
-                location: data.location,
-                bio: data.bio,
-                avatar_url: data.avatarUrl,
-                timezone: data.timezone,
-                date_format: data.dateFormat,
-                skills: data.skills,
-                interests: data.interests,
-                certifications: data.certifications,
-                years_of_experience: data.yearsOfExperience,
-                education: data.education,
-                preferred_language: data.preferredLanguage,
-                updated_at: new Date().toISOString()
+            const updatedProfile = { ...currentProfile, ...updates, updated_at: new Date().toISOString() };
+            
+            // Calculate completion percentage
+            const completionPercentage = get().calculateCompletionPercentage();
+            const profileCompleted = completionPercentage >= 80; // 80% threshold
+
+            const finalUpdates = {
+              ...updates,
+              completion_percentage: completionPercentage,
+              profile_completed: profileCompleted,
+              updated_at: new Date().toISOString()
+            };
+
+            const { data, error } = await supabase
+              .from('profiles')
+              .upsert({
+                user_id: currentProfile.user_id,
+                ...finalUpdates
               })
-              .eq('id', profile.userId);
+              .select()
+              .single();
 
             if (error) throw handleSupabaseError(error);
 
-            set(state => ({
-              profile: {
-                ...state.profile!,
-                ...data
-              },
+            set({
+              profile: data,
+              profileCompleted,
+              completionPercentage,
               isLoading: false
-            }));
+            });
           }
         } catch (error) {
           SecureLogger.error('Failed to update profile', error);
@@ -642,13 +717,96 @@ export const useProfileStore = create<ProfileState>()(
         }
       },
 
-      setFirstLoginComplete: () => {
-        set({ isFirstLogin: false });
+      markFirstLoginComplete: async () => {
+        try {
+          const currentProfile = get().profile;
+          if (!currentProfile) {
+            throw new Error('No profile to update');
+          }
+
+          await get().updateProfile({
+            is_first_login: false
+          });
+
+          set({ isFirstLogin: false });
+        } catch (error) {
+          console.error('Error marking first login complete:', error);
+          set({
+            error: error instanceof Error ? error.message : 'Failed to mark first login complete'
+          });
+        }
       },
 
-      clearError: () => {
-        set({ error: null });
-      }
+      calculateCompletionPercentage: () => {
+        const profile = get().profile;
+        if (!profile) return 0;
+
+        let completedFields = 0;
+        let totalFields = REQUIRED_FIELDS.length + OPTIONAL_FIELDS.length;
+
+        // Check required fields
+        REQUIRED_FIELDS.forEach(field => {
+          const value = profile[field as keyof Profile];
+          if (value !== null && value !== undefined && value !== '') {
+            if (typeof value === 'object') {
+              // For complex objects like emergency_contact
+              if (field === 'emergency_contact') {
+                const contact = value as any;
+                if (contact.name && contact.relationship && contact.phone) {
+                  completedFields++;
+                }
+              }
+            } else if (Array.isArray(value)) {
+              // For arrays like skills, certifications
+              if (value.length > 0) {
+                completedFields++;
+              }
+            } else {
+              completedFields++;
+            }
+          }
+        });
+
+        // Check optional fields (weighted less)
+        OPTIONAL_FIELDS.forEach(field => {
+          const value = profile[field as keyof Profile];
+          if (value !== null && value !== undefined && value !== '') {
+            if (Array.isArray(value)) {
+              if (value.length > 0) {
+                completedFields += 0.5; // Half weight for optional fields
+              }
+            } else if (typeof value === 'object') {
+              // For complex objects like preferences
+              if (Object.keys(value).length > 0) {
+                completedFields += 0.5;
+              }
+            } else {
+              completedFields += 0.5;
+            }
+          }
+        });
+
+        // Calculate percentage (required fields are worth more)
+        const requiredWeight = REQUIRED_FIELDS.length * 1.5; // 1.5x weight for required fields
+        const optionalWeight = OPTIONAL_FIELDS.length * 0.5; // 0.5x weight for optional fields
+        const totalWeight = requiredWeight + optionalWeight;
+
+        const percentage = Math.round((completedFields / totalWeight) * 100);
+        return Math.min(percentage, 100); // Cap at 100%
+      },
+
+             resetProfile: () => {
+         set({
+           profile: null,
+           isFirstLogin: false,
+           profileCompleted: false,
+           completionPercentage: 0
+         });
+       },
+
+       clearError: () => {
+         set({ error: null });
+       }
     }),
     {
       name: 'profile-storage',
@@ -657,8 +815,75 @@ export const useProfileStore = create<ProfileState>()(
         profileTags: state.profileTags,
         behaviors: state.behaviors,
         staffAssignments: state.staffAssignments,
-        isFirstLogin: state.isFirstLogin
+        isFirstLogin: state.isFirstLogin,
+        profileCompleted: state.profileCompleted,
+        completionPercentage: state.completionPercentage
       }),
     }
   )
 );
+
+// Helper functions for profile validation
+export const validateProfileField = (field: string, value: any): boolean => {
+  switch (field) {
+    case 'first_name':
+    case 'last_name':
+      return typeof value === 'string' && value.trim().length >= 2;
+    
+    case 'email':
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      return emailRegex.test(value);
+    
+    case 'phone':
+      const phoneRegex = /^[\+]?[1-9][\d]{0,15}$/;
+      return phoneRegex.test(value.replace(/[\s\-\(\)]/g, ''));
+    
+    case 'date_of_birth':
+    case 'hire_date':
+      return value && !isNaN(Date.parse(value));
+    
+    case 'emergency_contact':
+      if (typeof value !== 'object') return false;
+      return value.name && value.relationship && value.phone;
+    
+    case 'skills':
+    case 'certifications':
+      return Array.isArray(value) && value.length > 0;
+    
+    case 'education':
+    case 'work_experience':
+      return Array.isArray(value) && value.every(item => 
+        item.degree || item.institution || item.year || 
+        item.company || item.position || item.start_date
+      );
+    
+    default:
+      return value !== null && value !== undefined && value !== '';
+  }
+};
+
+export const getProfileCompletionStatus = (percentage: number): {
+  status: 'incomplete' | 'partial' | 'complete';
+  message: string;
+  color: string;
+} => {
+  if (percentage >= 80) {
+    return {
+      status: 'complete',
+      message: 'Profile is complete',
+      color: 'text-green-600'
+    };
+  } else if (percentage >= 50) {
+    return {
+      status: 'partial',
+      message: 'Profile is partially complete',
+      color: 'text-yellow-600'
+    };
+  } else {
+    return {
+      status: 'incomplete',
+      message: 'Profile needs completion',
+      color: 'text-red-600'
+    };
+  }
+};

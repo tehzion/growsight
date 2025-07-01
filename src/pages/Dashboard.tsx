@@ -25,8 +25,11 @@ import { useOrganizationStore } from '../stores/organizationStore';
 import { useUserStore } from '../stores/userStore';
 import { useDashboardStore } from '../stores/dashboardStore';
 import { useResultStore } from '../stores/resultStore';
+import { useProfileStore } from '../stores/profileStore';
 import Button from '../components/ui/Button';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card';
+import WelcomeMessage from '../components/auth/WelcomeMessage';
+import ProfileCompletionRequirement from '../components/auth/ProfileCompletionRequirement';
 
 const Dashboard = () => {
   const { user } = useAuthStore();
@@ -34,8 +37,10 @@ const Dashboard = () => {
   const { users, fetchUsers } = useUserStore();
   const { analytics, organizationAnalytics, fetchAnalytics, fetchAllOrganizationAnalytics, isLoading, clearAnalytics, error, clearError } = useDashboardStore();
   const { results, fetchResults } = useResultStore();
+  const { isFirstLogin, profile } = useProfileStore();
   const navigate = useNavigate();
   const [refreshing, setRefreshing] = useState(false);
+  const [showWelcome, setShowWelcome] = useState(false);
   
   const isSuperAdmin = user?.role === 'super_admin';
   const isOrgAdmin = user?.role === 'org_admin';
@@ -129,6 +134,59 @@ const Dashboard = () => {
 
   const recentActivity = getRecentActivity();
   
+  // Check if user needs to complete profile
+  const calculateProfileCompleteness = () => {
+    if (!profile) return 0;
+    
+    const requiredFields = [
+      profile.phone,
+      profile.jobTitle,
+      profile.departmentId
+    ];
+    
+    const optionalFields = [
+      profile.location,
+      profile.bio,
+      profile.skills?.length > 0,
+      profile.interests?.length > 0,
+      profile.certifications?.length > 0,
+      profile.yearsOfExperience,
+      profile.education
+    ];
+    
+    const requiredComplete = requiredFields.filter(Boolean).length / requiredFields.length;
+    const optionalComplete = optionalFields.filter(Boolean).length / optionalFields.length;
+    
+    return Math.round((requiredComplete * 0.7 + optionalComplete * 0.3) * 100);
+  };
+
+  const profileCompleteness = calculateProfileCompleteness();
+  const isProfileComplete = profileCompleteness >= 80;
+
+  // Show welcome message for first login
+  if (isFirstLogin && !showWelcome) {
+    return (
+      <div className="space-y-6">
+        <WelcomeMessage 
+          onCompleteProfile={() => navigate('/profile')}
+          onSetupBranding={() => navigate('/admin/branding')}
+        />
+      </div>
+    );
+  }
+
+  // Show profile completion requirement if profile is incomplete
+  if (!isProfileComplete && !isFirstLogin) {
+    return (
+      <div className="space-y-6">
+        <ProfileCompletionRequirement 
+          onCompleteProfile={() => navigate('/profile')}
+          onSkip={() => setShowWelcome(true)}
+        />
+      </div>
+    );
+  }
+
   if (isLoading && !analytics) {
     return (
       <div className="flex justify-center items-center h-64">

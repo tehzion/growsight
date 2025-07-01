@@ -54,6 +54,7 @@ const Sidebar = ({ isOpen, toggleSidebar, user }: SidebarProps) => {
     { path: '/system-settings', label: 'System Settings', icon: <Settings className="h-5 w-5" />, roles: ['super_admin'] },
     { path: '/access-requests', label: 'Access Requests', icon: <UserPlus className="h-5 w-5" />, roles: ['super_admin'] },
     { path: '/branding', label: 'Branding', icon: <Palette className="h-5 w-5" />, roles: ['super_admin'] },
+    { path: '/admin/branding', label: 'Organization Branding', icon: <Palette className="h-5 w-5" />, roles: ['org_admin'] },
     
     // User-level navigation
     { path: '/my-assessments', label: 'My Assessments', icon: <ClipboardList className="h-5 w-5" />, roles: ['employee', 'reviewer'] },

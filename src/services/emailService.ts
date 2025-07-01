@@ -1,5 +1,6 @@
 import { config } from '../config/environment';
 import SecureLogger from '../lib/secureLogger';
+import { supabase } from '@/lib/supabase';
 
 export interface EmailNotification {
   to: string;
@@ -8,10 +9,30 @@ export interface EmailNotification {
   data: Record<string, any>;
 }
 
+export interface EmailBrandingSettings {
+  id?: string;
+  organization_id: string;
+  sender_name: string;
+  sender_email: string;
+  email_header?: string;
+  email_footer?: string;
+  primary_color: string;
+  secondary_color: string;
+  logo_url?: string;
+}
+
 export interface EmailTemplate {
   subject: string;
+  body: string;
+  recipient_email: string;
+  recipient_name?: string;
+  template_data?: Record<string, any>;
+}
+
+export interface EmailPreview {
   html: string;
   text: string;
+  subject: string;
 }
 
 export interface SMTPConfig {
@@ -24,6 +45,7 @@ export interface SMTPConfig {
 
 export class EmailService {
   private static instance: EmailService;
+  private brandingSettings: Map<string, EmailBrandingSettings> = new Map();
   
   static getInstance(): EmailService {
     if (!EmailService.instance) {
@@ -32,409 +54,483 @@ export class EmailService {
     return EmailService.instance;
   }
 
+  /**
+   * Load branding settings for an organization
+   */
+  async loadBrandingSettings(organizationId: string): Promise<EmailBrandingSettings | null> {
+    try {
+      // Check cache first
+      if (this.brandingSettings.has(organizationId)) {
+        return this.brandingSettings.get(organizationId)!;
+      }
+
+      const { data, error } = await supabase
+        .from('email_branding_settings')
+        .select('*')
+        .eq('organization_id', organizationId)
+        .single();
+
+      if (error) {
+        if (error.code === 'PGRST116') {
+          // No branding settings found, return default
+          const defaultSettings: EmailBrandingSettings = {
+            organization_id: organizationId,
+            sender_name: 'Your Organization',
+            sender_email: 'noreply@yourorganization.com',
+            email_header: 'Welcome to Your Organization',
+            email_footer: '© 2024 Your Organization. All rights reserved.',
+            primary_color: '#2563EB',
+            secondary_color: '#7E22CE'
+          };
+          this.brandingSettings.set(organizationId, defaultSettings);
+          return defaultSettings;
+        }
+        throw error;
+      }
+
+      this.brandingSettings.set(organizationId, data);
+      return data;
+    } catch (error) {
+      console.error('Error loading email branding settings:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Generate branded email HTML
+   */
+  generateBrandedEmail(
+    branding: EmailBrandingSettings,
+    content: string,
+    templateData?: Record<string, any>
+  ): string {
+    const header = templateData?.header || branding.email_header || 'Welcome';
+    const footer = templateData?.footer || branding.email_footer || '© 2024 Your Organization';
+
+    return `
+      <!DOCTYPE html>
+      <html lang="en">
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>${header}</title>
+        <style>
+          body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            margin: 0;
+            padding: 0;
+            background-color: #f4f4f4;
+          }
+          .email-container {
+            max-width: 600px;
+            margin: 0 auto;
+            background-color: #ffffff;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+          }
+          .email-header {
+            background: linear-gradient(135deg, ${branding.primary_color}, ${branding.secondary_color});
+            color: white;
+            padding: 30px 20px;
+            text-align: center;
+          }
+          .email-header h1 {
+            margin: 0;
+            font-size: 24px;
+            font-weight: 600;
+          }
+          .logo {
+            max-width: 150px;
+            height: auto;
+            margin-bottom: 15px;
+          }
+          .email-content {
+            padding: 30px 20px;
+            background-color: #ffffff;
+          }
+          .email-footer {
+            background-color: ${branding.secondary_color};
+            color: white;
+            padding: 20px;
+            text-align: center;
+            font-size: 14px;
+          }
+          .button {
+            display: inline-block;
+            padding: 12px 24px;
+            background-color: ${branding.primary_color};
+            color: white;
+            text-decoration: none;
+            border-radius: 6px;
+            font-weight: 600;
+            margin: 10px 0;
+          }
+          .button:hover {
+            background-color: ${this.darkenColor(branding.primary_color, 10)};
+          }
+          .highlight {
+            background-color: ${this.lightenColor(branding.primary_color, 90)};
+            padding: 15px;
+            border-left: 4px solid ${branding.primary_color};
+            margin: 15px 0;
+          }
+          @media only screen and (max-width: 600px) {
+            .email-container {
+              margin: 10px;
+              border-radius: 4px;
+            }
+            .email-header, .email-content, .email-footer {
+              padding: 20px 15px;
+            }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="email-container">
+          <div class="email-header">
+            ${branding.logo_url ? `<img src="${branding.logo_url}" alt="Logo" class="logo">` : ''}
+            <h1>${header}</h1>
+          </div>
+          
+          <div class="email-content">
+            ${content}
+          </div>
+          
+          <div class="email-footer">
+            <p>${footer}</p>
+            <p>Sent by ${branding.sender_name}</p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+  }
+
+  /**
+   * Generate plain text version of email
+   */
+  generatePlainTextEmail(content: string): string {
+    // Remove HTML tags and convert to plain text
+    return content
+      .replace(/<[^>]*>/g, '')
+      .replace(/&nbsp;/g, ' ')
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"')
+      .trim();
+  }
+
+  /**
+   * Create email preview
+   */
+  async createEmailPreview(
+    organizationId: string,
+    template: EmailTemplate
+  ): Promise<EmailPreview | null> {
+    try {
+      const branding = await this.loadBrandingSettings(organizationId);
+      if (!branding) {
+        throw new Error('Unable to load branding settings');
+      }
+
+      const htmlContent = this.generateBrandedEmail(branding, template.body, template.template_data);
+      const textContent = this.generatePlainTextEmail(template.body);
+
+      return {
+        html: htmlContent,
+        text: textContent,
+        subject: template.subject
+      };
+    } catch (error) {
+      console.error('Error creating email preview:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Send email with branding
+   */
+  async sendBrandedEmail(
+    organizationId: string,
+    template: EmailTemplate
+  ): Promise<boolean> {
+    try {
+      const branding = await this.loadBrandingSettings(organizationId);
+      if (!branding) {
+        throw new Error('Unable to load branding settings');
+      }
+
+      const htmlContent = this.generateBrandedEmail(branding, template.body, template.template_data);
+      const textContent = this.generatePlainTextEmail(template.body);
+
+      // Here you would integrate with your email service provider
+      // For now, we'll simulate sending
+      const emailData = {
+        from: {
+          name: branding.sender_name,
+          email: branding.sender_email
+        },
+        to: {
+          name: template.recipient_name || template.recipient_email,
+          email: template.recipient_email
+        },
+        subject: template.subject,
+        html: htmlContent,
+        text: textContent
+      };
+
+      // Log the email data for debugging
+      console.log('Sending branded email:', emailData);
+
+      // TODO: Integrate with actual email service (SendGrid, AWS SES, etc.)
+      // await emailProvider.send(emailData);
+
+      return true;
+    } catch (error) {
+      console.error('Error sending branded email:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Get common email templates
+   */
+  getCommonTemplates(): Record<string, EmailTemplate> {
+    return {
+      welcome: {
+        subject: 'Welcome to Our Platform',
+        body: `
+          <h2>Welcome, {{recipient_name}}!</h2>
+          <p>We're excited to have you join our platform. Here's what you can do to get started:</p>
+          <div class="highlight">
+            <ul>
+              <li>Complete your profile</li>
+              <li>Explore the dashboard</li>
+              <li>Take your first assessment</li>
+              <li>Connect with your team</li>
+            </ul>
+          </div>
+          <p>If you have any questions, feel free to reach out to our support team.</p>
+          <a href="{{login_url}}" class="button">Get Started</a>
+        `,
+        recipient_email: '',
+        template_data: {
+          header: 'Welcome to Our Platform',
+          footer: 'We\'re here to help you succeed!'
+        }
+      },
+      assessment_invitation: {
+        subject: 'Assessment Invitation',
+        body: `
+          <h2>Assessment Invitation</h2>
+          <p>Hello {{recipient_name}},</p>
+          <p>You have been invited to complete an assessment. This will help us understand your strengths and development areas.</p>
+          <div class="highlight">
+            <p><strong>Assessment:</strong> {{assessment_name}}</p>
+            <p><strong>Duration:</strong> {{duration}} minutes</p>
+            <p><strong>Due Date:</strong> {{due_date}}</p>
+          </div>
+          <p>Please click the button below to start your assessment:</p>
+          <a href="{{assessment_url}}" class="button">Start Assessment</a>
+        `,
+        recipient_email: '',
+        template_data: {
+          header: 'Assessment Invitation',
+          footer: 'Complete your assessment to unlock insights'
+        }
+      },
+      assessment_completion: {
+        subject: 'Assessment Completed',
+        body: `
+          <h2>Assessment Completed</h2>
+          <p>Congratulations, {{recipient_name}}!</p>
+          <p>You have successfully completed your assessment. Your results are now available for review.</p>
+          <div class="highlight">
+            <p><strong>Assessment:</strong> {{assessment_name}}</p>
+            <p><strong>Completion Date:</strong> {{completion_date}}</p>
+            <p><strong>Score:</strong> {{score}}</p>
+          </div>
+          <p>Click the button below to view your detailed results:</p>
+          <a href="{{results_url}}" class="button">View Results</a>
+        `,
+        recipient_email: '',
+        template_data: {
+          header: 'Assessment Results Ready',
+          footer: 'Your insights are waiting for you'
+        }
+      },
+      password_reset: {
+        subject: 'Password Reset Request',
+        body: `
+          <h2>Password Reset</h2>
+          <p>Hello {{recipient_name}},</p>
+          <p>We received a request to reset your password. Click the button below to create a new password:</p>
+          <a href="{{reset_url}}" class="button">Reset Password</a>
+          <p>If you didn't request this password reset, please ignore this email.</p>
+          <p>This link will expire in 24 hours for security reasons.</p>
+        `,
+        recipient_email: '',
+        template_data: {
+          header: 'Password Reset',
+          footer: 'Keep your account secure'
+        }
+      }
+    };
+  }
+
+  /**
+   * Utility function to darken a color
+   */
+  private darkenColor(color: string, percent: number): string {
+    const num = parseInt(color.replace('#', ''), 16);
+    const amt = Math.round(2.55 * percent);
+    const R = (num >> 16) - amt;
+    const G = (num >> 8 & 0x00FF) - amt;
+    const B = (num & 0x0000FF) - amt;
+    return '#' + (0x1000000 + (R < 255 ? R < 1 ? 0 : R : 255) * 0x10000 +
+      (G < 255 ? G < 1 ? 0 : G : 255) * 0x100 +
+      (B < 255 ? B < 1 ? 0 : B : 255)).toString(16).slice(1);
+  }
+
+  /**
+   * Utility function to lighten a color
+   */
+  private lightenColor(color: string, percent: number): string {
+    const num = parseInt(color.replace('#', ''), 16);
+    const amt = Math.round(2.55 * percent);
+    const R = (num >> 16) + amt;
+    const G = (num >> 8 & 0x00FF) + amt;
+    const B = (num & 0x0000FF) + amt;
+    return '#' + (0x1000000 + (R > 255 ? 255 : R < 0 ? 0 : R) * 0x10000 +
+      (G > 255 ? 255 : G < 0 ? 0 : G) * 0x100 +
+      (B > 255 ? 255 : B < 0 ? 0 : B)).toString(16).slice(1);
+  }
+
+  /**
+   * Clear branding cache
+   */
+  clearCache(organizationId?: string): void {
+    if (organizationId) {
+      this.brandingSettings.delete(organizationId);
+    } else {
+      this.brandingSettings.clear();
+    }
+  }
+
   // Email Templates with enhanced production-ready designs
   private getTemplate(type: string, data: Record<string, any>): EmailTemplate {
     const templates = {
       assignment_created: {
         subject: `New Growsight Assessment Assignment: ${data.assessmentTitle}`,
-        html: `
-          <!DOCTYPE html>
-          <html>
-          <head>
-            <meta charset="utf-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>New Assessment Assignment</title>
-            <style>
-              body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; padding: 0; background-color: #f8fafc; }
-              .container { max-width: 600px; margin: 0 auto; background-color: #ffffff; }
-              .header { background: linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%); color: white; padding: 30px 20px; text-align: center; }
-              .content { padding: 30px; }
-              .button { display: inline-block; background: #2563EB; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: 500; margin: 20px 0; }
-              .info-box { background: #F3F4F6; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #2563EB; }
-              .footer { background: #F9FAFB; padding: 20px; text-align: center; color: #6B7280; font-size: 12px; }
-              .priority { background: #FEF3C7; border-left-color: #F59E0B; }
-              .success { background: #F0FDF4; border-left-color: #10B981; }
-            </style>
-          </head>
-          <body>
-            <div class="container">
-              <div class="header">
-                <h1 style="margin: 0; font-size: 24px;">${config.app.name}</h1>
-                <p style="margin: 10px 0 0 0; opacity: 0.9;">New Assessment Assignment</p>
-              </div>
-              <div class="content">
-                <h2 style="color: #1F2937; margin-bottom: 20px;">Hello ${data.recipientName},</h2>
-                <p style="color: #4B5563; line-height: 1.6;">You have been assigned a new Growsight assessment. Your participation is valuable for providing meaningful feedback.</p>
-                
-                <div class="info-box">
-                  <h3 style="margin: 0 0 15px 0; color: #1F2937; font-size: 18px;">${data.assessmentTitle}</h3>
-                  <div style="display: grid; gap: 8px;">
-                    <div><strong>Organization:</strong> ${data.organizationName}</div>
-                    <div><strong>Your Role:</strong> ${data.role === 'employee' ? 'Self-Assessment' : 'Reviewer Assessment'}</div>
-                    <div><strong>Deadline:</strong> ${data.deadline}</div>
-                    ${data.employeeName ? `<div><strong>Employee:</strong> ${data.employeeName}</div>` : ''}
-                  </div>
-                </div>
-                
-                <p style="color: #4B5563; line-height: 1.6;">Please complete your assessment by the deadline. Your feedback is confidential and will be aggregated with other responses to provide valuable insights.</p>
-                
-                <div style="text-align: center; margin: 30px 0;">
-                  <a href="${data.assessmentUrl}" class="button">Start Assessment</a>
-                </div>
-                
-                <div class="info-box success">
-                  <h4 style="margin: 0 0 10px 0; color: #065F46;">What to Expect:</h4>
-                  <ul style="margin: 0; padding-left: 20px; color: #047857;">
-                    <li>Assessment takes approximately 15-20 minutes</li>
-                    <li>Your responses are completely confidential</li>
-                    <li>You can save progress and return later</li>
-                    <li>Results will be aggregated for meaningful insights</li>
-                  </ul>
-                </div>
-                
-                <p style="color: #6B7280; font-size: 14px; margin-top: 30px;">
-                  If you have any questions about this assessment, please contact your administrator or reply to this email.
-                </p>
-              </div>
-              <div class="footer">
-                <p>© 2025 ${config.app.name}. All rights reserved.</p>
-                <p>This email was sent to ${data.to} regarding your assessment assignment.</p>
-              </div>
-            </div>
-          </body>
-          </html>
+        body: `
+          <h2>New Assessment Assignment</h2>
+          <p>Hello ${data.recipientName},</p>
+          <p>You have been assigned a new Growsight assessment. Your participation is valuable for providing meaningful feedback.</p>
+          <div class="highlight">
+            <p><strong>Assessment:</strong> ${data.assessmentTitle}</p>
+            <p><strong>Organization:</strong> ${data.organizationName}</p>
+            <p><strong>Your Role:</strong> ${data.role === 'employee' ? 'Self-Assessment' : 'Reviewer Assessment'}</p>
+            <p><strong>Deadline:</strong> ${data.deadline}</p>
+            ${data.employeeName ? `<p><strong>Employee:</strong> ${data.employeeName}</p>` : ''}
+          </div>
+          <p>Please complete your assessment by the deadline. Your feedback is confidential and will be aggregated with other responses to provide valuable insights.</p>
+          <a href="${data.assessmentUrl}" class="button">Start Assessment</a>
         `,
-        text: `
-Hello ${data.recipientName},
-
-You have been assigned a new Growsight assessment:
-
-Assessment: ${data.assessmentTitle}
-Organization: ${data.organizationName}
-Role: ${data.role === 'employee' ? 'Self-Assessment' : 'Reviewer Assessment'}
-Deadline: ${data.deadline}
-${data.employeeName ? `Employee: ${data.employeeName}` : ''}
-
-Please complete your assessment by the deadline: ${data.assessmentUrl}
-
-What to expect:
-- Assessment takes approximately 15-20 minutes
-- Your responses are completely confidential
-- You can save progress and return later
-- Results will be aggregated for meaningful insights
-
-If you have any questions, please contact your administrator.
-
-© 2025 ${config.app.name}
-        `
+        recipient_email: data.to,
+        recipient_name: data.recipientName,
+        template_data: {
+          header: 'New Assessment Assignment',
+          footer: 'We\'re here to help you succeed!'
+        }
       },
       
       deadline_reminder: {
-        subject: `⏰ Reminder: ${data.assessmentTitle} due in ${data.daysRemaining} days`,
-        html: `
-          <!DOCTYPE html>
-          <html>
-          <head>
-            <meta charset="utf-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>Assessment Deadline Reminder</title>
-            <style>
-              body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; padding: 0; background-color: #f8fafc; }
-              .container { max-width: 600px; margin: 0 auto; background-color: #ffffff; }
-              .header { background: linear-gradient(135deg, #F59E0B 0%, #D97706 100%); color: white; padding: 30px 20px; text-align: center; }
-              .content { padding: 30px; }
-              .button { display: inline-block; background: #F59E0B; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: 500; margin: 20px 0; }
-              .warning-box { background: #FEF3C7; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #F59E0B; }
-              .footer { background: #F9FAFB; padding: 20px; text-align: center; color: #6B7280; font-size: 12px; }
-              .urgent { background: #FEE2E2; border-left-color: #EF4444; }
-            </style>
-          </head>
-          <body>
-            <div class="container">
-              <div class="header">
-                <h1 style="margin: 0; font-size: 24px;">⏰ Assessment Reminder</h1>
-                <p style="margin: 10px 0 0 0; opacity: 0.9;">Deadline Approaching</p>
-              </div>
-              <div class="content">
-                <h2 style="color: #1F2937; margin-bottom: 20px;">Hello ${data.recipientName},</h2>
-                <p style="color: #4B5563; line-height: 1.6;">This is a friendly reminder that your assessment deadline is approaching soon.</p>
-                
-                <div class="${data.daysRemaining <= 1 ? 'warning-box urgent' : 'warning-box'}">
-                  <h3 style="margin: 0 0 15px 0; color: #1F2937; font-size: 18px;">${data.assessmentTitle}</h3>
-                  <div style="display: grid; gap: 8px;">
-                    <div><strong>Deadline:</strong> ${data.deadline}</div>
-                    <div><strong>Time Remaining:</strong> ${data.daysRemaining} day${data.daysRemaining !== 1 ? 's' : ''}</div>
-                    ${data.daysRemaining <= 1 ? '<div style="color: #DC2626;"><strong>⚠️ URGENT: Please complete today!</strong></div>' : ''}
-                  </div>
-                </div>
-                
-                <p style="color: #4B5563; line-height: 1.6;">Please complete your assessment as soon as possible to avoid missing the deadline. Your feedback is important and valued.</p>
-                
-                <div style="text-align: center; margin: 30px 0;">
-                  <a href="${data.assessmentUrl}" class="button">Complete Assessment Now</a>
-                </div>
-                
-                <p style="color: #6B7280; font-size: 14px;">
-                  Need help? Contact your administrator or reply to this email for assistance.
-                </p>
-              </div>
-              <div class="footer">
-                <p>© 2025 ${config.app.name}. All rights reserved.</p>
-              </div>
-            </div>
-          </body>
-          </html>
+        subject: `⏰ Reminder: ${data.assessmentTitle} due in ${data.daysRemaining} day${data.daysRemaining !== 1 ? 's' : ''}`,
+        body: `
+          <h2>Assessment Deadline Reminder</h2>
+          <p>Hello ${data.recipientName},</p>
+          <p>This is a friendly reminder that your assessment deadline is approaching soon.</p>
+          <div class="highlight">
+            <p><strong>Assessment:</strong> ${data.assessmentTitle}</p>
+            <p><strong>Deadline:</strong> ${data.deadline}</p>
+            <p><strong>Time Remaining:</strong> ${data.daysRemaining} day${data.daysRemaining !== 1 ? 's' : ''}</p>
+            ${data.daysRemaining <= 1 ? '<p><strong>⚠️ URGENT: Please complete today!</strong></p>' : ''}
+          </div>
+          <p>Please complete your assessment as soon as possible to avoid missing the deadline. Your feedback is important and valued.</p>
+          <a href="${data.assessmentUrl}" class="button">Complete Assessment Now</a>
         `,
-        text: `
-Hello ${data.recipientName},
-
-⏰ REMINDER: Your assessment deadline is approaching!
-
-Assessment: ${data.assessmentTitle}
-Deadline: ${data.deadline}
-Time Remaining: ${data.daysRemaining} day${data.daysRemaining !== 1 ? 's' : ''}
-
-${data.daysRemaining <= 1 ? '⚠️ URGENT: Please complete today!' : ''}
-
-Please complete your assessment as soon as possible: ${data.assessmentUrl}
-
-Need help? Contact your administrator for assistance.
-
-© 2025 ${config.app.name}
-        `
+        recipient_email: data.to,
+        recipient_name: data.recipientName,
+        template_data: {
+          header: '⏰ Assessment Reminder',
+          footer: 'We\'re here to help you succeed!'
+        }
       },
 
       assessment_completed: {
         subject: `✅ Assessment Completed: ${data.assessmentTitle}`,
-        html: `
-          <!DOCTYPE html>
-          <html>
-          <head>
-            <meta charset="utf-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>Assessment Completed</title>
-            <style>
-              body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; padding: 0; background-color: #f8fafc; }
-              .container { max-width: 600px; margin: 0 auto; background-color: #ffffff; }
-              .header { background: linear-gradient(135deg, #10B981 0%, #059669 100%); color: white; padding: 30px 20px; text-align: center; }
-              .content { padding: 30px; }
-              .button { display: inline-block; background: #10B981; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: 500; margin: 20px 0; }
-              .info-box { background: #F0FDF4; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #10B981; }
-              .footer { background: #F9FAFB; padding: 20px; text-align: center; color: #6B7280; font-size: 12px; }
-            </style>
-          </head>
-          <body>
-            <div class="container">
-              <div class="header">
-                <h1 style="margin: 0; font-size: 24px;">✅ Assessment Completed</h1>
-                <p style="margin: 10px 0 0 0; opacity: 0.9;">Thank you for your feedback</p>
-              </div>
-              <div class="content">
-                <h2 style="color: #1F2937; margin-bottom: 20px;">Hello ${data.recipientName},</h2>
-                <p style="color: #4B5563; line-height: 1.6;">Thank you for completing the "${data.assessmentTitle}" assessment. Your feedback is valuable and will help provide meaningful insights.</p>
-                
-                <div class="info-box">
-                  <h3 style="margin: 0 0 15px 0; color: #065F46; font-size: 18px;">Assessment Details</h3>
-                  <div style="display: grid; gap: 8px; color: #047857;">
-                    <div><strong>Assessment:</strong> ${data.assessmentTitle}</div>
-                    <div><strong>Completed:</strong> ${new Date().toLocaleString()}</div>
-                    <div><strong>Organization:</strong> ${data.organizationName}</div>
-                  </div>
-                </div>
-                
-                <p style="color: #4B5563; line-height: 1.6;">Once all reviewers have completed their assessments, the results will be processed and made available to view.</p>
-                
-                <div style="text-align: center; margin: 30px 0;">
-                  <a href="${data.resultsUrl}" class="button">View Your Results</a>
-                </div>
-                
-                <p style="color: #6B7280; font-size: 14px; margin-top: 30px;">
-                  If you have any questions about this assessment, please contact your administrator.
-                </p>
-              </div>
-              <div class="footer">
-                <p>© 2025 ${config.app.name}. All rights reserved.</p>
-                <p>This email was sent to ${data.recipientName} regarding your completed assessment.</p>
-              </div>
-            </div>
-          </body>
-          </html>
+        body: `
+          <h2>Assessment Completed</h2>
+          <p>Hello ${data.recipientName},</p>
+          <p>Thank you for completing the "${data.assessmentTitle}" assessment. Your feedback is valuable and will help provide meaningful insights.</p>
+          <div class="highlight">
+            <p><strong>Assessment:</strong> ${data.assessmentTitle}</p>
+            <p><strong>Completed:</strong> ${new Date().toLocaleString()}</p>
+            <p><strong>Organization:</strong> ${data.organizationName}</p>
+          </div>
+          <p>Once all reviewers have completed their assessments, the results will be processed and made available to view.</p>
+          <a href="${data.resultsUrl}" class="button">View Your Results</a>
         `,
-        text: `
-Hello ${data.recipientName},
-
-Thank you for completing the "${data.assessmentTitle}" assessment. Your feedback is valuable and will help provide meaningful insights.
-
-Assessment Details:
-- Assessment: ${data.assessmentTitle}
-- Completed: ${new Date().toLocaleString()}
-- Organization: ${data.organizationName}
-
-Once all reviewers have completed their assessments, the results will be processed and made available to view.
-
-View your results: ${data.resultsUrl}
-
-If you have any questions, please contact your administrator.
-
-© 2025 ${config.app.name}
-        `
+        recipient_email: data.to,
+        recipient_name: data.recipientName,
+        template_data: {
+          header: '✅ Assessment Completed',
+          footer: 'We\'re here to help you succeed!'
+        }
       },
 
       password_reset: {
         subject: '🔐 Reset Your Password - Growsight',
-        html: `
-          <!DOCTYPE html>
-          <html>
-          <head>
-            <meta charset="utf-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>Password Reset</title>
-            <style>
-              body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; padding: 0; background-color: #f8fafc; }
-              .container { max-width: 600px; margin: 0 auto; background-color: #ffffff; }
-              .header { background: linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%); color: white; padding: 30px 20px; text-align: center; }
-              .content { padding: 30px; }
-              .button { display: inline-block; background: #2563EB; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: 500; margin: 20px 0; }
-              .security-box { background: #FEF3C7; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #F59E0B; }
-              .footer { background: #F9FAFB; padding: 20px; text-align: center; color: #6B7280; font-size: 12px; }
-            </style>
-          </head>
-          <body>
-            <div class="container">
-              <div class="header">
-                <h1 style="margin: 0; font-size: 24px;">🔐 Password Reset</h1>
-                <p style="margin: 10px 0 0 0; opacity: 0.9;">Secure Account Access</p>
-              </div>
-              <div class="content">
-                <h2 style="color: #1F2937; margin-bottom: 20px;">Hello ${data.recipientName},</h2>
-                <p style="color: #4B5563; line-height: 1.6;">You requested to reset your password for your ${config.app.name} account. Click the button below to set a new password:</p>
-                
-                <div style="text-align: center; margin: 30px 0;">
-                  <a href="${data.resetUrl}" class="button">Reset Password</a>
-                </div>
-                
-                <div class="security-box">
-                  <h4 style="margin: 0 0 10px 0; color: #92400E;">🛡️ Security Information:</h4>
-                  <ul style="margin: 0; padding-left: 20px; color: #92400E;">
-                    <li>This link will expire in 24 hours for security</li>
-                    <li>If you didn't request this reset, please ignore this email</li>
-                    <li>Your account remains secure until you use this link</li>
-                    <li>Contact support if you need assistance</li>
-                  </ul>
-                </div>
-                
-                <p style="color: #6B7280; font-size: 14px;">
-                  If the button doesn't work, copy and paste this link into your browser:<br>
-                  <a href="${data.resetUrl}" style="color: #2563EB; word-break: break-all;">${data.resetUrl}</a>
-                </p>
-              </div>
-              <div class="footer">
-                <p>© 2025 ${config.app.name}. All rights reserved.</p>
-                <p>This email was sent to ${data.recipientName} for account security.</p>
-              </div>
-            </div>
-          </body>
-          </html>
+        body: `
+          <h2>🔐 Password Reset</h2>
+          <p>Hello ${data.recipientName},</p>
+          <p>You requested to reset your password for your ${config.app.name} account. Click the button below to set a new password:</p>
+          <a href="${data.resetUrl}" class="button">Reset Password</a>
+          <p>If the button doesn't work, copy and paste this link into your browser:</p>
+          <a href="${data.resetUrl}" style="color: #2563EB; word-break: break-all;">${data.resetUrl}</a>
         `,
-        text: `
-Hello ${data.recipientName},
-
-You requested to reset your password for your ${config.app.name} account.
-
-Use this link to set a new password:
-${data.resetUrl}
-
-Security Information:
-- This link expires in 24 hours
-- If you didn't request this reset, please ignore this email
-- Your account remains secure until you use this link
-
-© 2025 ${config.app.name}
-        `
+        recipient_email: data.to,
+        recipient_name: data.recipientName,
+        template_data: {
+          header: '🔐 Password Reset',
+          footer: 'We\'re here to help you succeed!'
+        }
       },
 
       welcome: {
         subject: `🎉 Welcome to ${config.app.name}`,
-        html: `
-          <!DOCTYPE html>
-          <html>
-          <head>
-            <meta charset="utf-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>Welcome</title>
-            <style>
-              body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; padding: 0; background-color: #f8fafc; }
-              .container { max-width: 600px; margin: 0 auto; background-color: #ffffff; }
-              .header { background: linear-gradient(135deg, #10B981 0%, #059669 100%); color: white; padding: 30px 20px; text-align: center; }
-              .content { padding: 30px; }
-              .button { display: inline-block; background: #10B981; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: 500; margin: 20px 0; }
-              .welcome-box { background: #F0FDF4; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #10B981; }
-              .footer { background: #F9FAFB; padding: 20px; text-align: center; color: #6B7280; font-size: 12px; }
-            </style>
-          </head>
-          <body>
-            <div class="container">
-              <div class="header">
-                <h1 style="margin: 0; font-size: 24px;">🎉 Welcome!</h1>
-                <p style="margin: 10px 0 0 0; opacity: 0.9;">Your account is ready</p>
-              </div>
-              <div class="content">
-                <h2 style="color: #1F2937; margin-bottom: 20px;">Hello ${data.recipientName},</h2>
-                <p style="color: #4B5563; line-height: 1.6;">Welcome to ${config.app.name}! Your account has been created successfully and you're ready to start using our feedback platform.</p>
-                
-                <div class="welcome-box">
-                  <h3 style="margin: 0 0 15px 0; color: #065F46; font-size: 18px;">Account Details</h3>
-                  <div style="display: grid; gap: 8px; color: #047857;">
-                    <div><strong>Email:</strong> ${data.email}</div>
-                    <div><strong>Role:</strong> ${data.role}</div>
-                    <div><strong>Organization:</strong> ${data.organizationName}</div>
-                  </div>
-                </div>
-                
-                <p style="color: #4B5563; line-height: 1.6;">You can now log in and start using the platform to participate in feedback assessments, view results, and contribute to meaningful professional development.</p>
-                
-                <div style="text-align: center; margin: 30px 0;">
-                  <a href="${data.loginUrl}" class="button">Login to Your Account</a>
-                </div>
-                
-                <div style="background: #F3F4F6; padding: 20px; border-radius: 8px; margin: 20px 0;">
-                  <h4 style="margin: 0 0 10px 0; color: #374151;">Getting Started:</h4>
-                  <ul style="margin: 0; padding-left: 20px; color: #4B5563;">
-                    <li>Complete your profile information</li>
-                    <li>Check for any assigned assessments</li>
-                    <li>Familiarize yourself with the platform features</li>
-                    <li>Contact your administrator if you need help</li>
-                  </ul>
-                </div>
-              </div>
-              <div class="footer">
-                <p>© 2025 ${config.app.name}. All rights reserved.</p>
-                <p>Need help? Contact your administrator or visit our support center.</p>
-              </div>
-            </div>
-          </body>
-          </html>
+        body: `
+          <h2>🎉 Welcome!</h2>
+          <p>Hello ${data.recipientName},</p>
+          <p>Your account is ready. Welcome to ${config.app.name}! You're ready to start using our feedback platform.</p>
+          <div class="highlight">
+            <p><strong>Email:</strong> ${data.email}</p>
+            <p><strong>Role:</strong> ${data.role}</p>
+            <p><strong>Organization:</strong> ${data.organizationName}</p>
+          </div>
+          <p>You can now log in and start using the platform to participate in feedback assessments, view results, and contribute to meaningful professional development.</p>
+          <a href="${data.loginUrl}" class="button">Login to Your Account</a>
         `,
-        text: `
-Welcome to ${config.app.name}!
-
-Your account has been created successfully:
-
-Account Details:
-- Email: ${data.email}
-- Role: ${data.role}
-- Organization: ${data.organizationName}
-
-You can now log in and start using the platform: ${data.loginUrl}
-
-Getting Started:
-1. Complete your profile information
-2. Check for any assigned assessments
-3. Familiarize yourself with the platform features
-4. Contact your administrator if you need help
-
-© 2025 ${config.app.name}
-        `
+        recipient_email: data.to,
+        recipient_name: data.recipientName,
+        template_data: {
+          header: '🎉 Welcome!',
+          footer: 'We\'re here to help you succeed!'
+        }
       }
     };
 
@@ -670,8 +766,8 @@ Getting Started:
         from: `${config.email.fromName} <${config.email.fromEmail}>`,
         to: notification.to,
         subject: template.subject,
-        text: template.text,
-        html: template.html
+        text: template.body,
+        html: template.body
       });
 
       return { success: true, provider: 'smtp' };
@@ -702,8 +798,8 @@ Getting Started:
           name: config.email.fromName
         },
         content: [
-          { type: 'text/plain', value: template.text },
-          { type: 'text/html', value: template.html }
+          { type: 'text/plain', value: template.body },
+          { type: 'text/html', value: template.body }
         ],
         tracking_settings: {
           click_tracking: { enable: true },
@@ -729,8 +825,8 @@ Getting Started:
     formData.append('from', `${config.email.fromName} <${config.email.fromEmail}>`);
     formData.append('to', notification.to);
     formData.append('subject', template.subject);
-    formData.append('text', template.text);
-    formData.append('html', template.html);
+    formData.append('text', template.body);
+    formData.append('html', template.body);
     formData.append('o:tracking', 'yes');
     formData.append('o:tracking-clicks', 'yes');
     formData.append('o:tracking-opens', 'yes');

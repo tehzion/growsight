@@ -10,6 +10,7 @@ import FormInput from '../../components/ui/FormInput';
 import { Role, User as UserType } from '../../types';
 import ImportExportManager from '../../components/admin/ImportExportManager';
 import DepartmentManager from '../../components/admin/DepartmentManager';
+import EnhancedUserManager from '../../components/admin/EnhancedUserManager';
 import { useNotificationStore } from '../../stores/notificationStore';
 
 const Users = () => {
@@ -540,7 +541,22 @@ const Users = () => {
       {/* Users Management Tab */}
       {activeTab === 'users' && (
         <>
-          {/* Add/Edit User Form */}
+          {/* Enhanced User Manager */}
+          {(selectedOrganization || isOrgAdmin) && hasUserManagementPermission && (
+            <EnhancedUserManager 
+              organizationId={isOrgAdmin ? currentUser?.organizationId || '' : selectedOrganization}
+              onUserUpdate={() => {
+                // Refresh users after update
+                if (isOrgAdmin && currentUser?.organizationId) {
+                  fetchUsers(currentUser.organizationId);
+                } else if (isSuperAdmin && selectedOrganization) {
+                  fetchUsers(selectedOrganization);
+                }
+              }}
+            />
+          )}
+
+          {/* Legacy Add/Edit User Form - Keep for backward compatibility */}
           {(showAddForm || editingUser) && (selectedOrganization || isOrgAdmin) && hasUserManagementPermission && (
             <Card>
               <CardHeader>
