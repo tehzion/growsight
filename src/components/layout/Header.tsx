@@ -38,6 +38,8 @@ const Header = ({ toggleSidebar, user, onLogout, currentOrganization }: HeaderPr
 
   const getRoleIcon = (role: string) => {
     switch (role) {
+      case 'root':
+        return <Shield className="h-4 w-4" />;
       case 'super_admin':
         return <Shield className="h-4 w-4" />;
       case 'org_admin':
@@ -51,6 +53,8 @@ const Header = ({ toggleSidebar, user, onLogout, currentOrganization }: HeaderPr
 
   const getRoleColor = (role: string) => {
     switch (role) {
+      case 'root':
+        return 'bg-red-700 text-white';
       case 'super_admin':
         return 'bg-purple-700 text-white';
       case 'org_admin':
@@ -66,6 +70,8 @@ const Header = ({ toggleSidebar, user, onLogout, currentOrganization }: HeaderPr
 
   const getRoleLabel = (role: string) => {
     switch (role) {
+      case 'root':
+        return 'System Administrator';
       case 'super_admin':
         return 'Super Admin';
       case 'org_admin':

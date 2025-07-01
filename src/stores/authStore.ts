@@ -43,6 +43,21 @@ export const useAuthStore = create<AuthState>()(
             
             const demoCredentials = [
               { 
+                email: 'root@system.com', 
+                password: 'password123', 
+                organizationId: 'system',
+                user: {
+                  id: '0',
+                  email: 'root@system.com',
+                  firstName: 'System',
+                  lastName: 'Administrator',
+                  role: 'root' as const,
+                  organizationId: 'system',
+                  createdAt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
+                  updatedAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString()
+                }
+              },
+              { 
                 email: 'admin@acme.com', 
                 password: 'password123', 
                 organizationId: 'demo-org-1',
@@ -130,7 +145,7 @@ export const useAuthStore = create<AuthState>()(
             if (validCredential) {
               set({ user: validCredential.user, isLoading: false });
             } else {
-              throw new Error('Invalid organization ID, email, or password. Try one of these demo accounts:\n\n• admin@acme.com / password123 / demo-org-1 (Super Admin)\n• orgadmin@acme.com / password123 / demo-org-1 (Organization Admin - Acme)\n• orgadmin@techstart.com / password123 / demo-org-2 (Organization Admin - TechStart)\n• orgadmin@global.com / password123 / demo-org-3 (Organization Admin - Global)\n• subscriber@acme.com / password123 / demo-org-1 (Subscriber - Acme)');
+              throw new Error('Invalid organization ID, email, or password. Try one of these demo accounts:\n\n• root@system.com / password123 / system (Root Administrator)\n• admin@acme.com / password123 / demo-org-1 (Super Admin)\n• orgadmin@acme.com / password123 / demo-org-1 (Organization Admin - Acme)\n• orgadmin@techstart.com / password123 / demo-org-2 (Organization Admin - TechStart)\n• orgadmin@global.com / password123 / demo-org-3 (Organization Admin - Global)\n• subscriber@acme.com / password123 / demo-org-1 (Subscriber - Acme)');
             }
           } else {
             // Production Supabase login with enhanced error handling
@@ -628,6 +643,9 @@ export const useAuthStore = create<AuthState>()(
         
         // No user, no permissions
         if (!user) return false;
+        
+        // Root has all permissions
+        if (user.role === 'root') return true;
         
         // Super admin has all permissions
         if (user.role === 'super_admin') return true;

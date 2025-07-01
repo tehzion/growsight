@@ -376,6 +376,8 @@ const UserProfile: React.FC = () => {
 
   const getRoleLabel = (role: string) => {
     switch (role) {
+      case 'root':
+        return 'System Administrator';
       case 'super_admin':
         return 'Super Administrator';
       case 'org_admin':

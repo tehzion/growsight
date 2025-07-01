@@ -151,7 +151,12 @@ export class AccessControl {
       return {};
     }
 
-    // Super admins see all data
+    // Hide root users from non-root users
+    if (user.role === 'root' && requestingUser.role !== 'root') {
+      return {};
+    }
+
+    // Super admins see all data (except root users if they're not root)
     if (requestingUser.role === 'super_admin') {
       return user;
     }

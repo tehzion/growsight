@@ -26,6 +26,7 @@ import AssessmentBuilder from './pages/admin/AssessmentBuilder';
 import AssessmentForm from './pages/user/AssessmentForm';
 import { config, validateEnvironment } from './config/environment';
 import SystemSettings from './pages/admin/SystemSettings';
+import RootDashboard from './pages/root/RootDashboard';
 
 import AccessRequests from './pages/admin/AccessRequests';
 import Branding from './pages/admin/Branding';
@@ -113,6 +114,11 @@ function App() {
             <Route path="/dashboard" element={
               <ErrorBoundary>
                 <Dashboard />
+              </ErrorBoundary>
+            } />
+            <Route path="/root-dashboard" element={
+              <ErrorBoundary>
+                <RootDashboard />
               </ErrorBoundary>
             } />
             <Route path="/organizations" element={

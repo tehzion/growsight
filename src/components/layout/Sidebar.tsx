@@ -32,13 +32,15 @@ interface SidebarProps {
 
 const Sidebar = ({ isOpen, toggleSidebar, user }: SidebarProps) => {
   const { hasPermission } = useAuthStore();
+  const isRoot = user?.role === 'root';
   const isSuperAdmin = user?.role === 'super_admin';
   const isOrgAdmin = user?.role === 'org_admin';
   const isSubscriber = user?.role === 'subscriber';
   const isAdminLevel = isSuperAdmin || isOrgAdmin;
   
   const navItems = [
-    { path: '/dashboard', label: 'Dashboard', icon: <BarChart4 className="h-5 w-5" />, roles: ['super_admin', 'org_admin', 'employee', 'reviewer', 'subscriber'] },
+    { path: '/dashboard', label: 'Dashboard', icon: <BarChart4 className="h-5 w-5" />, roles: ['root', 'super_admin', 'org_admin', 'employee', 'reviewer', 'subscriber'] },
+    { path: '/root-dashboard', label: 'Root Dashboard', icon: <Server className="h-5 w-5" />, roles: ['root'] },
     { path: '/organizations', label: 'Organizations', icon: <Building2 className="h-5 w-5" />, roles: ['super_admin'] },
     { path: '/permissions', label: 'Permissions', icon: <Shield className="h-5 w-5" />, roles: ['super_admin'] },
     { path: '/users', label: 'Users', icon: <Users className="h-5 w-5" />, roles: ['super_admin', 'org_admin', 'subscriber'], permission: 'manage_users' },
@@ -94,6 +96,8 @@ const Sidebar = ({ isOpen, toggleSidebar, user }: SidebarProps) => {
 
   const getRoleIcon = (role: string) => {
     switch (role) {
+      case 'root':
+        return <Server className="h-5 w-5" />;
       case 'super_admin':
         return <Shield className="h-5 w-5" />;
       case 'org_admin':
@@ -109,6 +113,8 @@ const Sidebar = ({ isOpen, toggleSidebar, user }: SidebarProps) => {
 
   const getRoleColor = (role: string) => {
     switch (role) {
+      case 'root':
+        return 'bg-red-600';
       case 'super_admin':
         return 'bg-purple-600';
       case 'org_admin':
@@ -124,6 +130,8 @@ const Sidebar = ({ isOpen, toggleSidebar, user }: SidebarProps) => {
 
   const getRoleLabel = (role: string) => {
     switch (role) {
+      case 'root':
+        return 'System Administrator';
       case 'super_admin':
         return 'Super Admin';
       case 'org_admin':

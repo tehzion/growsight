@@ -1,4 +1,4 @@
-export type Role = 'super_admin' | 'org_admin' | 'employee' | 'reviewer' | 'subscriber';
+export type Role = 'root' | 'super_admin' | 'org_admin' | 'employee' | 'reviewer' | 'subscriber';
 
 export type QuestionType = 'rating' | 'multiple_choice' | 'yes_no' | 'text';
 
@@ -403,4 +403,120 @@ export interface TicketAttachment {
   fileName: string;
   fileUrl: string;
   createdAt: string;
+}
+
+export interface Tag {
+  id: string;
+  name: string;
+  category: 'strength' | 'development' | 'insight' | 'behavior' | 'skill' | 'performance' | 'custom';
+  color?: string;
+  description?: string;
+  organizationId?: string;
+  createdById: string;
+  createdAt: string;
+  updatedAt: string;
+  usageCount?: number;
+  isSystemTag?: boolean;
+}
+
+export interface UserTag {
+  id: string;
+  userId: string;
+  tagId: string;
+  assignedById: string;
+  assignedAt: string;
+  confidence?: number; // 0-100, how confident the system is about this tag
+  source: 'manual' | 'ai_analysis' | 'assessment' | 'performance_review' | 'peer_feedback';
+  metadata?: {
+    assessmentId?: string;
+    competencyId?: string;
+    rating?: number;
+    context?: string;
+    evidence?: string[];
+  };
+  tag?: Tag;
+  assignedBy?: User;
+}
+
+export interface OrganizationTag {
+  id: string;
+  organizationId: string;
+  tagId: string;
+  assignedById: string;
+  assignedAt: string;
+  confidence?: number;
+  source: 'manual' | 'ai_analysis' | 'performance_metrics' | 'industry_analysis';
+  metadata?: {
+    metricValue?: number;
+    benchmark?: number;
+    trend?: 'improving' | 'declining' | 'stable';
+    context?: string;
+    evidence?: string[];
+  };
+  tag?: Tag;
+  assignedBy?: User;
+}
+
+export interface TagInsight {
+  id: string;
+  tagId: string;
+  userId?: string;
+  organizationId?: string;
+  insightType: 'strength_development' | 'performance_trend' | 'comparison' | 'recommendation' | 'risk_alert';
+  title: string;
+  description: string;
+  confidence: number;
+  priority: 'low' | 'medium' | 'high' | 'critical';
+  status: 'active' | 'resolved' | 'dismissed';
+  createdAt: string;
+  updatedAt: string;
+  metadata?: {
+    relatedTags?: string[];
+    impactScore?: number;
+    actionItems?: string[];
+    timeline?: string;
+  };
+}
+
+export interface SystemMetrics {
+  id: string;
+  metricKey: string;
+  metricValue: number;
+  metricUnit?: string;
+  category: 'performance' | 'security' | 'usage' | 'health' | 'business';
+  timestamp: string;
+  metadata?: Record<string, any>;
+}
+
+export interface SystemHealth {
+  id: string;
+  status: 'healthy' | 'warning' | 'critical' | 'maintenance';
+  component: string;
+  message: string;
+  timestamp: string;
+  duration?: number;
+  resolution?: string;
+}
+
+export interface RootDashboardData {
+  systemMetrics: SystemMetrics[];
+  systemHealth: SystemHealth[];
+  globalAnalytics: {
+    totalOrganizations: number;
+    totalUsers: number;
+    totalAssessments: number;
+    activeAssessments: number;
+    systemUptime: number;
+    averageResponseTime: number;
+    storageUsage: number;
+    bandwidthUsage: number;
+  };
+  recentActivity: {
+    userRegistrations: number;
+    assessmentCompletions: number;
+    systemAlerts: number;
+    supportTickets: number;
+  };
+  topInsights: TagInsight[];
+  criticalAlerts: SystemHealth[];
 }

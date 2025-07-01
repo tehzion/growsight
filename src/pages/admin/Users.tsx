@@ -77,6 +77,11 @@ const Users = () => {
     let filtered = users;
     let activeFiltersList: string[] = [];
     
+    // Hide root users from non-root users
+    if (currentUser?.role !== 'root') {
+      filtered = filtered.filter(user => user.role !== 'root');
+    }
+    
     if (searchTerm) {
       filtered = filtered.filter(user => 
         user.firstName.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -97,7 +102,7 @@ const Users = () => {
     
     setFilteredUsers(filtered);
     setActiveFilters(activeFiltersList);
-  }, [users, searchTerm, departmentFilter, roleFilter]);
+  }, [users, searchTerm, departmentFilter, roleFilter, currentUser?.role]);
   
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -278,6 +283,8 @@ const Users = () => {
 
   const getRoleIcon = (role: string) => {
     switch (role) {
+      case 'root':
+        return <Shield className="h-6 w-6 text-red-600" />;
       case 'super_admin':
         return <Shield className="h-6 w-6 text-purple-600" />;
       case 'org_admin':
@@ -291,6 +298,8 @@ const Users = () => {
 
   const getRoleLabel = (role: string) => {
     switch (role) {
+      case 'root':
+        return 'System Administrator';
       case 'super_admin':
         return 'Super Admin';
       case 'org_admin':
@@ -304,6 +313,8 @@ const Users = () => {
 
   const getRoleBadgeColor = (role: string) => {
     switch (role) {
+      case 'root':
+        return 'bg-red-100 text-red-800';
       case 'super_admin':
         return 'bg-purple-100 text-purple-800';
       case 'org_admin':
@@ -815,37 +826,4 @@ const Users = () => {
                                       variant="danger"
                                       size="sm"
                                       leftIcon={<Trash2 className="h-4 w-4" />}
-                                      onClick={() => handleDeleteUser(user.id, `${user.firstName} ${user.lastName}`)}
-                                    >
-                                      Delete
-                                    </Button>
-                                  )}
-                                </div>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          )}
-        </>
-      )}
-
-      {/* Departments Tab */}
-      {activeTab === 'departments' && (
-        <DepartmentManager />
-      )}
-
-      {/* Import/Export Tab */}
-      {activeTab === 'import' && (
-        <ImportExportManager onImportComplete={() => setActiveTab('users')} />
-      )}
-    </div>
-  );
-};
-
-export default Users;
+                                      onClick={() => handleDeleteUser(user.id, `${user.firstName} ${user.lastName}`
