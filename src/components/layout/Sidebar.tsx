@@ -46,7 +46,7 @@ const Sidebar = ({ isOpen, toggleSidebar, user }: SidebarProps) => {
     { path: '/assessment-assignments', label: 'Assignments', icon: <UserCheck className="h-5 w-5" />, roles: ['org_admin'], permission: 'assign_assessments' },
     { path: '/results', label: 'Analytics', icon: <BarChart4 className="h-5 w-5" />, roles: ['super_admin', 'org_admin'], permission: 'view_results' },
     { path: '/my-results', label: 'Results', icon: <BarChart4 className="h-5 w-5" />, roles: ['subscriber'] },
-    { path: '/analysis-notes', label: 'Analysis Notes', icon: <BookOpen className="h-5 w-5" />, roles: ['super_admin'] },
+
     { path: '/competencies', label: 'Competencies', icon: <Tag className="h-5 w-5" />, roles: ['super_admin'], permission: 'create_assessments' },
     { path: '/support', label: 'Support & Consultation', icon: <MessageSquare className="h-5 w-5" />, roles: ['super_admin', 'org_admin', 'employee', 'reviewer', 'subscriber'] },
     

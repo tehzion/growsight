@@ -30,7 +30,7 @@ import SystemHealth from './pages/admin/SystemHealth';
 import AuditLog from './pages/admin/AuditLog';
 import AccessRequests from './pages/admin/AccessRequests';
 import Branding from './pages/admin/Branding';
-import AnalysisNotes from './pages/admin/AnalysisNotes';
+
 import CompetencyManager from './pages/admin/CompetencyManager';
 import SupportHub from './pages/admin/SupportHub';
 import { ToastContainer } from './components/ui/ToastNotification';
@@ -150,11 +150,7 @@ function App() {
                 <Results />
               </ErrorBoundary>
             } />
-            <Route path="/analysis-notes" element={
-              <ErrorBoundary>
-                <AnalysisNotes />
-              </ErrorBoundary>
-            } />
+
             <Route path="/competencies" element={
               <ErrorBoundary>
                 <CompetencyManager />
