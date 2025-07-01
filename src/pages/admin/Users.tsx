@@ -826,4 +826,27 @@ const Users = () => {
                                       variant="danger"
                                       size="sm"
                                       leftIcon={<Trash2 className="h-4 w-4" />}
-                                      onClick={() => handleDeleteUser(user.id, `${user.firstName} ${user.lastName}`
+                                      onClick={() => handleDeleteUser(user.id, `${user.firstName} ${user.lastName}`)}
+                                    >
+                                      Delete
+                                    </Button>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default Users;
