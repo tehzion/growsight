@@ -1,0 +1,317 @@
+import { useState, useEffect } from 'react';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
+import { useForm } from 'react-hook-form';
+import { z } from 'zod';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { LogIn, Mail, KeyRound, AlertTriangle, CheckCircle, Building2 } from 'lucide-react';
+import { useAuthStore } from '../../stores/authStore';
+import { useProfileStore } from '../../stores/profileStore';
+import { useOrganizationStore } from '../../stores/organizationStore';
+import Button from '../../components/ui/Button';
+import FormInput from '../../components/ui/FormInput';
+
+const loginSchema = z.object({
+  organizationId: z.string().min(1, 'Organization ID is required'),
+  email: z.string().email('Please enter a valid email'),
+  password: z.string().min(1, 'Password is required'),
+});
+
+const otpSchema = z.object({
+  organizationId: z.string().min(1, 'Organization ID is required'),
+  email: z.string().email('Please enter a valid email'),
+});
+
+type LoginFormData = z.infer<typeof loginSchema>;
+type OTPFormData = z.infer<typeof otpSchema>;
+
+// Type-safe interface for location state
+interface LocationState {
+  from?: {
+    pathname: string;
+  };
+  message?: string;
+}
+
+// Type guard to safely check location state
+const isValidLocationState = (state: unknown): state is LocationState => {
+  if (!state || typeof state !== 'object') return false;
+  const typedState = state as Record<string, unknown>;
+  
+  return (
+    (!typedState.from || 
+     (typeof typedState.from === 'object' && 
+      typedState.from !== null && 
+      typeof (typedState.from as Record<string, unknown>).pathname === 'string')) &&
+    (!typedState.message || typeof typedState.message === 'string')
+  );
+};
+
+const Login = () => {
+  const { login, sendOTP, isLoading, error, clearError } = useAuthStore();
+  const { fetchProfile, isFirstLogin } = useProfileStore();
+  const { organizations, fetchOrganizations } = useOrganizationStore();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [loginMode, setLoginMode] = useState<'password' | 'otp'>('password');
+  const [otpSent, setOtpSent] = useState(false);
+  const [loginAttempts, setLoginAttempts] = useState(0);
+  
+  // Safely extract location state with type checking
+  const locationState = isValidLocationState(location.state) ? location.state : {};
+  const from = locationState.from?.pathname || '/dashboard';
+  const message = locationState.message;
+  
+  useEffect(() => {
+    // Clear any previous errors when component mounts or login mode changes
+    clearError();
+    
+    // Fetch organizations for the dropdown
+    fetchOrganizations();
+  }, [loginMode, clearError, fetchOrganizations]);
+  
+  const {
+    register: registerLogin,
+    handleSubmit: handleLoginSubmit,
+    formState: { errors: loginErrors },
+  } = useForm<LoginFormData>({
+    resolver: zodResolver(loginSchema),
+    defaultValues: {
+      organizationId: '',
+      email: '',
+      password: '',
+    },
+  });
+
+  const {
+    register: registerOTP,
+    handleSubmit: handleOTPSubmit,
+    formState: { errors: otpErrors },
+  } = useForm<OTPFormData>({
+    resolver: zodResolver(otpSchema),
+    defaultValues: {
+      organizationId: '',
+      email: '',
+    },
+  });
+  
+  const onPasswordLogin = async (data: LoginFormData) => {
+    clearError();
+    try {
+      await login({
+        ...data,
+        organizationId: data.organizationId
+      });
+      setLoginAttempts(0); // Reset attempts on success
+      
+      // Fetch user profile after successful login
+      if (isFirstLogin) {
+        // If it's the first login, redirect to profile page to complete setup
+        navigate('/profile', { replace: true });
+      } else {
+        navigate(from, { replace: true });
+      }
+    } catch (err) {
+      setLoginAttempts(prev => prev + 1);
+      // Error is handled by the store
+    }
+  };
+
+  const onOTPRequest = async (data: OTPFormData) => {
+    clearError();
+    try {
+      await sendOTP(data.email, data.organizationId);
+      setOtpSent(true);
+    } catch (err) {
+      // Error is handled by the store
+    }
+  };
+  
+  return (
+    <div>
+      <h2 className="text-3xl font-bold text-gray-900 mb-2">Welcome Back</h2>
+      <p className="text-gray-600 mb-6">Sign in to your Growsight platform</p>
+      
+      {/* Success message from redirect */}
+      {message && (
+        <div className="mb-6 p-4 bg-success-50 border border-success-200 text-success-700 rounded-md text-sm">
+          <CheckCircle className="h-4 w-4 inline mr-2" />
+          {message}
+        </div>
+      )}
+      
+      {/* Error message */}
+      {error && (
+        <div className="mb-6 p-4 bg-error-50 border border-error-200 text-error-700 rounded-md text-sm whitespace-pre-line">
+          <AlertTriangle className="h-4 w-4 inline mr-2" />
+          {error}
+        </div>
+      )}
+
+      {/* Login Method Toggle */}
+      <div className="mb-6 flex bg-gray-100 rounded-lg p-1">
+        <button
+          type="button"
+          onClick={() => {
+            setLoginMode('password');
+            setOtpSent(false);
+            clearError();
+          }}
+          className={`flex-1 py-2 px-4 rounded-md text-sm font-medium transition-colors ${
+            loginMode === 'password'
+              ? 'bg-white text-gray-900 shadow-sm'
+              : 'text-gray-600 hover:text-gray-900'
+          }`}
+        >
+          <KeyRound className="h-4 w-4 inline mr-2" />
+          Password Login
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setLoginMode('otp');
+            setOtpSent(false);
+            clearError();
+          }}
+          className={`flex-1 py-2 px-4 rounded-md text-sm font-medium transition-colors ${
+            loginMode === 'otp'
+              ? 'bg-white text-gray-900 shadow-sm'
+              : 'text-gray-600 hover:text-gray-900'
+          }`}
+        >
+          <Mail className="h-4 w-4 inline mr-2" />
+          OTP Login
+        </button>
+      </div>
+
+      {/* Password Login Form */}
+      {loginMode === 'password' && (
+        <form onSubmit={handleLoginSubmit(onPasswordLogin)} className="space-y-4">
+          <FormInput
+            label="Organization ID"
+            autoComplete="organization"
+            leftIcon={<Building2 className="h-5 w-5 text-gray-400" />}
+            error={loginErrors.organizationId?.message}
+            {...registerLogin('organizationId')}
+          />
+          
+          <FormInput
+            label="Email"
+            type="email"
+            autoComplete="email"
+            error={loginErrors.email?.message}
+            {...registerLogin('email')}
+          />
+          
+          <FormInput
+            label="Password"
+            type="password"
+            autoComplete="current-password"
+            error={loginErrors.password?.message}
+            {...registerLogin('password')}
+          />
+          
+          <div className="flex items-center justify-end">
+            <Link to="/forgot-password" className="text-sm font-medium text-primary-600 hover:text-primary-500">
+              Forgot your password?
+            </Link>
+          </div>
+          
+          <Button
+            type="submit"
+            variant="primary"
+            size="lg"
+            isLoading={isLoading}
+            fullWidth
+            leftIcon={<LogIn className="h-4 w-4" />}
+          >
+            Sign in
+          </Button>
+        </form>
+      )}
+
+      {/* OTP Login Form */}
+      {loginMode === 'otp' && !otpSent && (
+        <form onSubmit={handleOTPSubmit(onOTPRequest)} className="space-y-4">
+          <FormInput
+            label="Organization ID"
+            autoComplete="organization"
+            leftIcon={<Building2 className="h-5 w-5 text-gray-400" />}
+            error={otpErrors.organizationId?.message}
+            {...registerOTP('organizationId')}
+          />
+          
+          <FormInput
+            label="Email"
+            type="email"
+            autoComplete="email"
+            error={otpErrors.email?.message}
+            helperText="We'll send you a one-time password to sign in"
+            {...registerOTP('email')}
+          />
+          
+          <Button
+            type="submit"
+            variant="primary"
+            size="lg"
+            isLoading={isLoading}
+            fullWidth
+            leftIcon={<Mail className="h-4 w-4" />}
+          >
+            Send OTP
+          </Button>
+        </form>
+      )}
+
+      {/* OTP Verification */}
+      {loginMode === 'otp' && otpSent && (
+        <div className="text-center">
+          <div className="mb-4 p-4 bg-success-50 border border-success-200 rounded-lg">
+            <Mail className="h-8 w-8 mx-auto text-success-600 mb-2" />
+            <h3 className="font-medium text-success-800">OTP Sent!</h3>
+            <p className="text-sm text-success-700 mt-1">
+              Check your email for a one-time password and click the link to sign in.
+            </p>
+          </div>
+          <Button
+            variant="outline"
+            onClick={() => setOtpSent(false)}
+          >
+            Send Another OTP
+          </Button>
+        </div>
+      )}
+      
+      <div className="mt-6 text-center">
+        <p className="text-sm text-gray-600">
+          Need access?{' '}
+          <Link to="/request-access" className="font-medium text-primary-600 hover:text-primary-500">
+            Request Account Access
+          </Link>
+        </p>
+      </div>
+
+      {/* Organization ID Help */}
+      <div className="mt-6 p-4 bg-primary-50 border border-primary-100 rounded-md">
+        <h3 className="text-sm font-medium text-primary-800 mb-2">Organization ID Help</h3>
+        <p className="text-xs text-primary-700">
+          Your Organization ID is a unique identifier for your company or team. It was provided to you by your administrator.
+        </p>
+        <p className="text-xs text-primary-700 mt-1">
+          If you don't know your Organization ID, please contact your administrator or support team.
+        </p>
+        
+        {/* Demo Organization IDs */}
+        <div className="mt-3 text-xs">
+          <p className="font-medium text-primary-800">Demo Organization IDs:</p>
+          <ul className="mt-1 space-y-1 text-primary-700">
+            <li>• <strong>demo-org-1</strong>: Acme Corporation</li>
+            <li>• <strong>demo-org-2</strong>: TechStart Solutions</li>
+            <li>• <strong>demo-org-3</strong>: Global Enterprises</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default Login;
