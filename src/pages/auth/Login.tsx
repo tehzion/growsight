@@ -290,16 +290,7 @@ const Login = () => {
         </p>
       </div>
 
-      {/* Organization ID Help */}
-      <div className="mt-6 p-4 bg-primary-50 border border-primary-100 rounded-md">
-        <h3 className="text-sm font-medium text-primary-800 mb-2">Organization ID Help</h3>
-        <p className="text-xs text-primary-700">
-          Your Organization ID is a unique identifier for your company or team. It was provided to you by your administrator.
-        </p>
-        <p className="text-xs text-primary-700 mt-1">
-          If you don't know your Organization ID, please contact your administrator or support team.
-        </p>
-      </div>
+
     </div>
   );
 };
