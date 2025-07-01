@@ -51,8 +51,6 @@ const Sidebar = ({ isOpen, toggleSidebar, user }: SidebarProps) => {
     
     // Super Admin System Management
     { path: '/system-settings', label: 'System Settings', icon: <Settings className="h-5 w-5" />, roles: ['super_admin'] },
-    { path: '/system-health', label: 'System Health', icon: <Server className="h-5 w-5" />, roles: ['super_admin'] },
-    { path: '/audit-log', label: 'Audit Log', icon: <Activity className="h-5 w-5" />, roles: ['super_admin'] },
     { path: '/access-requests', label: 'Access Requests', icon: <UserPlus className="h-5 w-5" />, roles: ['super_admin'] },
     { path: '/branding', label: 'Branding', icon: <Palette className="h-5 w-5" />, roles: ['super_admin', 'org_admin'], permission: 'view_results' },
     
@@ -82,10 +80,10 @@ const Sidebar = ({ isOpen, toggleSidebar, user }: SidebarProps) => {
     
     return {
       main: filteredNavItems.filter(item => 
-        !['/system-settings', '/system-health', '/audit-log', '/access-requests', '/branding'].includes(item.path)
+        !['/system-settings', '/access-requests', '/branding'].includes(item.path)
       ),
       system: filteredNavItems.filter(item => 
-        ['/system-settings', '/system-health', '/audit-log', '/access-requests', '/branding'].includes(item.path)
+        ['/system-settings', '/access-requests', '/branding'].includes(item.path)
       )
     };
   };

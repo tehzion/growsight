@@ -3,6 +3,7 @@ import { persist } from 'zustand/middleware';
 import { User, Role } from '../types';
 import AccessControl from '../lib/accessControl';
 import SecureLogger from '../lib/secureLogger';
+import { useProfileStore } from './profileStore';
 
 interface UserProfile {
   phone?: string;
@@ -207,6 +208,27 @@ export const useUserStore = create<UserState>()(
             timezone: 'UTC-8',
             dateFormat: 'MM/DD/YYYY',
           };
+
+          // Automatically create staff assignment for the new user
+          try {
+            const { assignStaff } = useProfileStore.getState();
+            await assignStaff(
+              newUser.id,
+              newUser.organizationId,
+              undefined, // supervisor will be assigned later
+              newUser.departmentId,
+              'system' // created by system
+            );
+            
+            SecureLogger.info('Staff assignment created for new user', { 
+              userId: newUser.id, 
+              organizationId: newUser.organizationId,
+              departmentId: newUser.departmentId 
+            });
+          } catch (assignmentError) {
+            SecureLogger.warn('Failed to create staff assignment for new user', assignmentError);
+            // Don't fail user creation if staff assignment fails
+          }
           
           set(state => ({ 
             users: [...state.users, newUser],
