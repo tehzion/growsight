@@ -550,24 +550,24 @@ const SupportHub: React.FC = () => {
                         <span className="font-medium">Staff Member:</span> {getUserName(selectedTicket.staffMemberId)}
                       </div>
                       {isSuperAdmin && (
-                        <>
+                        <div>
                           <div>
                             <span className="font-medium">Department:</span> {getUserDepartment(selectedTicket.staffMemberId)}
                           </div>
                           <div>
                             <span className="font-medium">Job Title:</span> {getUserJobTitle(selectedTicket.staffMemberId)}
                           </div>
-                        </>
+                        </div>
                       )}
                       {isOrgAdmin && (
-                        <>
+                        <div>
                           <div>
                             <span className="font-medium">Department:</span> {getUserDepartment(selectedTicket.staffMemberId)}
                           </div>
                           <div>
                             <span className="font-medium">Location:</span> {getUserLocation(selectedTicket.staffMemberId)}
                           </div>
-                        </>
+                        </div>
                       )}
                     </div>
                   </div>
