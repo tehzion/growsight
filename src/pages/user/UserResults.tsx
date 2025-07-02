@@ -1044,6 +1044,9 @@ const UserResults = () => {
                           </span>
                         </div>
                       </div>
+                    </div>
+                  </div>
+                </div>
 
                 {/* Performance Trend Analysis */}
                 <div>
