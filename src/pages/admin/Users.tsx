@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { PlusCircle, Pencil, Trash2, UserPlus, User, Users as UsersIcon, Shield, Settings, Building2, AlertTriangle, Upload, Download, X, Filter } from 'lucide-react';
+import { PlusCircle, Pencil, Trash2, UserPlus, User, Users as UsersIcon, Shield, Settings, Building2, AlertTriangle, Upload, Download, X, Filter, Search } from 'lucide-react';
 import { useUserStore } from '../../stores/userStore';
 import { useOrganizationStore } from '../../stores/organizationStore';
 import { useAuthStore } from '../../stores/authStore';
@@ -843,7 +843,7 @@ const Users = () => {
               </CardContent>
             </Card>
           )}
-        </div>
+        </>
       )}
     </div>
   );
