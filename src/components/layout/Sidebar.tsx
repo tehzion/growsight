@@ -19,7 +19,8 @@ import {
   Palette,
   BookOpen,
   Tag,
-  MessageSquare
+  MessageSquare,
+  Database
 } from 'lucide-react';
 import { User as UserType } from '../../types';
 import { useAuthStore } from '../../stores/authStore';
@@ -48,6 +49,7 @@ const Sidebar = ({ isOpen, toggleSidebar, user }: SidebarProps) => {
     { path: '/assessment-assignments', label: 'Assignments', icon: <UserCheck className="h-5 w-5" />, roles: ['org_admin'], permission: 'assign_assessments' },
     { path: '/results', label: 'Analytics', icon: <BarChart4 className="h-5 w-5" />, roles: ['super_admin', 'org_admin'], permission: 'view_results' },
     { path: '/assessment-results', label: 'Assessment Results', icon: <Activity className="h-5 w-5" />, roles: ['super_admin', 'org_admin'], permission: 'view_results' },
+    { path: '/import-export', label: 'Import/Export', icon: <Database className="h-5 w-5" />, roles: ['super_admin', 'org_admin'] },
     { path: '/my-results', label: 'My Results', icon: <BarChart4 className="h-5 w-5" />, roles: ['subscriber'] },
 
     { path: '/subscriber-assessments', label: 'My Assessments', icon: <ClipboardList className="h-5 w-5" />, roles: ['subscriber'] },

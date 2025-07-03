@@ -18,6 +18,7 @@ import AssessmentAssignments from './pages/admin/AssessmentAssignments';
 import Results from './pages/admin/Results';
 import AssessmentResults from './pages/admin/AssessmentResults';
 import PermissionManager from './pages/admin/PermissionManager';
+import ImportExport from './pages/admin/ImportExport';
 import NotFound from './pages/NotFound';
 import ProtectedRoute from './components/auth/ProtectedRoute';
 import UserAssessments from './pages/user/UserAssessments';
@@ -161,6 +162,12 @@ function App() {
             <Route path="/assessment-results" element={
               <ErrorBoundary>
                 <AssessmentResults />
+              </ErrorBoundary>
+            } />
+
+            <Route path="/import-export" element={
+              <ErrorBoundary>
+                <ImportExport />
               </ErrorBoundary>
             } />
 
