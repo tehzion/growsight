@@ -50,5 +50,20 @@
     "typescript-eslint": "^8.15.0",
     "vite": "^5.4.10",
     "vitest": "^2.1.9"
-  }
+  },
+  "description": "A comprehensive feedback platform built with React, TypeScript, and Tailwind CSS. This application enables organizations to conduct structured feedback assessments with multiple question types, progress tracking, and detailed reporting.",
+  "main": "eslint.config.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tehzion/growsight.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/tehzion/growsight/issues"
+  },
+  "homepage": "https://github.com/tehzion/growsight#readme"
 }

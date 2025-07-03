@@ -664,7 +664,7 @@ const EnhancedUserManager: React.FC<EnhancedUserManagerProps> = ({
       )}
 
       {/* Add/Edit User Form */}
-      {showAddForm || editingUser ? (
+      {(showAddForm || editingUser) && (
         <Card>
           <CardHeader>
             <CardTitle>{editingUser ? 'Edit User' : 'Add New User'}</CardTitle>

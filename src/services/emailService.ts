@@ -1,6 +1,6 @@
 import { config } from '../config/environment';
 import SecureLogger from '../lib/secureLogger';
-import { supabase } from '@/lib/supabase';
+import { supabase } from '../lib/supabase';
 
 export interface EmailNotification {
   to: string;
