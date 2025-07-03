@@ -6,7 +6,7 @@ export interface Notification {
   title: string;
   message: string;
   type: 'info' | 'success' | 'warning' | 'error';
-  read: boolean;
+  isRead: boolean;
   createdAt: string;
   link?: string;
 }
@@ -15,7 +15,7 @@ interface NotificationState {
   notifications: Notification[];
   unreadCount: number;
   _timeouts: Map<string, NodeJS.Timeout>; // Track timeouts for cleanup
-  addNotification: (notification: Omit<Notification, 'id' | 'read' | 'createdAt'>) => void;
+  addNotification: (notification: Omit<Notification, 'id' | 'isRead' | 'createdAt'>) => void;
   markAsRead: (id: string) => void;
   markAllAsRead: () => void;
   removeNotification: (id: string) => void;
@@ -34,7 +34,7 @@ export const useNotificationStore = create<NotificationState>()(
         const newNotification: Notification = {
           id: `notification-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
           ...notification,
-          read: false,
+          isRead: false,
           createdAt: new Date().toISOString()
         };
         
@@ -61,10 +61,10 @@ export const useNotificationStore = create<NotificationState>()(
       markAsRead: (id) => {
         set(state => {
           const notification = state.notifications.find(n => n.id === id);
-          if (notification && !notification.read) {
+          if (notification && !notification.isRead) {
             return {
               notifications: state.notifications.map(n => 
-                n.id === id ? { ...n, read: true } : n
+                n.id === id ? { ...n, isRead: true } : n
               ),
               unreadCount: state.unreadCount - 1
             };
@@ -75,7 +75,7 @@ export const useNotificationStore = create<NotificationState>()(
       
       markAllAsRead: () => {
         set(state => ({
-          notifications: state.notifications.map(n => ({ ...n, read: true })),
+          notifications: state.notifications.map(n => ({ ...n, isRead: true })),
           unreadCount: 0
         }));
       },
@@ -92,7 +92,7 @@ export const useNotificationStore = create<NotificationState>()(
           const notification = state.notifications.find(n => n.id === id);
           return {
             notifications: state.notifications.filter(n => n.id !== id),
-            unreadCount: notification && !notification.read 
+            unreadCount: notification && !notification.isRead 
               ? state.unreadCount - 1 
               : state.unreadCount
           };

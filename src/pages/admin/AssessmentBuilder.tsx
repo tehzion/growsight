@@ -1,6 +1,23 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Save, PlusCircle, ArrowLeft, Building2, Trash2, Edit3, CheckCircle, Shield, Lock } from 'lucide-react';
+import { 
+  Save, 
+  PlusCircle, 
+  ArrowLeft, 
+  Building2, 
+  Trash2, 
+  Edit3, 
+  CheckCircle, 
+  Shield, 
+  Lock,
+  FileText,
+  Users,
+  Settings,
+  Eye,
+  EyeOff,
+  AlertCircle,
+  Info
+} from 'lucide-react';
 import { useAssessmentStore } from '../../stores/assessmentStore';
 import { useOrganizationStore } from '../../stores/organizationStore';
 import { useAuthStore } from '../../stores/authStore';
@@ -38,6 +55,7 @@ const AssessmentBuilder = () => {
   const [assessmentTitle, setAssessmentTitle] = useState('');
   const [assessmentDescription, setAssessmentDescription] = useState('');
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const [showPreview, setShowPreview] = useState(false);
 
   const isSuperAdmin = user?.role === 'super_admin';
   const isOrgAdmin = user?.role === 'org_admin';
@@ -189,266 +207,371 @@ const AssessmentBuilder = () => {
     }
   };
   
-  if (!currentAssessment) {
+  if (isLoading) {
     return (
       <div className="flex justify-center items-center h-64">
         <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary-500"></div>
       </div>
     );
   }
+
+  if (!currentAssessment) {
+    return (
+      <div className="flex justify-center items-center h-64">
+        <div className="text-center">
+          <FileText className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+          <h3 className="text-lg font-medium text-gray-900 mb-2">Assessment Not Found</h3>
+          <p className="text-gray-600 mb-4">The assessment you're looking for doesn't exist or you don't have access to it.</p>
+          <Button onClick={() => navigate('/assessments')}>
+            Back to Assessments
+          </Button>
+        </div>
+      </div>
+    );
+  }
   
   return (
-    <div className="space-y-6">
-      <div className="border-b border-gray-200 pb-5 flex justify-between items-center">
-        <div className="flex items-center">
-          <Button
-            variant="ghost"
-            className="mr-2"
-            onClick={() => navigate('/assessments')}
-            leftIcon={<ArrowLeft className="h-4 w-4" />}
-          >
-            Back
-          </Button>
-          <div>
-            <div className="flex items-center space-x-3">
-              <h1 className="text-2xl font-bold text-gray-900">Assessment Builder</h1>
-              {isPresetAssessment && (
-                <div className="flex items-center space-x-2">
-                  <Shield className="h-5 w-5 text-purple-600" />
-                  <span className="text-sm font-medium text-purple-700 bg-purple-100 px-2 py-1 rounded-full">
-                    System Preset
-                  </span>
+    <div className="min-h-screen bg-gray-50">
+      {/* Header */}
+      <div className="bg-white border-b border-gray-200">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="py-6">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-4">
+                <Button
+                  variant="ghost"
+                  onClick={() => navigate('/assessments')}
+                  leftIcon={<ArrowLeft className="h-4 w-4" />}
+                >
+                  Back
+                </Button>
+                <div>
+                  <h1 className="text-2xl font-bold text-gray-900">Assessment Builder</h1>
+                  <p className="text-gray-600">Create and configure your assessment</p>
                 </div>
-              )}
-            </div>
-            <div className="flex items-center mt-1">
-              {isPublished ? (
-                <div className="flex items-center text-sm text-success-600">
-                  <CheckCircle className="h-4 w-4 mr-1" />
-                  Published to {selectedOrganizations.length} organization{selectedOrganizations.length > 1 ? 's' : ''}
-                </div>
-              ) : (
-                <span className="text-sm text-gray-500">Draft - Not yet published</span>
-              )}
+              </div>
+              
+              <div className="flex items-center space-x-3">
+                {isPresetAssessment && (
+                  <div className="flex items-center space-x-2 px-3 py-1 bg-blue-50 border border-blue-200 rounded-full">
+                    <Shield className="h-4 w-4 text-blue-600" />
+                    <span className="text-sm font-medium text-blue-800">Preset Assessment</span>
+                  </div>
+                )}
+                
+                {!canEdit && (
+                  <div className="flex items-center space-x-2 px-3 py-1 bg-yellow-50 border border-yellow-200 rounded-full">
+                    <Lock className="h-4 w-4 text-yellow-600" />
+                    <span className="text-sm font-medium text-yellow-800">Read Only</span>
+                  </div>
+                )}
+                
+                <Button
+                  variant="outline"
+                  onClick={() => setShowPreview(!showPreview)}
+                  leftIcon={showPreview ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                >
+                  {showPreview ? 'Hide Preview' : 'Preview'}
+                </Button>
+                
+                {canEdit && (
+                  <Button
+                    onClick={handleSaveAssessment}
+                    isLoading={saveStatus === 'saving'}
+                    leftIcon={<Save className="h-4 w-4" />}
+                    className={saveStatus === 'saved' ? 'bg-green-600 hover:bg-green-700' : ''}
+                  >
+                    {saveStatus === 'saved' ? (
+                      <>
+                        <CheckCircle className="h-4 w-4 mr-2" />
+                        Saved
+                      </>
+                    ) : (
+                      'Save Assessment'
+                    )}
+                  </Button>
+                )}
+              </div>
             </div>
           </div>
-        </div>
-        <div className="flex space-x-2">
-          {isSuperAdmin && (
-            <Button
-              onClick={handlePublish}
-              variant={isPublished ? "success" : "primary"}
-              leftIcon={isPublished ? <CheckCircle className="h-4 w-4" /> : <Building2 className="h-4 w-4" />}
-              disabled={selectedOrganizations.length === 0 || isLoading}
-            >
-              {isPublished ? 'Published' : 'Publish'}
-            </Button>
-          )}
-          {canEdit && (
-            <Button
-              onClick={handleSaveAssessment}
-              isLoading={saveStatus === 'saving' || isLoading}
-              leftIcon={<Save className="h-4 w-4" />}
-            >
-              {saveStatus === 'saving' ? 'Saving...' : 
-               saveStatus === 'saved' ? 'Saved!' : 
-               'Save Changes'}
-            </Button>
-          )}
-          {!canEdit && (
-            <div className="flex items-center text-sm text-gray-500">
-              <Lock className="h-4 w-4 mr-1" />
-              Read-only
-            </div>
-          )}
         </div>
       </div>
 
-      {(error || assessmentError) && (
-        <div className="bg-error-50 border border-error-200 text-error-700 px-4 py-3 rounded relative">
-          {error || assessmentError}
-        </div>
-      )}
-
-      {/* Permission Notice */}
-      {!canEdit && (
-        <Card className="bg-amber-50 border-amber-200">
-          <CardContent className="p-4">
-            <div className="flex items-center space-x-3">
-              <Lock className="h-5 w-5 text-amber-600" />
-              <div>
-                <h3 className="font-medium text-amber-800">Read-Only Access</h3>
-                <p className="text-sm text-amber-700">
-                  {isPresetAssessment 
-                    ? 'This is a system preset assessment that can only be modified by Super Admin.'
-                    : 'You can only view this assessment. Contact your administrator for edit permissions.'
-                  }
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-      
-      {/* Organization Assignment - Only for Super Admin */}
-      {isSuperAdmin && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center">
-              <Building2 className="h-5 w-5 mr-2" />
-              Organization Assignment
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <OrganizationSelector
-              organizations={organizations}
-              selectedIds={selectedOrganizations}
-              onChange={setSelectedOrganizations}
-              disabled={!isSuperAdmin}
-            />
-            {selectedOrganizations.length > 0 && (
-              <div className="mt-4 p-3 bg-primary-50 rounded-lg">
-                <p className="text-sm text-primary-700">
-                  <strong>Publishing this assessment will:</strong>
-                </p>
-                <ul className="text-sm text-primary-600 mt-1 list-disc list-inside">
-                  <li>Make it available to all users in the selected organizations</li>
-                  <li>Show it in their "My Assessments" section</li>
-                  <li>Allow employees and reviewers to complete the assessment</li>
-                </ul>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Assessment Details */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Assessment Details</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            <FormInput
-              label="Title"
-              value={assessmentTitle}
-              onChange={(e) => setAssessmentTitle(e.target.value)}
-              disabled={!canEdit}
-            />
-            <div>
-              <label htmlFor="description" className="block text-sm font-medium text-gray-700 mb-1">
-                Description
-              </label>
-              <textarea
-                id="description"
-                rows={3}
-                value={assessmentDescription}
-                onChange={(e) => setAssessmentDescription(e.target.value)}
-                disabled={!canEdit}
-                className={`w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 ${
-                  !canEdit ? 'bg-gray-50 cursor-not-allowed' : ''
-                }`}
-              />
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Sections and Questions */}
-      {currentAssessment.sections.map((section) => (
-        <Card key={section.id}>
-          <CardHeader>
-            <CardTitle>{section.title}</CardTitle>
-            {section.description && (
-              <p className="text-sm text-gray-600">{section.description}</p>
-            )}
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-6">
-              {section.questions.map((question) => (
-                <div key={question.id} className="border border-gray-200 rounded-lg p-4">
-                  <div className="flex items-start justify-between mb-4">
-                    <div className="flex-1">
-                      <QuestionBuilder
-                        questionText={question.text}
-                        questionType={question.questionType}
-                        isRequired={question.isRequired}
-                        scaleMax={question.scaleMax}
-                        options={question.options}
-                        competencyIds={question.competencyIds}
-                        organizationId={currentAssessment.organizationId}
-                        onUpdate={(data) => canEdit && handleUpdateQuestion(section.id, question.id, data)}
-                      />
-                    </div>
-                    {canEdit && (
-                      <Button
-                        variant="danger"
-                        size="sm"
-                        onClick={() => handleDeleteQuestion(section.id, question.id)}
-                        leftIcon={<Trash2 className="h-4 w-4" />}
-                      >
-                        Delete
-                      </Button>
-                    )}
-                  </div>
+      {/* Main Content */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          {/* Assessment Details */}
+          <div className="lg:col-span-2 space-y-6">
+            {/* Assessment Information */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center space-x-2">
+                  <FileText className="h-5 w-5" />
+                  <span>Assessment Information</span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <FormInput
+                  label="Assessment Title"
+                  value={assessmentTitle}
+                  onChange={(e) => setAssessmentTitle(e.target.value)}
+                  placeholder="Enter assessment title"
+                  disabled={!canEdit}
+                  required
+                />
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Description
+                  </label>
+                  <textarea
+                    value={assessmentDescription}
+                    onChange={(e) => setAssessmentDescription(e.target.value)}
+                    placeholder="Enter assessment description"
+                    rows={3}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:bg-gray-50 disabled:text-gray-500"
+                    disabled={!canEdit}
+                  />
                 </div>
-              ))}
-              
-              {canEdit && (
-                <div className="flex justify-center pt-4 border-t border-gray-200">
+
+                {assessmentError && (
+                  <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+                    <div className="flex items-center">
+                      <AlertCircle className="h-5 w-5 text-red-400 mr-2" />
+                      <span className="text-sm text-red-800">{assessmentError}</span>
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Sections */}
+            <div className="space-y-6">
+              <div className="flex items-center justify-between">
+                <h2 className="text-xl font-semibold text-gray-900">Assessment Sections</h2>
+                {canEdit && (
                   <Button
-                    onClick={() => handleAddQuestion(section.id)}
                     variant="outline"
+                    onClick={handleAddSection}
                     leftIcon={<PlusCircle className="h-4 w-4" />}
                   >
-                    Add Question
+                    Add Section
                   </Button>
-                </div>
+                )}
+              </div>
+
+              {currentAssessment.sections.length === 0 ? (
+                <Card>
+                  <CardContent className="py-12 text-center">
+                    <FileText className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                    <h3 className="text-lg font-medium text-gray-900 mb-2">No Sections Yet</h3>
+                    <p className="text-gray-600 mb-4">Start building your assessment by adding sections and questions.</p>
+                    {canEdit && (
+                      <Button onClick={handleAddSection} leftIcon={<PlusCircle className="h-4 w-4" />}>
+                        Add First Section
+                      </Button>
+                    )}
+                  </CardContent>
+                </Card>
+              ) : (
+                currentAssessment.sections.map((section, sectionIndex) => (
+                  <Card key={section.id} className="border-2 border-gray-200 hover:border-primary-300 transition-colors">
+                    <CardHeader>
+                      <CardTitle className="flex items-center justify-between">
+                        <div className="flex items-center space-x-3">
+                          <div className="flex items-center justify-center w-8 h-8 bg-primary-100 text-primary-700 rounded-full text-sm font-semibold">
+                            {sectionIndex + 1}
+                          </div>
+                          <span>{section.title}</span>
+                        </div>
+                        {canEdit && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleAddQuestion(section.id)}
+                            leftIcon={<PlusCircle className="h-4 w-4" />}
+                          >
+                            Add Question
+                          </Button>
+                        )}
+                      </CardTitle>
+                      {section.description && (
+                        <p className="text-gray-600 text-sm mt-2">{section.description}</p>
+                      )}
+                    </CardHeader>
+                    <CardContent>
+                      {section.questions.length === 0 ? (
+                        <div className="text-center py-8 text-gray-500">
+                          <Info className="h-8 w-8 mx-auto mb-2" />
+                          <p>No questions in this section yet.</p>
+                          {canEdit && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleAddQuestion(section.id)}
+                              className="mt-2"
+                            >
+                              Add Question
+                            </Button>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="space-y-4">
+                          {section.questions.map((question, questionIndex) => (
+                            <div key={question.id} className="border border-gray-200 rounded-lg p-4 bg-gray-50">
+                              <QuestionBuilder
+                                questionText={question.text}
+                                questionType={question.questionType}
+                                isRequired={question.isRequired}
+                                scaleMax={question.scaleMax}
+                                options={question.options}
+                                competencyIds={question.competencyIds}
+                                organizationId={currentAssessment.organizationId}
+                                onUpdate={(data) => handleUpdateQuestion(section.id, question.id, data)}
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                ))
               )}
             </div>
-          </CardContent>
-        </Card>
-      ))}
-      
-      {/* Add Section Form - Only for editable assessments */}
-      {canEdit && (
-        <Card className="border border-dashed border-gray-300">
-          <CardContent className="p-6">
-            <h3 className="text-lg font-medium text-gray-900 mb-4">Add New Section</h3>
-            <div className="space-y-4">
-              <FormInput
-                label="Section Title"
-                placeholder="Enter section title"
-                value={newSectionTitle}
-                onChange={(e) => setNewSectionTitle(e.target.value)}
-              />
-              <div>
-                <label htmlFor="new-section-description" className="block text-sm font-medium text-gray-700 mb-1">
-                  Section Description
-                </label>
-                <textarea
-                  id="new-section-description"
-                  rows={2}
-                  value={newSectionDescription}
-                  onChange={(e) => setNewSectionDescription(e.target.value)}
-                  className="w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500"
-                  placeholder="Enter section description"
-                />
-              </div>
-              <div className="flex justify-end">
-                <Button
-                  onClick={handleAddSection}
-                  isLoading={isLoading}
-                  disabled={!newSectionTitle.trim() || isLoading}
-                  leftIcon={<PlusCircle className="h-4 w-4" />}
-                >
-                  Add Section
-                </Button>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+
+            {/* Add Section Form */}
+            {canEdit && (
+              <Card className="border-2 border-dashed border-gray-300">
+                <CardContent className="py-6">
+                  <h3 className="text-lg font-medium text-gray-900 mb-4">Add New Section</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <FormInput
+                      label="Section Title"
+                      value={newSectionTitle}
+                      onChange={(e) => setNewSectionTitle(e.target.value)}
+                      placeholder="Enter section title"
+                    />
+                    <FormInput
+                      label="Section Description"
+                      value={newSectionDescription}
+                      onChange={(e) => setNewSectionDescription(e.target.value)}
+                      placeholder="Enter section description (optional)"
+                    />
+                  </div>
+                  <div className="mt-4">
+                    <Button
+                      onClick={handleAddSection}
+                      disabled={!newSectionTitle.trim()}
+                      leftIcon={<PlusCircle className="h-4 w-4" />}
+                    >
+                      Add Section
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+
+          {/* Sidebar */}
+          <div className="space-y-6">
+            {/* Organization Assignment */}
+            {isSuperAdmin && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center space-x-2">
+                    <Building2 className="h-5 w-5" />
+                    <span>Organization Assignment</span>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <OrganizationSelector
+                    organizations={organizations}
+                    selectedOrganizations={selectedOrganizations}
+                    onSelectionChange={setSelectedOrganizations}
+                  />
+                  
+                  <div className="mt-4 space-y-3">
+                    <Button
+                      onClick={handlePublish}
+                      disabled={selectedOrganizations.length === 0}
+                      className="w-full"
+                      leftIcon={<Users className="h-4 w-4" />}
+                    >
+                      {isPublished ? 'Update Assignment' : 'Publish Assessment'}
+                    </Button>
+                    
+                    {isPublished && (
+                      <div className="flex items-center space-x-2 p-3 bg-green-50 border border-green-200 rounded-lg">
+                        <CheckCircle className="h-5 w-5 text-green-600" />
+                        <span className="text-sm font-medium text-green-800">
+                          Published to {selectedOrganizations.length} organization{selectedOrganizations.length !== 1 ? 's' : ''}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Assessment Stats */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center space-x-2">
+                  <Settings className="h-5 w-5" />
+                  <span>Assessment Stats</span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="text-center p-3 bg-blue-50 rounded-lg">
+                    <div className="text-2xl font-bold text-blue-600">
+                      {currentAssessment.sections.length}
+                    </div>
+                    <div className="text-sm text-blue-800">Sections</div>
+                  </div>
+                  <div className="text-center p-3 bg-green-50 rounded-lg">
+                    <div className="text-2xl font-bold text-green-600">
+                      {currentAssessment.sections.reduce((total, section) => total + section.questions.length, 0)}
+                    </div>
+                    <div className="text-sm text-green-800">Questions</div>
+                  </div>
+                </div>
+                
+                <div className="text-sm text-gray-600">
+                  <div className="flex items-center justify-between">
+                    <span>Assessment Type:</span>
+                    <span className="font-medium capitalize">{currentAssessment.assessmentType}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span>Created:</span>
+                    <span className="font-medium">
+                      {new Date(currentAssessment.createdAt).toLocaleDateString()}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span>Last Updated:</span>
+                    <span className="font-medium">
+                      {new Date(currentAssessment.updatedAt).toLocaleDateString()}
+                    </span>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Error Display */}
+            {error && (
+              <Card className="border-red-200 bg-red-50">
+                <CardContent className="py-4">
+                  <div className="flex items-center">
+                    <AlertCircle className="h-5 w-5 text-red-400 mr-2" />
+                    <span className="text-sm text-red-800">{error}</span>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        </div>
+      </div>
     </div>
   );
 };
