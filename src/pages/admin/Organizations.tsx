@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { PlusCircle, Pencil, Trash2, Building2, Users, CheckCircle, AlertTriangle, Shield, Settings, RefreshCw, Eye, Upload, Download, X, Filter } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { PlusCircle, Pencil, Trash2, Building2, Users, CheckCircle, AlertTriangle, Shield, Settings, RefreshCw, Eye, Upload, Download, X, Filter, Search } from 'lucide-react';
 import { useOrganizationStore } from '../../stores/organizationStore';
 import { useUserStore } from '../../stores/userStore';
 import { useAuthStore } from '../../stores/authStore';
@@ -11,6 +12,7 @@ import ImportExportManager from '../../components/admin/ImportExportManager';
 import { useNotificationStore } from '../../stores/notificationStore';
 
 const Organizations = () => {
+  const navigate = useNavigate();
   const { user } = useAuthStore();
   const { organizations, fetchOrganizations, createOrganization, updateOrganization, deleteOrganization, updateOrgAdminPermissions, isLoading, error } = useOrganizationStore();
   const { users, fetchUsers } = useUserStore();
