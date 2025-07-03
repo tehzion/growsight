@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
@@ -63,6 +63,13 @@ const Login = () => {
   const locationState = isValidLocationState(location.state) ? location.state : {};
   const from = locationState.from?.pathname || '/dashboard';
   const message = locationState.message;
+  
+  const demoCredentials = {
+    organizationId: 'demo-org-1',
+    email: 'admin@acme.com',
+    password: 'password123',
+  };
+  const formRef = useRef<HTMLFormElement>(null);
   
   useEffect(() => {
     // Clear any previous errors when component mounts or login mode changes
@@ -210,11 +217,10 @@ const Login = () => {
 
       {/* Password Login Form */}
       {loginMode === 'password' && (
-        <form onSubmit={handleLoginSubmit(onPasswordLogin)} className="space-y-4">
+        <form ref={formRef} onSubmit={handleLoginSubmit(onPasswordLogin)} className="space-y-4">
           <FormInput
             label="Organization ID"
             autoComplete="organization"
-            leftIcon={<Building2 className="h-5 w-5 text-gray-400" />}
             error={loginErrors.organizationId?.message}
             {...registerLogin('organizationId')}
           />
@@ -251,6 +257,24 @@ const Login = () => {
           >
             Sign in
           </Button>
+          {/* Demo Login Button */}
+          <Button
+            type="button"
+            variant="outline"
+            size="lg"
+            fullWidth
+            className="mt-2"
+            onClick={() => {
+              // Set demo credentials in the form fields
+              (document.querySelector('input[name="organizationId"]') as HTMLInputElement).value = demoCredentials.organizationId;
+              (document.querySelector('input[name="email"]') as HTMLInputElement).value = demoCredentials.email;
+              (document.querySelector('input[name="password"]') as HTMLInputElement).value = demoCredentials.password;
+              // Optionally, trigger form submit
+              formRef.current?.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+            }}
+          >
+            Demo Login
+          </Button>
         </form>
       )}
 
@@ -260,7 +284,6 @@ const Login = () => {
           <FormInput
             label="Organization ID"
             autoComplete="organization"
-            leftIcon={<Building2 className="h-5 w-5 text-gray-400" />}
             error={otpErrors.organizationId?.message}
             {...registerOTP('organizationId')}
           />

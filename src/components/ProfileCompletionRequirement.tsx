@@ -1,11 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Progress } from '@/components/ui/progress';
-import { Badge } from '@/components/ui/badge';
-import { useToast } from '@/hooks/use-toast';
-import { useAuth } from '@/hooks/useAuth';
-import { supabase } from '@/lib/supabase';
+import { useNavigate } from 'react-router-dom';
+import { Card, CardContent, CardHeader, CardTitle } from './ui/Card';
+import Button from './ui/Button';
+import { useAuthStore } from '../stores/authStore';
+import { useNotificationStore } from '../stores/notificationStore';
+import { supabase } from '../lib/supabase';
 import { 
   User, 
   CheckCircle, 
@@ -20,7 +19,10 @@ import {
   FileText,
   Award,
   GraduationCap,
-  Building
+  Building,
+  SkipForward,
+  Shield,
+  Settings
 } from 'lucide-react';
 
 interface ProfileData {
@@ -66,40 +68,156 @@ interface ProfileCompletionRequirementProps {
   redirectTo?: string;
 }
 
-const REQUIRED_FIELDS = [
-  { key: 'first_name', label: 'First Name', icon: User, weight: 10 },
-  { key: 'last_name', label: 'Last Name', icon: User, weight: 10 },
-  { key: 'email', label: 'Email', icon: Mail, weight: 10 },
-  { key: 'phone', label: 'Phone', icon: Phone, weight: 8 },
-  { key: 'position', label: 'Position', icon: Briefcase, weight: 8 },
-  { key: 'department', label: 'Department', icon: Building, weight: 8 },
-  { key: 'date_of_birth', label: 'Date of Birth', icon: Calendar, weight: 6 },
-  { key: 'hire_date', label: 'Hire Date', icon: Calendar, weight: 6 },
-  { key: 'bio', label: 'Bio', icon: FileText, weight: 5 },
-  { key: 'emergency_contact', label: 'Emergency Contact', icon: Phone, weight: 7 },
-  { key: 'skills', label: 'Skills', icon: Award, weight: 4 },
-  { key: 'certifications', label: 'Certifications', icon: Award, weight: 4 },
-  { key: 'education', label: 'Education', icon: GraduationCap, weight: 3 },
-  { key: 'work_experience', label: 'Work Experience', icon: Briefcase, weight: 3 }
-];
+// Different field requirements based on user role
+const getRequiredFields = (userRole: string) => {
+  switch (userRole) {
+    case 'root':
+    case 'super_admin':
+      // Admin users have minimal requirements
+      return [
+        { key: 'first_name', label: 'First Name', icon: User, weight: 10 },
+        { key: 'last_name', label: 'Last Name', icon: User, weight: 10 },
+        { key: 'email', label: 'Email', icon: Mail, weight: 10 },
+        { key: 'phone', label: 'Phone', icon: Phone, weight: 8 }
+      ];
+    
+    case 'org_admin':
+      // Organization admins need basic contact info
+      return [
+        { key: 'first_name', label: 'First Name', icon: User, weight: 10 },
+        { key: 'last_name', label: 'Last Name', icon: User, weight: 10 },
+        { key: 'email', label: 'Email', icon: Mail, weight: 10 },
+        { key: 'phone', label: 'Phone', icon: Phone, weight: 8 },
+        { key: 'position', label: 'Position', icon: Briefcase, weight: 8 },
+        { key: 'department', label: 'Department', icon: Building, weight: 8 }
+      ];
+    
+    case 'subscriber':
+      // Subscribers need professional info
+      return [
+        { key: 'first_name', label: 'First Name', icon: User, weight: 10 },
+        { key: 'last_name', label: 'Last Name', icon: User, weight: 10 },
+        { key: 'email', label: 'Email', icon: Mail, weight: 10 },
+        { key: 'phone', label: 'Phone', icon: Phone, weight: 8 },
+        { key: 'position', label: 'Position', icon: Briefcase, weight: 8 },
+        { key: 'department', label: 'Department', icon: Building, weight: 8 },
+        { key: 'bio', label: 'Bio', icon: FileText, weight: 5 }
+      ];
+    
+    case 'employee':
+    case 'reviewer':
+    default:
+      // Regular users need comprehensive profile
+      return [
+        { key: 'first_name', label: 'First Name', icon: User, weight: 10 },
+        { key: 'last_name', label: 'Last Name', icon: User, weight: 10 },
+        { key: 'email', label: 'Email', icon: Mail, weight: 10 },
+        { key: 'phone', label: 'Phone', icon: Phone, weight: 8 },
+        { key: 'position', label: 'Position', icon: Briefcase, weight: 8 },
+        { key: 'department', label: 'Department', icon: Building, weight: 8 },
+        { key: 'date_of_birth', label: 'Date of Birth', icon: Calendar, weight: 6 },
+        { key: 'hire_date', label: 'Hire Date', icon: Calendar, weight: 6 },
+        { key: 'bio', label: 'Bio', icon: FileText, weight: 5 },
+        { key: 'emergency_contact', label: 'Emergency Contact', icon: Phone, weight: 7 },
+        { key: 'skills', label: 'Skills', icon: Award, weight: 4 },
+        { key: 'certifications', label: 'Certifications', icon: Award, weight: 4 },
+        { key: 'education', label: 'Education', icon: GraduationCap, weight: 3 },
+        { key: 'work_experience', label: 'Work Experience', icon: Briefcase, weight: 3 }
+      ];
+  }
+};
+
+// Get completion threshold based on user role
+const getCompletionThreshold = (userRole: string) => {
+  switch (userRole) {
+    case 'root':
+    case 'super_admin':
+      return 50; // Lower threshold for admin users
+    case 'org_admin':
+      return 60; // Medium threshold for org admins
+    case 'subscriber':
+      return 70; // Higher threshold for subscribers
+    case 'employee':
+    case 'reviewer':
+    default:
+      return 80; // Full threshold for regular users
+  }
+};
+
+// Get role-specific benefits message
+const getRoleBenefits = (userRole: string) => {
+  switch (userRole) {
+    case 'root':
+    case 'super_admin':
+      return [
+        '• Access to all system features and organizations',
+        '• Full administrative capabilities',
+        '• System-wide analytics and reporting',
+        '• User and organization management'
+      ];
+    
+    case 'org_admin':
+      return [
+        '• Manage your organization\'s users and assessments',
+        '• Access organization-level analytics',
+        '• Create and assign assessments',
+        '• Configure organization settings'
+      ];
+    
+    case 'subscriber':
+      return [
+        '• Access to premium assessment features',
+        '• Enhanced personal analytics',
+        '• Priority support and consultation',
+        '• Advanced reporting capabilities'
+      ];
+    
+    case 'employee':
+    case 'reviewer':
+    default:
+      return [
+        '• Better personalized feedback and recommendations',
+        '• Improved assessment matching and results',
+        '• Enhanced collaboration with team members',
+        '• Access to all platform features and analytics'
+      ];
+  }
+};
 
 export default function ProfileCompletionRequirement({ 
   onComplete, 
   showSkip = false,
   redirectTo = '/profile'
 }: ProfileCompletionRequirementProps) {
-  const { user } = useAuth();
-  const { toast } = useToast();
+  const { user } = useAuthStore();
+  const { addNotification } = useNotificationStore();
+  const navigate = useNavigate();
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [loading, setLoading] = useState(true);
   const [completionPercentage, setCompletionPercentage] = useState(0);
   const [missingFields, setMissingFields] = useState<string[]>([]);
 
+  // Get role-specific requirements
+  const requiredFields = user ? getRequiredFields(user.role) : [];
+  const completionThreshold = user ? getCompletionThreshold(user.role) : 80;
+  const roleBenefits = user ? getRoleBenefits(user.role) : [];
+
+  // Skip profile completion for root and super admin users
+  const shouldSkipProfileCompletion = user?.role === 'root' || user?.role === 'super_admin';
+
   useEffect(() => {
+    if (shouldSkipProfileCompletion) {
+      // Auto-complete for root and super admin users
+      if (onComplete) {
+        onComplete();
+      }
+      return;
+    }
+
     if (user?.id) {
       loadProfile();
     }
-  }, [user?.id]);
+  }, [user?.id, shouldSkipProfileCompletion, onComplete]);
 
   const loadProfile = async () => {
     if (!user?.id) return;
@@ -164,10 +282,10 @@ export default function ProfileCompletionRequirement({
       calculateCompletion(data);
     } catch (error) {
       console.error('Error loading profile:', error);
-      toast({
+      addNotification({
         title: 'Error',
-        description: 'Failed to load profile data',
-        variant: 'destructive',
+        message: 'Failed to load profile data',
+        type: 'error'
       });
     } finally {
       setLoading(false);
@@ -179,7 +297,7 @@ export default function ProfileCompletionRequirement({
     let totalWeight = 0;
     const missing: string[] = [];
 
-    REQUIRED_FIELDS.forEach(field => {
+    requiredFields.forEach(field => {
       totalWeight += field.weight;
       const value = profileData[field.key as keyof ProfileData];
       
@@ -202,294 +320,208 @@ export default function ProfileCompletionRequirement({
 
     switch (fieldKey) {
       case 'emergency_contact':
-        if (typeof value !== 'object') return false;
-        return value.name && value.relationship && value.phone;
-      
+        return typeof value === 'object' && value.name && value.relationship && value.phone;
       case 'skills':
       case 'certifications':
         return Array.isArray(value) && value.length > 0;
-      
       case 'education':
       case 'work_experience':
         return Array.isArray(value) && value.length > 0;
-      
       default:
-        return true;
+        return typeof value === 'string' && value.trim().length > 0;
     }
   };
 
   const getCompletionStatus = () => {
-    if (completionPercentage >= 80) {
+    if (completionPercentage >= completionThreshold) {
       return {
         status: 'complete',
-        message: 'Profile is complete!',
-        color: 'text-green-600',
-        bgColor: 'bg-green-50',
-        borderColor: 'border-green-200'
+        color: 'text-success-600',
+        bgColor: 'bg-success-50',
+        borderColor: 'border-success-200',
+        icon: CheckCircle,
+        message: `Profile is complete! You can now access all features.`
       };
-    } else if (completionPercentage >= 50) {
+    } else if (completionPercentage >= completionThreshold * 0.75) {
       return {
-        status: 'partial',
-        message: 'Profile is partially complete',
-        color: 'text-yellow-600',
-        bgColor: 'bg-yellow-50',
-        borderColor: 'border-yellow-200'
+        status: 'almost',
+        color: 'text-warning-600',
+        bgColor: 'bg-warning-50',
+        borderColor: 'border-warning-200',
+        icon: Clock,
+        message: `Almost there! Complete a few more fields to unlock all features.`
       };
     } else {
       return {
         status: 'incomplete',
-        message: 'Profile needs completion',
-        color: 'text-red-600',
-        bgColor: 'bg-red-50',
-        borderColor: 'border-red-200'
+        color: 'text-error-600',
+        bgColor: 'bg-error-50',
+        borderColor: 'border-error-200',
+        icon: AlertCircle,
+        message: `Please complete your profile to access all platform features.`
       };
     }
   };
 
   const handleComplete = () => {
-    if (onComplete) {
-      onComplete();
-    } else {
-      window.location.href = redirectTo;
-    }
+    navigate(redirectTo);
   };
 
   const handleSkip = () => {
     if (onComplete) {
       onComplete();
     } else {
-      window.location.href = '/dashboard';
+      navigate('/dashboard');
     }
   };
 
+  const status = getCompletionStatus();
+  const StatusIcon = status.icon;
+
+  if (shouldSkipProfileCompletion) {
+    return null; // Don't render anything for root and super admin users
+  }
+
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-        <span className="ml-2">Loading profile...</span>
-      </div>
-    );
-  }
-
-  if (!profile) {
-    return (
-      <Card className="max-w-2xl mx-auto">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <AlertCircle className="h-5 w-5 text-red-500" />
-            Profile Not Found
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-muted-foreground mb-4">
-            Unable to load your profile information. Please contact your administrator.
-          </p>
-          <Button onClick={() => window.location.reload()}>
-            Try Again
-          </Button>
+      <Card>
+        <CardContent className="p-6">
+          <div className="flex items-center justify-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
+            <span className="ml-3 text-gray-600">Loading profile...</span>
+          </div>
         </CardContent>
       </Card>
     );
   }
 
-  const status = getCompletionStatus();
+  const getRoleIcon = (role: string) => {
+    switch (role) {
+      case 'root':
+        return <Shield className="h-5 w-5" />;
+      case 'super_admin':
+        return <Shield className="h-5 w-5" />;
+      case 'org_admin':
+        return <Settings className="h-5 w-5" />;
+      case 'subscriber':
+        return <User className="h-5 w-5" />;
+      default:
+        return <User className="h-5 w-5" />;
+    }
+  };
+
+  const getRoleLabel = (role: string) => {
+    switch (role) {
+      case 'root':
+        return 'System Administrator';
+      case 'super_admin':
+        return 'Super Administrator';
+      case 'org_admin':
+        return 'Organization Administrator';
+      case 'subscriber':
+        return 'Subscriber';
+      case 'employee':
+        return 'Employee';
+      case 'reviewer':
+        return 'Reviewer';
+      default:
+        return role;
+    }
+  };
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
-      {/* Header */}
-      <div className="text-center space-y-2">
-        <h1 className="text-3xl font-bold">Complete Your Profile</h1>
-        <p className="text-muted-foreground">
-          Please complete your profile to access all features of the platform.
-        </p>
-      </div>
-
-      {/* Progress Card */}
-      <Card className={`${status.bgColor} ${status.borderColor} border-2`}>
-        <CardHeader>
-          <CardTitle className={`flex items-center gap-2 ${status.color}`}>
-            {completionPercentage >= 80 ? (
-              <CheckCircle className="h-5 w-5" />
-            ) : completionPercentage >= 50 ? (
-              <Clock className="h-5 w-5" />
-            ) : (
-              <AlertCircle className="h-5 w-5" />
-            )}
-            {status.message}
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <div className="flex justify-between text-sm">
-              <span>Completion Progress</span>
-              <span className="font-medium">{completionPercentage}%</span>
-            </div>
-            <Progress value={completionPercentage} className="h-2" />
-          </div>
-
-          {completionPercentage < 80 && (
-            <div className="space-y-2">
-              <p className="text-sm font-medium">Missing Information:</p>
-              <div className="flex flex-wrap gap-2">
-                {missingFields.map((field, index) => (
-                  <Badge key={index} variant="outline" className="text-xs">
-                    {field}
-                  </Badge>
-                ))}
-              </div>
-            </div>
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center">
+          {getRoleIcon(user?.role || '')}
+          <span className="ml-2">Complete Your Profile</span>
+          {user?.role && (
+            <span className="ml-2 text-sm font-normal text-gray-500">
+              ({getRoleLabel(user.role)})
+            </span>
           )}
-        </CardContent>
-      </Card>
-
-      {/* Profile Summary */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Profile Summary</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="space-y-4">
-              <h3 className="font-semibold">Basic Information</h3>
-              <div className="space-y-2 text-sm">
-                <div className="flex items-center gap-2">
-                  <User className="h-4 w-4 text-muted-foreground" />
-                  <span>
-                    {profile.first_name} {profile.last_name}
-                  </span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Mail className="h-4 w-4 text-muted-foreground" />
-                  <span>{profile.email}</span>
-                </div>
-                {profile.phone && (
-                  <div className="flex items-center gap-2">
-                    <Phone className="h-4 w-4 text-muted-foreground" />
-                    <span>{profile.phone}</span>
-                  </div>
-                )}
-                {profile.position && (
-                  <div className="flex items-center gap-2">
-                    <Briefcase className="h-4 w-4 text-muted-foreground" />
-                    <span>{profile.position}</span>
-                  </div>
-                )}
-                {profile.department && (
-                  <div className="flex items-center gap-2">
-                    <Building className="h-4 w-4 text-muted-foreground" />
-                    <span>{profile.department}</span>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div className="space-y-4">
-              <h3 className="font-semibold">Additional Details</h3>
-              <div className="space-y-2 text-sm">
-                {profile.skills && profile.skills.length > 0 && (
-                  <div>
-                    <span className="font-medium">Skills:</span>
-                    <div className="flex flex-wrap gap-1 mt-1">
-                      {profile.skills.slice(0, 3).map((skill, index) => (
-                        <Badge key={index} variant="secondary" className="text-xs">
-                          {skill}
-                        </Badge>
-                      ))}
-                      {profile.skills.length > 3 && (
-                        <Badge variant="secondary" className="text-xs">
-                          +{profile.skills.length - 3} more
-                        </Badge>
-                      )}
-                    </div>
-                  </div>
-                )}
-                {profile.certifications && profile.certifications.length > 0 && (
-                  <div>
-                    <span className="font-medium">Certifications:</span>
-                    <div className="flex flex-wrap gap-1 mt-1">
-                      {profile.certifications.slice(0, 2).map((cert, index) => (
-                        <Badge key={index} variant="outline" className="text-xs">
-                          {cert}
-                        </Badge>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {profile.bio && (
-                  <div>
-                    <span className="font-medium">Bio:</span>
-                    <p className="text-muted-foreground mt-1 line-clamp-2">
-                      {profile.bio}
-                    </p>
-                  </div>
-                )}
-              </div>
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className={`p-4 rounded-lg border ${status.bgColor} ${status.borderColor}`}>
+          <div className="flex items-start">
+            <StatusIcon className={`h-5 w-5 mt-0.5 mr-3 ${status.color}`} />
+            <div className="flex-1">
+              <h3 className={`text-sm font-medium ${status.color}`}>
+                Profile Completion Required
+              </h3>
+              <p className="mt-1 text-sm text-gray-600">
+                {status.message}
+              </p>
             </div>
           </div>
-        </CardContent>
-      </Card>
+        </div>
 
-      {/* Action Buttons */}
-      <div className="flex justify-center gap-4">
-        <Button
-          onClick={handleComplete}
-          disabled={completionPercentage < 80}
-          className="min-w-[150px]"
-        >
-          {completionPercentage >= 80 ? (
-            <>
-              Continue
-              <ArrowRight className="h-4 w-4 ml-2" />
-            </>
-          ) : (
-            'Complete Profile'
-          )}
-        </Button>
-        
-        {showSkip && (
-          <Button
-            variant="outline"
-            onClick={handleSkip}
-            className="min-w-[150px]"
-          >
-            Skip for Now
-          </Button>
+        <div className="mt-6">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-sm font-medium text-gray-700">Completion Progress</span>
+            <span className="text-sm text-gray-500">{completionPercentage}% / {completionThreshold}%</span>
+          </div>
+          <div className="w-full bg-gray-200 rounded-full h-2">
+            <div 
+              className={`h-2 rounded-full transition-all duration-300 ${
+                completionPercentage >= completionThreshold ? 'bg-success-500' : 
+                completionPercentage >= completionThreshold * 0.75 ? 'bg-warning-500' : 'bg-error-500'
+              }`}
+              style={{ width: `${Math.min(completionPercentage, 100)}%` }}
+            ></div>
+          </div>
+          <div className="mt-1 text-xs text-gray-500">
+            {completionPercentage >= completionThreshold 
+              ? 'Profile complete!' 
+              : `${completionThreshold - completionPercentage}% more needed`
+            }
+          </div>
+        </div>
+
+        {missingFields.length > 0 && (
+          <div className="mt-6">
+            <h4 className="text-sm font-medium text-gray-700 mb-3">Missing Information</h4>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+              {missingFields.map((field, index) => (
+                <div key={index} className="flex items-center text-sm text-gray-600">
+                  <AlertCircle className="h-4 w-4 mr-2 text-warning-500" />
+                  {field}
+                </div>
+              ))}
+            </div>
+          </div>
         )}
-      </div>
 
-      {/* Completion Requirements */}
-      {completionPercentage < 80 && (
-        <Card className="bg-muted/50">
-          <CardHeader>
-            <CardTitle className="text-lg">What's Required</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-              <div>
-                <h4 className="font-medium mb-2">Required Fields (80% needed):</h4>
-                <ul className="space-y-1 text-muted-foreground">
-                  <li>• First and Last Name</li>
-                  <li>• Email Address</li>
-                  <li>• Phone Number</li>
-                  <li>• Position/Job Title</li>
-                  <li>• Department</li>
-                  <li>• Emergency Contact</li>
-                </ul>
-              </div>
-              <div>
-                <h4 className="font-medium mb-2">Optional Fields:</h4>
-                <ul className="space-y-1 text-muted-foreground">
-                  <li>• Bio/About</li>
-                  <li>• Skills & Certifications</li>
-                  <li>• Education History</li>
-                  <li>• Work Experience</li>
-                  <li>• Profile Picture</li>
-                </ul>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-    </div>
+        <div className="mt-6 flex flex-col sm:flex-row gap-3">
+          <Button
+            onClick={handleComplete}
+            leftIcon={<ArrowRight className="h-4 w-4" />}
+            className="flex-1"
+          >
+            Complete Profile
+          </Button>
+          {showSkip && (
+            <Button
+              variant="outline"
+              onClick={handleSkip}
+              leftIcon={<SkipForward className="h-4 w-4" />}
+              className="flex-1"
+            >
+              Skip for Now
+            </Button>
+          )}
+        </div>
+
+        <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+          <h4 className="text-sm font-medium text-blue-800 mb-2">Why Complete Your Profile?</h4>
+          <ul className="text-sm text-blue-700 space-y-1">
+            {roleBenefits.map((benefit, index) => (
+              <li key={index}>{benefit}</li>
+            ))}
+          </ul>
+        </div>
+      </CardContent>
+    </Card>
   );
 } 

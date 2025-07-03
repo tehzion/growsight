@@ -29,7 +29,7 @@ const WelcomeMessage: React.FC<WelcomeMessageProps> = ({ onCompleteProfile, onSe
       }
     ];
 
-    if (isOrgAdmin) {
+    if (isOrgAdmin && onSetupBranding) {
       steps.push({
         icon: <Building2 className="h-5 w-5" />,
         title: 'Setup Organization Branding',
@@ -80,40 +80,46 @@ const WelcomeMessage: React.FC<WelcomeMessageProps> = ({ onCompleteProfile, onSe
   const steps = getWelcomeSteps();
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
+    <div className="w-full max-w-6xl mx-auto space-y-8 px-4 sm:px-6 lg:px-8">
       {/* Welcome Header */}
-      <div className="text-center space-y-4">
-        <div className="mx-auto w-16 h-16 bg-primary-100 rounded-full flex items-center justify-center">
-          <CheckCircle className="h-8 w-8 text-primary-600" />
+      <div className="text-center space-y-6">
+        <div className="mx-auto w-20 h-20 bg-primary-100 rounded-full flex items-center justify-center">
+          <CheckCircle className="h-10 w-10 text-primary-600" />
         </div>
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">{welcomeInfo.title}</h1>
-          <p className="text-lg text-primary-600 font-medium mt-1">{welcomeInfo.subtitle}</p>
-          <p className="text-gray-600 mt-2 max-w-2xl mx-auto">{welcomeInfo.description}</p>
+        <div className="space-y-4">
+          <h1 className="text-4xl md:text-5xl font-bold text-gray-900 leading-tight">
+            {welcomeInfo.title}
+          </h1>
+          <p className="text-xl md:text-2xl text-primary-600 font-medium">
+            {welcomeInfo.subtitle}
+          </p>
+          <p className="text-lg text-gray-600 max-w-3xl mx-auto leading-relaxed">
+            {welcomeInfo.description}
+          </p>
         </div>
       </div>
 
       {/* User Info Card */}
-      <Card className="bg-gradient-to-r from-primary-50 to-blue-50 border-primary-200">
-        <CardContent className="p-6">
-          <div className="flex items-center space-x-4">
-            <div className="w-12 h-12 bg-primary-600 rounded-full flex items-center justify-center">
-              <User className="h-6 w-6 text-white" />
+      <Card className="bg-gradient-to-r from-primary-50 to-blue-50 border-primary-200 shadow-lg">
+        <CardContent className="p-8">
+          <div className="flex flex-col sm:flex-row items-center sm:items-start space-y-4 sm:space-y-0 sm:space-x-6">
+            <div className="w-16 h-16 bg-primary-600 rounded-full flex items-center justify-center flex-shrink-0">
+              <User className="h-8 w-8 text-white" />
             </div>
-            <div className="flex-1">
-              <h3 className="text-lg font-semibold text-gray-900">
+            <div className="flex-1 text-center sm:text-left">
+              <h3 className="text-2xl font-semibold text-gray-900 mb-2">
                 {user?.firstName} {user?.lastName}
               </h3>
-              <p className="text-gray-600">{user?.email}</p>
-              <div className="flex items-center space-x-4 mt-1 text-sm text-gray-500">
-                <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-primary-100 text-primary-800">
+              <p className="text-lg text-gray-600 mb-3">{user?.email}</p>
+              <div className="flex flex-col sm:flex-row items-center sm:items-start space-y-2 sm:space-y-0 sm:space-x-4 text-sm text-gray-500">
+                <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-primary-100 text-primary-800">
                   {isSuperAdmin ? 'Super Administrator' : 
                    isOrgAdmin ? 'Organization Administrator' : 
                    'Employee'}
                 </span>
                 {currentOrganization && (
                   <span className="flex items-center">
-                    <Building2 className="h-4 w-4 mr-1" />
+                    <Building2 className="h-4 w-4 mr-2" />
                     {currentOrganization.name}
                   </span>
                 )}
@@ -124,26 +130,29 @@ const WelcomeMessage: React.FC<WelcomeMessageProps> = ({ onCompleteProfile, onSe
       </Card>
 
       {/* Setup Steps */}
-      <div className="space-y-4">
-        <h2 className="text-xl font-semibold text-gray-900">Let's Get Started</h2>
-        <div className="grid gap-4">
+      <div className="space-y-6">
+        <h2 className="text-2xl md:text-3xl font-semibold text-gray-900 text-center">
+          Let's Get Started
+        </h2>
+        <div className="grid gap-6 max-w-4xl mx-auto">
           {steps.map((step, index) => (
-            <Card key={index} className="border-2 border-dashed border-gray-200 hover:border-primary-300 transition-colors">
-              <CardContent className="p-6">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-4">
-                    <div className="w-10 h-10 bg-primary-100 rounded-full flex items-center justify-center">
+            <Card key={index} className="border-2 border-dashed border-gray-200 hover:border-primary-300 transition-all duration-300 hover:shadow-lg">
+              <CardContent className="p-8">
+                <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between space-y-4 lg:space-y-0 lg:space-x-6">
+                  <div className="flex items-start space-x-4 flex-1">
+                    <div className="w-12 h-12 bg-primary-100 rounded-full flex items-center justify-center flex-shrink-0">
                       {step.icon}
                     </div>
-                    <div>
-                      <h3 className="font-semibold text-gray-900">{step.title}</h3>
-                      <p className="text-gray-600 text-sm">{step.description}</p>
+                    <div className="flex-1 min-w-0">
+                      <h3 className="text-xl font-semibold text-gray-900 mb-2">{step.title}</h3>
+                      <p className="text-gray-600 leading-relaxed">{step.description}</p>
                     </div>
                   </div>
                   <Button
                     onClick={step.onClick}
                     leftIcon={<ArrowRight className="h-4 w-4" />}
-                    className="whitespace-nowrap"
+                    className="whitespace-nowrap flex-shrink-0 w-full lg:w-auto"
+                    size="lg"
                   >
                     {step.action}
                   </Button>
@@ -155,42 +164,42 @@ const WelcomeMessage: React.FC<WelcomeMessageProps> = ({ onCompleteProfile, onSe
       </div>
 
       {/* Quick Tips */}
-      <Card className="bg-blue-50 border-blue-200">
-        <CardContent className="p-6">
-          <h3 className="font-semibold text-blue-900 mb-3 flex items-center">
-            <FileText className="h-5 w-5 mr-2" />
+      <Card className="bg-blue-50 border-blue-200 shadow-lg">
+        <CardContent className="p-8">
+          <h3 className="font-semibold text-blue-900 mb-6 flex items-center text-xl">
+            <FileText className="h-6 w-6 mr-3" />
             Quick Tips
           </h3>
-          <div className="grid md:grid-cols-2 gap-4 text-sm text-blue-800">
-            <div>
-              <h4 className="font-medium mb-1">Complete Profile First</h4>
-              <p>Adding your job title, department, and bio helps others provide more relevant feedback.</p>
+          <div className="grid md:grid-cols-2 gap-6 text-sm text-blue-800">
+            <div className="space-y-2">
+              <h4 className="font-medium text-lg">Complete Profile First</h4>
+              <p className="leading-relaxed">Adding your job title, department, and bio helps others provide more relevant feedback.</p>
             </div>
-            <div>
-              <h4 className="font-medium mb-1">Check for Assessments</h4>
-              <p>Look for any pending assessments in your dashboard after completing your profile.</p>
+            <div className="space-y-2">
+              <h4 className="font-medium text-lg">Check for Assessments</h4>
+              <p className="leading-relaxed">Look for any pending assessments in your dashboard after completing your profile.</p>
             </div>
             {isOrgAdmin && (
               <>
-                <div>
-                  <h4 className="font-medium mb-1">Setup Branding</h4>
-                  <p>Configure your organization's logo and colors for professional PDF exports.</p>
+                <div className="space-y-2">
+                  <h4 className="font-medium text-lg">Setup Branding</h4>
+                  <p className="leading-relaxed">Configure your organization's logo and colors for professional PDF exports.</p>
                 </div>
-                <div>
-                  <h4 className="font-medium mb-1">Invite Team Members</h4>
-                  <p>Add users to your organization to start creating assessment assignments.</p>
+                <div className="space-y-2">
+                  <h4 className="font-medium text-lg">Invite Team Members</h4>
+                  <p className="leading-relaxed">Add users to your organization to start creating assessment assignments.</p>
                 </div>
               </>
             )}
             {isSuperAdmin && (
               <>
-                <div>
-                  <h4 className="font-medium mb-1">System Configuration</h4>
-                  <p>Review and configure system settings, security policies, and default options.</p>
+                <div className="space-y-2">
+                  <h4 className="font-medium text-lg">System Configuration</h4>
+                  <p className="leading-relaxed">Review and configure system settings, security policies, and default options.</p>
                 </div>
-                <div>
-                  <h4 className="font-medium mb-1">Organization Management</h4>
-                  <p>Create and manage organizations, assign administrators, and set permissions.</p>
+                <div className="space-y-2">
+                  <h4 className="font-medium text-lg">Organization Management</h4>
+                  <p className="leading-relaxed">Create and manage organizations, assign administrators, and set permissions.</p>
                 </div>
               </>
             )}
@@ -199,8 +208,8 @@ const WelcomeMessage: React.FC<WelcomeMessageProps> = ({ onCompleteProfile, onSe
       </Card>
 
       {/* Skip Option */}
-      <div className="text-center">
-        <p className="text-gray-500 text-sm">
+      <div className="text-center py-6">
+        <p className="text-gray-500 text-base">
           You can complete these steps later from your profile or settings pages.
         </p>
       </div>

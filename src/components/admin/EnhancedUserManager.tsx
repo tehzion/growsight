@@ -31,6 +31,7 @@ import { useUserStore } from '../../stores/userStore';
 import { useDepartmentStore } from '../../stores/departmentStore';
 import { useAuthStore } from '../../stores/authStore';
 import { useNotificationStore } from '../../stores/notificationStore';
+import ErrorHandler, { ErrorContext } from '../../lib/errorHandler';
 
 interface EnhancedUserManagerProps {
   organizationId: string;
@@ -190,10 +191,19 @@ const EnhancedUserManager: React.FC<EnhancedUserManagerProps> = ({
   const handleCreateUser = async () => {
     setValidationError(null);
     
-    if (!formData.firstName.trim() || !formData.lastName.trim() || !formData.email.trim()) {
-      setValidationError('First name, last name, and email are required');
+    const validation = ErrorHandler.validateFormData(formData, 'createUser');
+    if (!validation.isValid) {
+      const firstError = Object.values(validation.errors)[0];
+      setValidationError(firstError);
       return;
     }
+
+    const context: ErrorContext = {
+      operation: 'createUser',
+      userRole: currentUser?.role,
+      organizationId,
+      additionalData: { userEmail: formData.email }
+    };
 
     try {
       await createUser({
@@ -217,15 +227,15 @@ const EnhancedUserManager: React.FC<EnhancedUserManagerProps> = ({
       });
       setShowAddForm(false);
       
-      addNotification({
-        title: 'User Created',
-        message: `${formData.firstName} ${formData.lastName} has been created successfully.`,
-        type: 'success'
-      });
+      ErrorHandler.handleSuccess(
+        `${formData.firstName} ${formData.lastName} has been created successfully.`,
+        context
+      );
 
       onUserUpdate?.();
     } catch (err) {
-      setValidationError((err as Error).message || 'Failed to create user');
+      const errorMessage = ErrorHandler.handleError(err, context);
+      setValidationError(errorMessage);
     }
   };
 
@@ -235,10 +245,20 @@ const EnhancedUserManager: React.FC<EnhancedUserManagerProps> = ({
     
     setValidationError(null);
     
-    if (!formData.firstName.trim() || !formData.lastName.trim() || !formData.email.trim()) {
-      setValidationError('First name, last name, and email are required');
+    const validation = ErrorHandler.validateFormData(formData, 'updateUser');
+    if (!validation.isValid) {
+      const firstError = Object.values(validation.errors)[0];
+      setValidationError(firstError);
       return;
     }
+
+    const context: ErrorContext = {
+      operation: 'updateUser',
+      userRole: currentUser?.role,
+      organizationId,
+      userId: editingUser.id,
+      additionalData: { userEmail: formData.email }
+    };
 
     try {
       await updateUser(editingUser.id, {
@@ -261,37 +281,40 @@ const EnhancedUserManager: React.FC<EnhancedUserManagerProps> = ({
         location: '',
       });
       
-      addNotification({
-        title: 'User Updated',
-        message: `${formData.firstName} ${formData.lastName}'s information has been updated.`,
-        type: 'success'
-      });
+      ErrorHandler.handleSuccess(
+        `${formData.firstName} ${formData.lastName}'s information has been updated.`,
+        context
+      );
 
       onUserUpdate?.();
     } catch (err) {
-      setValidationError((err as Error).message || 'Failed to update user');
+      const errorMessage = ErrorHandler.handleError(err, context);
+      setValidationError(errorMessage);
     }
   };
 
   // Delete user
   const handleDeleteUser = async (id: string, name: string) => {
     if (window.confirm(`Are you sure you want to delete ${name}? This action cannot be undone.`)) {
+      const context: ErrorContext = {
+        operation: 'deleteUser',
+        userRole: currentUser?.role,
+        organizationId,
+        userId: id,
+        additionalData: { userName: name }
+      };
+
       try {
         await deleteUser(id);
         
-        addNotification({
-          title: 'User Deleted',
-          message: `${name} has been deleted successfully.`,
-          type: 'info'
-        });
+        ErrorHandler.handleSuccess(
+          `${name} has been deleted successfully.`,
+          context
+        );
 
         onUserUpdate?.();
       } catch (err) {
-        addNotification({
-          title: 'Error',
-          message: `Failed to delete user: ${(err as Error).message || 'Unknown error'}`,
-          type: 'error'
-        });
+        ErrorHandler.handleError(err, context);
       }
     }
   };
@@ -306,6 +329,16 @@ const EnhancedUserManager: React.FC<EnhancedUserManagerProps> = ({
       .join(', ');
 
     if (window.confirm(`Are you sure you want to delete ${bulkOperation.selectedUsers.length} users: ${userNames}? This action cannot be undone.`)) {
+      const context: ErrorContext = {
+        operation: 'bulkDeleteUsers',
+        userRole: currentUser?.role,
+        organizationId,
+        additionalData: { 
+          userCount: bulkOperation.selectedUsers.length,
+          userNames 
+        }
+      };
+
       try {
         await Promise.all(
           bulkOperation.selectedUsers.map(id => deleteUser(id))
@@ -314,19 +347,14 @@ const EnhancedUserManager: React.FC<EnhancedUserManagerProps> = ({
         setSelectedUsers([]);
         setBulkOperation(null);
         
-        addNotification({
-          title: 'Bulk Delete Complete',
-          message: `${bulkOperation.selectedUsers.length} users have been deleted successfully.`,
-          type: 'info'
-        });
+        ErrorHandler.handleSuccess(
+          `${bulkOperation.selectedUsers.length} users have been deleted successfully.`,
+          context
+        );
 
         onUserUpdate?.();
       } catch (err) {
-        addNotification({
-          title: 'Error',
-          message: `Failed to delete some users: ${(err as Error).message || 'Unknown error'}`,
-          type: 'error'
-        });
+        ErrorHandler.handleError(err, context);
       }
     }
   };
@@ -334,35 +362,50 @@ const EnhancedUserManager: React.FC<EnhancedUserManagerProps> = ({
   const handleBulkRoleUpdate = async () => {
     if (!bulkOperation || bulkOperation.type !== 'role_update') return;
     
+    const context: ErrorContext = {
+      operation: 'bulkRoleUpdate',
+      userRole: currentUser?.role,
+      organizationId,
+      additionalData: { 
+        userCount: bulkOperation.selectedUsers.length,
+        newRole: bulkOperation.data.role 
+      }
+    };
+
     try {
       await Promise.all(
         bulkOperation.selectedUsers.map(id => 
-          updateUser(id, { role: bulkOperation.data.role })
+          updateUser(id, { role: bulkOperation.data.role! })
         )
       );
       
       setSelectedUsers([]);
       setBulkOperation(null);
       
-      addNotification({
-        title: 'Bulk Role Update Complete',
-        message: `${bulkOperation.selectedUsers.length} users have been updated successfully.`,
-        type: 'success'
-      });
+      ErrorHandler.handleSuccess(
+        `${bulkOperation.selectedUsers.length} users have been updated successfully.`,
+        context
+      );
 
       onUserUpdate?.();
     } catch (err) {
-      addNotification({
-        title: 'Error',
-        message: `Failed to update some users: ${(err as Error).message || 'Unknown error'}`,
-        type: 'error'
-      });
+      ErrorHandler.handleError(err, context);
     }
   };
 
   const handleBulkDepartmentUpdate = async () => {
     if (!bulkOperation || bulkOperation.type !== 'department_update') return;
     
+    const context: ErrorContext = {
+      operation: 'bulkDepartmentUpdate',
+      userRole: currentUser?.role,
+      organizationId,
+      additionalData: { 
+        userCount: bulkOperation.selectedUsers.length,
+        departmentId: bulkOperation.data.departmentId 
+      }
+    };
+
     try {
       await Promise.all(
         bulkOperation.selectedUsers.map(id => 
@@ -373,19 +416,14 @@ const EnhancedUserManager: React.FC<EnhancedUserManagerProps> = ({
       setSelectedUsers([]);
       setBulkOperation(null);
       
-      addNotification({
-        title: 'Bulk Department Update Complete',
-        message: `${bulkOperation.selectedUsers.length} users have been moved successfully.`,
-        type: 'success'
-      });
+      ErrorHandler.handleSuccess(
+        `${bulkOperation.selectedUsers.length} users have been moved successfully.`,
+        context
+      );
 
       onUserUpdate?.();
     } catch (err) {
-      addNotification({
-        title: 'Error',
-        message: `Failed to update some users: ${(err as Error).message || 'Unknown error'}`,
-        type: 'error'
-      });
+      ErrorHandler.handleError(err, context);
     }
   };
 

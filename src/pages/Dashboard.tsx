@@ -186,7 +186,7 @@ const Dashboard = () => {
       </div>
     );
   }
-
+  
   if (isLoading && !analytics) {
     return (
       <div className="flex justify-center items-center h-64">
@@ -818,7 +818,7 @@ const Dashboard = () => {
             </CardContent>
           </Card>
         )}
-      </div>
+        </div>
     </div>
   );
 };

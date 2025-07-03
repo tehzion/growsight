@@ -108,13 +108,13 @@ export class EmailService {
     const footer = templateData?.footer || branding.email_footer || '© 2024 Your Organization';
 
     return `
-      <!DOCTYPE html>
+          <!DOCTYPE html>
       <html lang="en">
-      <head>
-        <meta charset="utf-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>${header}</title>
-        <style>
+            <style>
           body {
             font-family: Arial, sans-serif;
             line-height: 1.6;
@@ -186,26 +186,26 @@ export class EmailService {
               padding: 20px 15px;
             }
           }
-        </style>
-      </head>
-      <body>
+            </style>
+          </head>
+          <body>
         <div class="email-container">
           <div class="email-header">
             ${branding.logo_url ? `<img src="${branding.logo_url}" alt="Logo" class="logo">` : ''}
             <h1>${header}</h1>
-          </div>
+              </div>
           
           <div class="email-content">
             ${content}
-          </div>
-          
+                </div>
+                
           <div class="email-footer">
             <p>${footer}</p>
             <p>Sent by ${branding.sender_name}</p>
-          </div>
-        </div>
-      </body>
-      </html>
+              </div>
+            </div>
+          </body>
+          </html>
     `;
   }
 
@@ -313,7 +313,7 @@ export class EmailService {
               <li>Take your first assessment</li>
               <li>Connect with your team</li>
             </ul>
-          </div>
+                </div>
           <p>If you have any questions, feel free to reach out to our support team.</p>
           <a href="{{login_url}}" class="button">Get Started</a>
         `,
@@ -333,7 +333,7 @@ export class EmailService {
             <p><strong>Assessment:</strong> {{assessment_name}}</p>
             <p><strong>Duration:</strong> {{duration}} minutes</p>
             <p><strong>Due Date:</strong> {{due_date}}</p>
-          </div>
+              </div>
           <p>Please click the button below to start your assessment:</p>
           <a href="{{assessment_url}}" class="button">Start Assessment</a>
         `,
@@ -353,7 +353,7 @@ export class EmailService {
             <p><strong>Assessment:</strong> {{assessment_name}}</p>
             <p><strong>Completion Date:</strong> {{completion_date}}</p>
             <p><strong>Score:</strong> {{score}}</p>
-          </div>
+              </div>
           <p>Click the button below to view your detailed results:</p>
           <a href="{{results_url}}" class="button">View Results</a>
         `,
@@ -481,9 +481,9 @@ export class EmailService {
             <p><strong>Assessment:</strong> ${data.assessmentTitle}</p>
             <p><strong>Completed:</strong> ${new Date().toLocaleString()}</p>
             <p><strong>Organization:</strong> ${data.organizationName}</p>
-          </div>
+              </div>
           <p>Once all reviewers have completed their assessments, the results will be processed and made available to view.</p>
-          <a href="${data.resultsUrl}" class="button">View Your Results</a>
+                  <a href="${data.resultsUrl}" class="button">View Your Results</a>
         `,
         recipient_email: data.to,
         recipient_name: data.recipientName,
@@ -499,9 +499,9 @@ export class EmailService {
           <h2>🔐 Password Reset</h2>
           <p>Hello ${data.recipientName},</p>
           <p>You requested to reset your password for your ${config.app.name} account. Click the button below to set a new password:</p>
-          <a href="${data.resetUrl}" class="button">Reset Password</a>
+                  <a href="${data.resetUrl}" class="button">Reset Password</a>
           <p>If the button doesn't work, copy and paste this link into your browser:</p>
-          <a href="${data.resetUrl}" style="color: #2563EB; word-break: break-all;">${data.resetUrl}</a>
+                  <a href="${data.resetUrl}" style="color: #2563EB; word-break: break-all;">${data.resetUrl}</a>
         `,
         recipient_email: data.to,
         recipient_name: data.recipientName,
@@ -521,9 +521,9 @@ export class EmailService {
             <p><strong>Email:</strong> ${data.email}</p>
             <p><strong>Role:</strong> ${data.role}</p>
             <p><strong>Organization:</strong> ${data.organizationName}</p>
-          </div>
+              </div>
           <p>You can now log in and start using the platform to participate in feedback assessments, view results, and contribute to meaningful professional development.</p>
-          <a href="${data.loginUrl}" class="button">Login to Your Account</a>
+                  <a href="${data.loginUrl}" class="button">Login to Your Account</a>
         `,
         recipient_email: data.to,
         recipient_name: data.recipientName,

@@ -5,6 +5,86 @@ import { handleSupabaseError } from '../lib/supabaseError';
 import { isDemoMode } from '../config/environment';
 import SecureLogger from '../lib/secureLogger';
 import AccessControl from '../lib/accessControl';
+import { useAuthStore } from './authStore';
+
+// Helper functions for role-specific profile completion
+interface RequiredField {
+  key: string;
+  weight: number;
+}
+
+const getRequiredFieldsForRole = (userRole: string): RequiredField[] => {
+  switch (userRole) {
+    case 'root':
+    case 'super_admin':
+      return [
+        { key: 'first_name', weight: 10 },
+        { key: 'last_name', weight: 10 },
+        { key: 'email', weight: 10 },
+        { key: 'phone', weight: 8 }
+      ];
+    
+    case 'org_admin':
+      return [
+        { key: 'first_name', weight: 10 },
+        { key: 'last_name', weight: 10 },
+        { key: 'email', weight: 10 },
+        { key: 'phone', weight: 8 },
+        { key: 'position', weight: 8 },
+        { key: 'department', weight: 8 }
+      ];
+    
+    case 'subscriber':
+      return [
+        { key: 'first_name', weight: 10 },
+        { key: 'last_name', weight: 10 },
+        { key: 'email', weight: 10 },
+        { key: 'phone', weight: 8 },
+        { key: 'position', weight: 8 },
+        { key: 'department', weight: 8 },
+        { key: 'bio', weight: 5 }
+      ];
+    
+    case 'employee':
+    case 'reviewer':
+    default:
+      return [
+        { key: 'first_name', weight: 10 },
+        { key: 'last_name', weight: 10 },
+        { key: 'email', weight: 10 },
+        { key: 'phone', weight: 8 },
+        { key: 'position', weight: 8 },
+        { key: 'department', weight: 8 },
+        { key: 'date_of_birth', weight: 6 },
+        { key: 'hire_date', weight: 6 },
+        { key: 'bio', weight: 5 },
+        { key: 'emergency_contact', weight: 7 },
+        { key: 'skills', weight: 4 },
+        { key: 'certifications', weight: 4 },
+        { key: 'education', weight: 3 },
+        { key: 'work_experience', weight: 3 }
+      ];
+  }
+};
+
+const isFieldComplete = (fieldKey: string, value: any): boolean => {
+  if (value === null || value === undefined || value === '') {
+    return false;
+  }
+
+  switch (fieldKey) {
+    case 'emergency_contact':
+      return typeof value === 'object' && value.name && value.relationship && value.phone;
+    case 'skills':
+    case 'certifications':
+      return Array.isArray(value) && value.length > 0;
+    case 'education':
+    case 'work_experience':
+      return Array.isArray(value) && value.length > 0;
+    default:
+      return typeof value === 'string' && value.trim().length > 0;
+  }
+};
 
 export interface Profile {
   id: string;
@@ -123,6 +203,7 @@ interface ProfileState {
   
   // Utility functions
   markFirstLoginComplete: () => Promise<void>;
+  setFirstLoginComplete: () => void;
   calculateCompletionPercentage: () => number;
   resetProfile: () => void;
   clearError: () => void;
@@ -372,7 +453,7 @@ export const useProfileStore = create<ProfileState>()(
 
             if (error) throw handleSupabaseError(error);
 
-            const tags: ProfileTag[] = data.map(tag => ({
+            const tags: ProfileTag[] = data.map((tag: any) => ({
               id: tag.id,
               userId: tag.user_id,
               tagName: tag.tag_name,
@@ -530,7 +611,7 @@ export const useProfileStore = create<ProfileState>()(
 
             if (error) throw handleSupabaseError(error);
 
-            const behaviors: UserBehavior[] = data.map(behavior => ({
+            const behaviors: UserBehavior[] = data.map((behavior: any) => ({
               id: behavior.id,
               userId: behavior.user_id,
               behaviorType: behavior.behavior_type,
@@ -616,7 +697,7 @@ export const useProfileStore = create<ProfileState>()(
 
             if (error) throw handleSupabaseError(error);
 
-            const assignments: StaffAssignment[] = data.map(assignment => ({
+            const assignments: StaffAssignment[] = data.map((assignment: any) => ({
               id: assignment.id,
               staffId: assignment.staff_id,
               supervisorId: assignment.supervisor_id,
@@ -737,61 +818,33 @@ export const useProfileStore = create<ProfileState>()(
         }
       },
 
+      setFirstLoginComplete: () => {
+        set({ isFirstLogin: false });
+      },
+
       calculateCompletionPercentage: () => {
         const profile = get().profile;
         if (!profile) return 0;
 
-        let completedFields = 0;
-        let totalFields = REQUIRED_FIELDS.length + OPTIONAL_FIELDS.length;
+        // Get user role from auth store
+        const { user } = useAuthStore.getState();
+        if (!user) return 0;
 
-        // Check required fields
-        REQUIRED_FIELDS.forEach(field => {
-          const value = profile[field as keyof Profile];
-          if (value !== null && value !== undefined && value !== '') {
-            if (typeof value === 'object') {
-              // For complex objects like emergency_contact
-              if (field === 'emergency_contact') {
-                const contact = value as any;
-                if (contact.name && contact.relationship && contact.phone) {
-                  completedFields++;
-                }
-              }
-            } else if (Array.isArray(value)) {
-              // For arrays like skills, certifications
-              if (value.length > 0) {
-                completedFields++;
-              }
-            } else {
-              completedFields++;
-            }
+        // Get role-specific required fields
+        const requiredFields = getRequiredFieldsForRole(user.role);
+        let completedWeight = 0;
+        let totalWeight = 0;
+
+        requiredFields.forEach(field => {
+          totalWeight += field.weight;
+          const value = profile[field.key as keyof Profile];
+          
+          if (isFieldComplete(field.key, value)) {
+            completedWeight += field.weight;
           }
         });
 
-        // Check optional fields (weighted less)
-        OPTIONAL_FIELDS.forEach(field => {
-          const value = profile[field as keyof Profile];
-          if (value !== null && value !== undefined && value !== '') {
-            if (Array.isArray(value)) {
-              if (value.length > 0) {
-                completedFields += 0.5; // Half weight for optional fields
-              }
-            } else if (typeof value === 'object') {
-              // For complex objects like preferences
-              if (Object.keys(value).length > 0) {
-                completedFields += 0.5;
-              }
-            } else {
-              completedFields += 0.5;
-            }
-          }
-        });
-
-        // Calculate percentage (required fields are worth more)
-        const requiredWeight = REQUIRED_FIELDS.length * 1.5; // 1.5x weight for required fields
-        const optionalWeight = OPTIONAL_FIELDS.length * 0.5; // 0.5x weight for optional fields
-        const totalWeight = requiredWeight + optionalWeight;
-
-        const percentage = Math.round((completedFields / totalWeight) * 100);
+        const percentage = Math.round((completedWeight / totalWeight) * 100);
         return Math.min(percentage, 100); // Cap at 100%
       },
 
