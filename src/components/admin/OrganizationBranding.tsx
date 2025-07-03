@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Palette, Save, CheckCircle, AlertTriangle, Image, Upload, FileText, Eye, EyeOff, RefreshCw, Building2, Globe, Mail, Settings } from 'lucide-react';
+import { Palette, Save, CheckCircle, AlertTriangle, Image, Upload, FileText, Eye, EyeOff, RefreshCw, Building2, Globe, Mail, Settings, Info, RotateCcw } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '../ui/Card';
 import Button from '../ui/Button';
 import FormInput from '../ui/FormInput';
@@ -14,15 +14,15 @@ interface OrganizationBrandingProps {
 
 const OrganizationBranding: React.FC<OrganizationBrandingProps> = ({ organizationId }) => {
   const { user } = useAuthStore();
-  const { currentOrganization, fetchOrganization } = useOrganizationStore();
+  const { currentOrganization } = useOrganizationStore();
   const { pdfSettings, updatePDFSettings } = usePDFExportStore();
   const { addNotification } = useNotificationStore();
   
   const [activeTab, setActiveTab] = useState<'web' | 'pdf' | 'email'>('web');
-  const [isLoading, setIsLoading] = useState(false);
-  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [previewMode, setPreviewMode] = useState<'desktop' | 'mobile' | 'tablet'>('desktop');
   const [showColorPicker, setShowColorPicker] = useState<string | null>(null);
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const [saveMessage, setSaveMessage] = useState('');
   
   const [webBranding, setWebBranding] = useState({
     logoUrl: '',
@@ -51,10 +51,9 @@ const OrganizationBranding: React.FC<OrganizationBrandingProps> = ({ organizatio
   const targetOrgId = organizationId || user?.organizationId;
 
   useEffect(() => {
-    if (targetOrgId) {
-      fetchOrganization(targetOrgId);
-    }
-  }, [targetOrgId, fetchOrganization]);
+    // Organization data is already available in the store
+    // No need to fetch individual organization
+  }, [targetOrgId]);
 
   useEffect(() => {
     if (currentOrganization) {
@@ -73,72 +72,24 @@ const OrganizationBranding: React.FC<OrganizationBrandingProps> = ({ organizatio
     }
   }, [currentOrganization]);
 
-  // Check if user has permission to manage branding
-  const canManageBranding = () => {
+  // Check if user has permission to view branding
+  const canViewBranding = () => {
     if (isSuperAdmin) return true;
     if (isOrgAdmin && user?.organizationId === targetOrgId) return true;
     return false;
   };
 
-  if (!canManageBranding()) {
+  if (!canViewBranding()) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
         <div className="text-center">
           <AlertTriangle className="h-12 w-12 text-warning-500 mx-auto mb-4" />
           <h2 className="text-xl font-semibold text-gray-900 mb-2">Access Denied</h2>
-          <p className="text-gray-600">You don't have permission to manage branding settings for this organization.</p>
+          <p className="text-gray-600">You don't have permission to view branding settings for this organization.</p>
         </div>
       </div>
     );
   }
-
-  const handleSave = async () => {
-    setIsLoading(true);
-    setSaveStatus('saving');
-    
-    try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      
-      if (activeTab === 'pdf') {
-        // Update PDF settings
-        updatePDFSettings({
-          logoUrl: webBranding.logoUrl,
-          companyName: webBranding.companyName,
-          primaryColor: webBranding.primaryColor,
-          secondaryColor: webBranding.secondaryColor,
-          footerText: webBranding.emailFooter
-        });
-      }
-      
-      // In a real implementation, save to database
-      console.log('Saving branding settings:', {
-        webBranding,
-        emailBranding,
-        pdfSettings
-      });
-      
-      setSaveStatus('saved');
-      addNotification({
-        title: 'Branding Updated',
-        message: 'Your organization branding has been updated successfully.',
-        type: 'success'
-      });
-      
-      setTimeout(() => setSaveStatus('idle'), 3000);
-    } catch (error) {
-      console.error('Failed to save branding settings:', error);
-      setSaveStatus('error');
-      addNotification({
-        title: 'Update Failed',
-        message: 'Failed to update branding settings. Please try again.',
-        type: 'error'
-      });
-      setTimeout(() => setSaveStatus('idle'), 3000);
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
   const handleWebBrandingChange = (field: keyof typeof webBranding, value: string | boolean) => {
     setWebBranding(prev => ({ ...prev, [field]: value }));
@@ -185,6 +136,114 @@ const OrganizationBranding: React.FC<OrganizationBrandingProps> = ({ organizatio
     }
   };
 
+  const saveWebBranding = async () => {
+    setSaveStatus('saving');
+    setSaveMessage('Saving web branding settings...');
+    
+    try {
+      // Simulate API call
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // In a real implementation, this would save to the database
+      console.log('Saving web branding:', webBranding);
+      
+      setSaveStatus('saved');
+      setSaveMessage('Web branding settings saved successfully!');
+      addNotification({
+        title: 'Success',
+        message: 'Web branding settings saved successfully!',
+        type: 'success'
+      });
+      
+      // Clear success message after 3 seconds
+      setTimeout(() => {
+        setSaveStatus('idle');
+        setSaveMessage('');
+      }, 3000);
+    } catch (error) {
+      console.error('Failed to save web branding:', error);
+      setSaveStatus('error');
+      setSaveMessage('Failed to save web branding settings. Please try again.');
+      addNotification({
+        title: 'Error',
+        message: 'Failed to save web branding settings.',
+        type: 'error'
+      });
+    }
+  };
+
+  const savePDFBranding = async () => {
+    setSaveStatus('saving');
+    setSaveMessage('Saving PDF branding settings...');
+    
+    try {
+      // Simulate API call
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // In a real implementation, this would save to the database
+      console.log('Saving PDF branding:', pdfSettings);
+      
+      setSaveStatus('saved');
+      setSaveMessage('PDF branding settings saved successfully!');
+      addNotification({
+        title: 'Success',
+        message: 'PDF branding settings saved successfully!',
+        type: 'success'
+      });
+      
+      // Clear success message after 3 seconds
+      setTimeout(() => {
+        setSaveStatus('idle');
+        setSaveMessage('');
+      }, 3000);
+    } catch (error) {
+      console.error('Failed to save PDF branding:', error);
+      setSaveStatus('error');
+      setSaveMessage('Failed to save PDF branding settings. Please try again.');
+      addNotification({
+        title: 'Error',
+        message: 'Failed to save PDF branding settings.',
+        type: 'error'
+      });
+    }
+  };
+
+  const saveEmailBranding = async () => {
+    setSaveStatus('saving');
+    setSaveMessage('Saving email branding settings...');
+    
+    try {
+      // Simulate API call
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // In a real implementation, this would save to the database
+      console.log('Saving email branding:', emailBranding);
+      
+      setSaveStatus('saved');
+      setSaveMessage('Email branding settings saved successfully!');
+      addNotification({
+        title: 'Success',
+        message: 'Email branding settings saved successfully!',
+        type: 'success'
+      });
+      
+      // Clear success message after 3 seconds
+      setTimeout(() => {
+        setSaveStatus('idle');
+        setSaveMessage('');
+      }, 3000);
+    } catch (error) {
+      console.error('Failed to save email branding:', error);
+      setSaveStatus('error');
+      setSaveMessage('Failed to save email branding settings. Please try again.');
+      addNotification({
+        title: 'Error',
+        message: 'Failed to save email branding settings.',
+        type: 'error'
+      });
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="border-b border-gray-200 pb-4">
@@ -212,42 +271,6 @@ const OrganizationBranding: React.FC<OrganizationBrandingProps> = ({ organizatio
           </div>
         </div>
       </div>
-
-      {/* Action Buttons */}
-      <div className="flex justify-between items-center">
-        <div className="flex space-x-2">
-          <Button
-            variant="outline"
-            onClick={resetToDefaults}
-            leftIcon={<RefreshCw className="h-4 w-4" />}
-          >
-            Reset to Defaults
-          </Button>
-        </div>
-        
-        <Button
-          onClick={handleSave}
-          isLoading={isLoading}
-          leftIcon={<Save className="h-4 w-4" />}
-        >
-          Save Changes
-        </Button>
-      </div>
-
-      {/* Status Messages */}
-      {saveStatus === 'saved' && (
-        <div className="bg-success-50 border border-success-200 text-success-700 px-4 py-3 rounded flex items-center">
-          <CheckCircle className="h-5 w-5 mr-2" />
-          Branding settings saved successfully!
-        </div>
-      )}
-
-      {saveStatus === 'error' && (
-        <div className="bg-error-50 border border-error-200 text-error-700 px-4 py-3 rounded flex items-center">
-          <AlertTriangle className="h-5 w-5 mr-2" />
-          Failed to save branding settings. Please try again.
-        </div>
-      )}
 
       {/* Tab Navigation */}
       <div className="border-b border-gray-200">
@@ -385,7 +408,7 @@ const OrganizationBranding: React.FC<OrganizationBrandingProps> = ({ organizatio
                   <select
                     value={webBranding.buttonStyle}
                     onChange={(e) => handleWebBrandingChange('buttonStyle', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:border-primary-500 focus:ring-primary-500"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm bg-gray-50 cursor-pointer"
                   >
                     <option value="rounded">Rounded</option>
                     <option value="pill">Pill</option>
@@ -400,7 +423,7 @@ const OrganizationBranding: React.FC<OrganizationBrandingProps> = ({ organizatio
                   <select
                     value={webBranding.fontFamily}
                     onChange={(e) => handleWebBrandingChange('fontFamily', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:border-primary-500 focus:ring-primary-500"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm bg-gray-50 cursor-pointer"
                   >
                     <option value="Inter">Inter</option>
                     <option value="Roboto">Roboto</option>
@@ -416,6 +439,7 @@ const OrganizationBranding: React.FC<OrganizationBrandingProps> = ({ organizatio
                 value={webBranding.emailFooter}
                 onChange={(e) => handleWebBrandingChange('emailFooter', e.target.value)}
                 helperText="Footer text displayed in emails sent from the platform"
+                className="opacity-75"
               />
 
               {/* Preview */}
@@ -488,47 +512,66 @@ const OrganizationBranding: React.FC<OrganizationBrandingProps> = ({ organizatio
                         
                         <div className="space-y-3">
                           <button 
-                            className={`w-full py-2 px-4 text-white font-medium ${
-                              webBranding.buttonStyle === 'rounded' ? 'rounded-md' :
-                              webBranding.buttonStyle === 'pill' ? 'rounded-full' :
-                              'rounded-none'
-                            }`}
+                            className={`
+                              px-4 py-2 text-white font-medium rounded-md
+                              ${webBranding.buttonStyle === 'rounded' ? 'rounded-md' : 
+                                webBranding.buttonStyle === 'pill' ? 'rounded-full' : 'rounded-none'}
+                            `}
                             style={{backgroundColor: webBranding.primaryColor}}
                           >
                             Primary Action
                           </button>
-                          <div className="flex space-x-2">
-                            <button 
-                              className={`flex-1 py-2 px-4 text-white font-medium ${
-                                webBranding.buttonStyle === 'rounded' ? 'rounded-md' :
-                                webBranding.buttonStyle === 'pill' ? 'rounded-full' :
-                                'rounded-none'
-                              }`}
-                              style={{backgroundColor: webBranding.secondaryColor}}
-                            >
-                              Secondary
-                            </button>
-                            <button 
-                              className={`flex-1 py-2 px-4 text-white font-medium ${
-                                webBranding.buttonStyle === 'rounded' ? 'rounded-md' :
-                                webBranding.buttonStyle === 'pill' ? 'rounded-full' :
-                                'rounded-none'
-                              }`}
-                              style={{backgroundColor: webBranding.accentColor}}
-                            >
-                              Accent
-                            </button>
-                          </div>
+                          
+                          <button 
+                            className={`
+                              px-4 py-2 border font-medium rounded-md
+                              ${webBranding.buttonStyle === 'rounded' ? 'rounded-md' : 
+                                webBranding.buttonStyle === 'pill' ? 'rounded-full' : 'rounded-none'}
+                            `}
+                            style={{borderColor: webBranding.secondaryColor, color: webBranding.secondaryColor}}
+                          >
+                            Secondary Action
+                          </button>
                         </div>
                       </div>
                     </div>
-                    
-                    {/* Footer */}
-                    <div className="bg-gray-100 p-4 text-center text-sm text-gray-500">
-                      {webBranding.emailFooter}
-                    </div>
                   </div>
                 </div>
+              </div>
+
+              {/* Save Status Message */}
+              {saveStatus !== 'idle' && (
+                <div className={`p-4 rounded-lg border ${
+                  saveStatus === 'saving' ? 'bg-blue-50 border-blue-200 text-blue-700' :
+                  saveStatus === 'saved' ? 'bg-success-50 border-success-200 text-success-700' :
+                  'bg-error-50 border-error-200 text-error-700'
+                }`}>
+                  <div className="flex items-center">
+                    {saveStatus === 'saving' && <RefreshCw className="h-4 w-4 mr-2 animate-spin" />}
+                    {saveStatus === 'saved' && <CheckCircle className="h-4 w-4 mr-2" />}
+                    {saveStatus === 'error' && <AlertTriangle className="h-4 w-4 mr-2" />}
+                    <span className="text-sm font-medium">{saveMessage}</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Action Buttons */}
+              <div className="flex justify-end space-x-3 pt-4 border-t border-gray-200">
+                <Button
+                  variant="outline"
+                  onClick={resetToDefaults}
+                  disabled={saveStatus === 'saving'}
+                >
+                  <RotateCcw className="h-4 w-4 mr-2" />
+                  Reset to Defaults
+                </Button>
+                <Button
+                  onClick={saveWebBranding}
+                  disabled={saveStatus === 'saving'}
+                >
+                  <Save className="h-4 w-4 mr-2" />
+                  {saveStatus === 'saving' ? 'Saving...' : 'Save Web Branding'}
+                </Button>
               </div>
             </div>
           </CardContent>
@@ -646,13 +689,32 @@ const OrganizationBranding: React.FC<OrganizationBrandingProps> = ({ organizatio
                 <select
                   value={pdfSettings.defaultTemplate}
                   onChange={(e) => updatePDFSettings({ defaultTemplate: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:border-primary-500 focus:ring-primary-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm bg-gray-50 cursor-pointer"
                 >
                   <option value="standard">Standard</option>
                   <option value="minimal">Minimal</option>
                   <option value="detailed">Detailed</option>
                   <option value="executive">Executive</option>
                 </select>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex justify-end space-x-3 pt-4 border-t border-gray-200">
+                <Button
+                  variant="outline"
+                  onClick={resetToDefaults}
+                  disabled={saveStatus === 'saving'}
+                >
+                  <RotateCcw className="h-4 w-4 mr-2" />
+                  Reset to Defaults
+                </Button>
+                <Button
+                  onClick={savePDFBranding}
+                  disabled={saveStatus === 'saving'}
+                >
+                  <Save className="h-4 w-4 mr-2" />
+                  {saveStatus === 'saving' ? 'Saving...' : 'Save PDF Branding'}
+                </Button>
               </div>
             </div>
           </CardContent>
@@ -781,6 +843,25 @@ const OrganizationBranding: React.FC<OrganizationBrandingProps> = ({ organizatio
                   </div>
                 </div>
               </div>
+
+              {/* Action Buttons */}
+              <div className="flex justify-end space-x-3 pt-4 border-t border-gray-200">
+                <Button
+                  variant="outline"
+                  onClick={resetToDefaults}
+                  disabled={saveStatus === 'saving'}
+                >
+                  <RotateCcw className="h-4 w-4 mr-2" />
+                  Reset to Defaults
+                </Button>
+                <Button
+                  onClick={saveEmailBranding}
+                  disabled={saveStatus === 'saving'}
+                >
+                  <Save className="h-4 w-4 mr-2" />
+                  {saveStatus === 'saving' ? 'Saving...' : 'Save Email Branding'}
+                </Button>
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -789,4 +870,4 @@ const OrganizationBranding: React.FC<OrganizationBrandingProps> = ({ organizatio
   );
 };
 
-export default OrganizationBranding; 
+export default OrganizationBranding;

@@ -49,7 +49,7 @@ const isValidLocationState = (state: unknown): state is LocationState => {
 
 const Login = () => {
   const { login, sendOTP, isLoading, error, clearError } = useAuthStore();
-  const { fetchProfile, isFirstLogin } = useProfileStore();
+  const { fetchProfile } = useProfileStore();
   const { organizations, fetchOrganizations, currentOrganization } = useOrganizationStore();
   const { pdfSettings } = usePDFExportStore();
   const navigate = useNavigate();
@@ -114,12 +114,8 @@ const Login = () => {
       setLoginAttempts(0); // Reset attempts on success
       
       // Fetch user profile after successful login
-      if (isFirstLogin) {
-        // If it's the first login, redirect to profile page to complete setup
-        navigate('/profile', { replace: true });
-      } else {
-        navigate(from, { replace: true });
-      }
+      // Redirect to dashboard or intended destination
+      navigate(from, { replace: true });
     } catch (err) {
       setLoginAttempts(prev => prev + 1);
       // Error is handled by the store

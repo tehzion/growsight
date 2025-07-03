@@ -7,85 +7,6 @@ import SecureLogger from '../lib/secureLogger';
 import AccessControl from '../lib/accessControl';
 import { useAuthStore } from './authStore';
 
-// Helper functions for role-specific profile completion
-interface RequiredField {
-  key: string;
-  weight: number;
-}
-
-const getRequiredFieldsForRole = (userRole: string): RequiredField[] => {
-  switch (userRole) {
-    case 'root':
-    case 'super_admin':
-      return [
-        { key: 'first_name', weight: 10 },
-        { key: 'last_name', weight: 10 },
-        { key: 'email', weight: 10 },
-        { key: 'phone', weight: 8 }
-      ];
-    
-    case 'org_admin':
-      return [
-        { key: 'first_name', weight: 10 },
-        { key: 'last_name', weight: 10 },
-        { key: 'email', weight: 10 },
-        { key: 'phone', weight: 8 },
-        { key: 'position', weight: 8 },
-        { key: 'department', weight: 8 }
-      ];
-    
-    case 'subscriber':
-      return [
-        { key: 'first_name', weight: 10 },
-        { key: 'last_name', weight: 10 },
-        { key: 'email', weight: 10 },
-        { key: 'phone', weight: 8 },
-        { key: 'position', weight: 8 },
-        { key: 'department', weight: 8 },
-        { key: 'bio', weight: 5 }
-      ];
-    
-    case 'employee':
-    case 'reviewer':
-    default:
-      return [
-        { key: 'first_name', weight: 10 },
-        { key: 'last_name', weight: 10 },
-        { key: 'email', weight: 10 },
-        { key: 'phone', weight: 8 },
-        { key: 'position', weight: 8 },
-        { key: 'department', weight: 8 },
-        { key: 'date_of_birth', weight: 6 },
-        { key: 'hire_date', weight: 6 },
-        { key: 'bio', weight: 5 },
-        { key: 'emergency_contact', weight: 7 },
-        { key: 'skills', weight: 4 },
-        { key: 'certifications', weight: 4 },
-        { key: 'education', weight: 3 },
-        { key: 'work_experience', weight: 3 }
-      ];
-  }
-};
-
-const isFieldComplete = (fieldKey: string, value: any): boolean => {
-  if (value === null || value === undefined || value === '') {
-    return false;
-  }
-
-  switch (fieldKey) {
-    case 'emergency_contact':
-      return typeof value === 'object' && value.name && value.relationship && value.phone;
-    case 'skills':
-    case 'certifications':
-      return Array.isArray(value) && value.length > 0;
-    case 'education':
-    case 'work_experience':
-      return Array.isArray(value) && value.length > 0;
-    default:
-      return typeof value === 'string' && value.trim().length > 0;
-  }
-};
-
 export interface Profile {
   id: string;
   user_id: string;
@@ -127,9 +48,6 @@ export interface Profile {
       sms: boolean;
     };
   };
-  is_first_login: boolean;
-  profile_completed: boolean;
-  completion_percentage: number;
   created_at: string;
   updated_at: string;
 }
@@ -176,11 +94,8 @@ interface ProfileState {
   profileTags: ProfileTag[];
   behaviors: UserBehavior[];
   staffAssignments: StaffAssignment[];
-  isFirstLogin: boolean;
   isLoading: boolean;
   error: string | null;
-  profileCompleted: boolean;
-  completionPercentage: number;
   
   // Profile management
   fetchProfile: (userId: string) => Promise<void>;
@@ -198,13 +113,10 @@ interface ProfileState {
   
   // Staff assignment management
   fetchStaffAssignments: (staffId: string, currentUserId?: string) => Promise<void>;
-  assignStaff: (staffId: string, organizationId: string, supervisorId?: string, departmentId?: string, currentUserId?: string) => Promise<void>;
+  createStaffAssignment: (assignment: Omit<StaffAssignment, 'id' | 'createdAt' | 'updatedAt'>, currentUserId?: string) => Promise<void>;
   updateStaffAssignment: (assignmentId: string, data: Partial<StaffAssignment>, currentUserId?: string) => Promise<void>;
   
   // Utility functions
-  markFirstLoginComplete: () => Promise<void>;
-  setFirstLoginComplete: () => void;
-  calculateCompletionPercentage: () => number;
   resetProfile: () => void;
   clearError: () => void;
 }
@@ -247,9 +159,6 @@ const defaultProfile: Profile = {
       sms: false
     }
   },
-  is_first_login: true,
-  profile_completed: false,
-  completion_percentage: 0,
   created_at: new Date().toISOString(),
   updated_at: new Date().toISOString()
 };
@@ -317,11 +226,8 @@ export const useProfileStore = create<ProfileState>()(
       profileTags: [],
       behaviors: [],
       staffAssignments: [],
-      isFirstLogin: false,
       isLoading: false,
       error: null,
-      profileCompleted: false,
-      completionPercentage: 0,
       
       fetchProfile: async (userId: string) => {
         set({ isLoading: true, error: null });
@@ -331,9 +237,6 @@ export const useProfileStore = create<ProfileState>()(
             await new Promise(resolve => setTimeout(resolve, 300));
             set({ 
               profile: { ...defaultProfile, user_id: userId },
-              isFirstLogin: true,
-              profileCompleted: false,
-              completionPercentage: 0,
               isLoading: false 
             });
           } else {
@@ -350,15 +253,8 @@ export const useProfileStore = create<ProfileState>()(
 
             if (error) throw handleSupabaseError(error);
 
-            const completionPercentage = get().calculateCompletionPercentage();
-            const isFirstLogin = data.is_first_login || false;
-            const profileCompleted = data.profile_completed || false;
-
             set({
               profile: data,
-              isFirstLogin,
-              profileCompleted,
-              completionPercentage,
               isLoading: false
             });
           }
@@ -398,32 +294,16 @@ export const useProfileStore = create<ProfileState>()(
 
             const updatedProfile = { ...currentProfile, ...updates, updated_at: new Date().toISOString() };
             
-            // Calculate completion percentage
-            const completionPercentage = get().calculateCompletionPercentage();
-            const profileCompleted = completionPercentage >= 80; // 80% threshold
-
-            const finalUpdates = {
-              ...updates,
-              completion_percentage: completionPercentage,
-              profile_completed: profileCompleted,
-              updated_at: new Date().toISOString()
-            };
-
-            const { data, error } = await supabase
-              .from('profiles')
-              .upsert({
-                user_id: currentProfile.user_id,
-                ...finalUpdates
-              })
-              .select()
+                          const { data, error } = await supabase
+                .from('profiles')
+                .upsert(updatedProfile)
+                .select()
               .single();
 
             if (error) throw handleSupabaseError(error);
 
             set({
               profile: data,
-              profileCompleted,
-              completionPercentage,
               isLoading: false
             });
           }
@@ -720,18 +600,18 @@ export const useProfileStore = create<ProfileState>()(
         }
       },
 
-      assignStaff: async (staffId: string, organizationId: string, supervisorId?: string, departmentId?: string, currentUserId?: string) => {
+      createStaffAssignment: async (assignment: Omit<StaffAssignment, 'id' | 'createdAt' | 'updatedAt'>, currentUserId?: string) => {
         try {
           if (isDemoMode) {
             const newAssignment: StaffAssignment = {
               id: `assignment-${Date.now()}`,
-              staffId,
-              supervisorId,
-              departmentId,
-              organizationId,
-              assignmentType: 'permanent',
+              staffId: assignment.staffId,
+              supervisorId: assignment.supervisorId,
+              departmentId: assignment.departmentId,
+              organizationId: assignment.organizationId,
+              assignmentType: assignment.assignmentType,
               startDate: new Date().toISOString(),
-              assignmentData: {},
+              assignmentData: assignment.assignmentData,
               createdById: currentUserId || 'admin',
               createdAt: new Date().toISOString(),
               updatedAt: new Date().toISOString(),
@@ -743,21 +623,21 @@ export const useProfileStore = create<ProfileState>()(
           } else {
             const { data, error } = await supabase
               .rpc('assign_staff_to_organization', {
-                p_staff_id: staffId,
-                p_organization_id: organizationId,
-                p_supervisor_id: supervisorId,
-                p_department_id: departmentId,
+                p_staff_id: assignment.staffId,
+                p_organization_id: assignment.organizationId,
+                p_supervisor_id: assignment.supervisorId,
+                p_department_id: assignment.departmentId,
                 p_assigned_by_id: currentUserId
               });
 
             if (error) throw handleSupabaseError(error);
 
             // Refresh assignments
-            get().fetchStaffAssignments(staffId, currentUserId);
+            get().fetchStaffAssignments(assignment.staffId, currentUserId);
           }
         } catch (error) {
-          SecureLogger.error('Failed to assign staff', error);
-          set({ error: (error as Error).message || 'Failed to assign staff' });
+          SecureLogger.error('Failed to create staff assignment', error);
+          set({ error: (error as Error).message || 'Failed to create staff assignment' });
         }
       },
 
@@ -798,68 +678,18 @@ export const useProfileStore = create<ProfileState>()(
         }
       },
 
-      markFirstLoginComplete: async () => {
-        try {
-          const currentProfile = get().profile;
-          if (!currentProfile) {
-            throw new Error('No profile to update');
-          }
-
-          await get().updateProfile({
-            is_first_login: false
-          });
-
-          set({ isFirstLogin: false });
-        } catch (error) {
-          console.error('Error marking first login complete:', error);
-          set({
-            error: error instanceof Error ? error.message : 'Failed to mark first login complete'
-          });
-        }
-      },
-
-      setFirstLoginComplete: () => {
-        set({ isFirstLogin: false });
-      },
-
-      calculateCompletionPercentage: () => {
-        const profile = get().profile;
-        if (!profile) return 0;
-
-        // Get user role from auth store
-        const { user } = useAuthStore.getState();
-        if (!user) return 0;
-
-        // Get role-specific required fields
-        const requiredFields = getRequiredFieldsForRole(user.role);
-        let completedWeight = 0;
-        let totalWeight = 0;
-
-        requiredFields.forEach(field => {
-          totalWeight += field.weight;
-          const value = profile[field.key as keyof Profile];
-          
-          if (isFieldComplete(field.key, value)) {
-            completedWeight += field.weight;
-          }
+      resetProfile: () => {
+        set({
+          profile: null,
+          staffAssignments: [],
+          profileTags: [],
+          behaviors: []
         });
-
-        const percentage = Math.round((completedWeight / totalWeight) * 100);
-        return Math.min(percentage, 100); // Cap at 100%
       },
 
-             resetProfile: () => {
-         set({
-           profile: null,
-           isFirstLogin: false,
-           profileCompleted: false,
-           completionPercentage: 0
-         });
-       },
-
-       clearError: () => {
-         set({ error: null });
-       }
+      clearError: () => {
+        set({ error: null });
+      }
     }),
     {
       name: 'profile-storage',
@@ -868,9 +698,8 @@ export const useProfileStore = create<ProfileState>()(
         profileTags: state.profileTags,
         behaviors: state.behaviors,
         staffAssignments: state.staffAssignments,
-        isFirstLogin: state.isFirstLogin,
-        profileCompleted: state.profileCompleted,
-        completionPercentage: state.completionPercentage
+        isLoading: state.isLoading,
+        error: state.error
       }),
     }
   )

@@ -67,7 +67,7 @@ type PasswordFormData = z.infer<typeof passwordSchema>;
 
 const UserProfile: React.FC = () => {
   const { user, updatePassword, isLoading } = useAuthStore();
-  const { profile, updateProfile, isFirstLogin, setFirstLoginComplete, profileTags, addProfileTag, removeProfileTag } = useProfileStore();
+  const { profile, updateProfile, profileTags, addProfileTag, removeProfileTag } = useProfileStore();
   const { departments, fetchDepartments } = useDepartmentStore();
   const { addNotification } = useNotificationStore();
   const navigate = useNavigate();
@@ -180,16 +180,9 @@ const UserProfile: React.FC = () => {
         fetchDepartments(user.organizationId);
       }
       
-      // If this is the user's first login, show a welcome message
-      if (isFirstLogin) {
-        addNotification({
-          title: 'Welcome to the 360° Feedback Platform!',
-          message: 'Please complete your profile to get started.',
-          type: 'info'
-        });
-      }
+      // Profile is now display-only
     }
-  }, [user, setProfileValue, fetchDepartments, isFirstLogin, addNotification]);
+      }, [user, setProfileValue, fetchDepartments, addNotification]);
 
   useEffect(() => {
     if (profile) {
@@ -234,10 +227,7 @@ const UserProfile: React.FC = () => {
         type: 'success'
       });
       
-      // If this was the first login, mark it as complete
-      if (isFirstLogin) {
-        setFirstLoginComplete();
-      }
+      // Profile is now display-only
       
       setTimeout(() => setProfileUpdateStatus('idle'), 2000);
     } catch (error) {
@@ -417,23 +407,6 @@ const UserProfile: React.FC = () => {
           Manage your account settings and preferences
         </p>
       </div>
-
-      {/* First Login Welcome Message */}
-      {isFirstLogin && (
-        <Card className="bg-primary-50 border-primary-200">
-          <CardContent className="p-4">
-            <div className="flex items-center space-x-3">
-              <CheckCircle className="h-5 w-5 text-primary-600" />
-              <div>
-                <h3 className="font-medium text-primary-800">Welcome to the 360° Feedback Platform</h3>
-                <p className="text-sm text-primary-700">
-                  Please take a moment to complete your profile. This information will help personalize your experience and provide context for your assessments.
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
 
       {/* Profile Header */}
       <Card>

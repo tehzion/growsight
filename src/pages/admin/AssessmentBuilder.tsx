@@ -35,6 +35,9 @@ const AssessmentBuilder = () => {
   const [newSectionDescription, setNewSectionDescription] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isPublished, setIsPublished] = useState(false);
+  const [assessmentTitle, setAssessmentTitle] = useState('');
+  const [assessmentDescription, setAssessmentDescription] = useState('');
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
 
   const isSuperAdmin = user?.role === 'super_admin';
   const isOrgAdmin = user?.role === 'org_admin';
@@ -58,7 +61,14 @@ const AssessmentBuilder = () => {
       setIsPublished(currentAssessment.assignedOrganizations.length > 0);
     }
   }, [currentAssessment?.assignedOrganizations]);
-  
+
+  useEffect(() => {
+    if (currentAssessment) {
+      setAssessmentTitle(currentAssessment.title);
+      setAssessmentDescription(currentAssessment.description || '');
+    }
+  }, [currentAssessment]);
+
   const handleAddSection = async () => {
     if (!id || !newSectionTitle.trim()) {
       setError('Section title is required');
@@ -160,6 +170,24 @@ const AssessmentBuilder = () => {
       setError((err as Error).message || 'Failed to publish assessment');
     }
   };
+
+  const handleSaveAssessment = async () => {
+    if (!id || !canEdit) return;
+
+    setSaveStatus('saving');
+    try {
+      await updateAssessment(id, {
+        title: assessmentTitle,
+        description: assessmentDescription
+      });
+      setSaveStatus('saved');
+      setTimeout(() => setSaveStatus('idle'), 3000);
+    } catch (err) {
+      setSaveStatus('error');
+      setError((err as Error).message || 'Failed to save assessment');
+      setTimeout(() => setSaveStatus('idle'), 3000);
+    }
+  };
   
   if (!currentAssessment) {
     return (
@@ -218,14 +246,13 @@ const AssessmentBuilder = () => {
           )}
           {canEdit && (
             <Button
-              onClick={() => updateAssessment(id!, {
-                title: currentAssessment.title,
-                description: currentAssessment.description
-              })}
-              isLoading={isLoading}
+              onClick={handleSaveAssessment}
+              isLoading={saveStatus === 'saving' || isLoading}
               leftIcon={<Save className="h-4 w-4" />}
             >
-              Save Changes
+              {saveStatus === 'saving' ? 'Saving...' : 
+               saveStatus === 'saved' ? 'Saved!' : 
+               'Save Changes'}
             </Button>
           )}
           {!canEdit && (
@@ -304,8 +331,8 @@ const AssessmentBuilder = () => {
           <div className="space-y-4">
             <FormInput
               label="Title"
-              value={currentAssessment.title}
-              onChange={(e) => canEdit && updateAssessment(id!, { title: e.target.value })}
+              value={assessmentTitle}
+              onChange={(e) => setAssessmentTitle(e.target.value)}
               disabled={!canEdit}
             />
             <div>
@@ -315,8 +342,8 @@ const AssessmentBuilder = () => {
               <textarea
                 id="description"
                 rows={3}
-                value={currentAssessment.description || ''}
-                onChange={(e) => canEdit && updateAssessment(id!, { description: e.target.value })}
+                value={assessmentDescription}
+                onChange={(e) => setAssessmentDescription(e.target.value)}
                 disabled={!canEdit}
                 className={`w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 ${
                   !canEdit ? 'bg-gray-50 cursor-not-allowed' : ''
