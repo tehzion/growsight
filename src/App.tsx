@@ -43,6 +43,8 @@ import ErrorBoundary from './components/ui/ErrorBoundary';
 import SecureLogger from './lib/secureLogger';
 import SubscriberAssessments from './pages/subscriber/SubscriberAssessments';
 import RoleProtectedRoute from './components/auth/RoleProtectedRoute';
+import Assessment360Reporting from './pages/admin/Assessment360Reporting';
+import Assessment360Selector from './components/assessments/Assessment360Selector';
 
 function App() {
   const { user, refreshSession } = useAuthStore();
@@ -165,6 +167,30 @@ function App() {
             <Route path="/assessment-results" element={
               <ErrorBoundary>
                 <AssessmentResults />
+              </ErrorBoundary>
+            } />
+
+            <Route path="/assessment-360" element={
+              <ErrorBoundary>
+                <RoleProtectedRoute 
+                  allowedRoles={['super_admin', 'org_admin']}
+                  requiredPermissions={['view_results']}
+                  requiredFeature="reporting"
+                >
+                  <Assessment360Selector />
+                </RoleProtectedRoute>
+              </ErrorBoundary>
+            } />
+
+            <Route path="/assessment-360/:assessmentId/:participantId?" element={
+              <ErrorBoundary>
+                <RoleProtectedRoute 
+                  allowedRoles={['super_admin', 'org_admin']}
+                  requiredPermissions={['view_results']}
+                  requiredFeature="reporting"
+                >
+                  <Assessment360Reporting />
+                </RoleProtectedRoute>
               </ErrorBoundary>
             } />
 

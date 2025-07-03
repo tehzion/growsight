@@ -52,6 +52,7 @@ const Sidebar = ({ isOpen, toggleSidebar, user }: SidebarProps) => {
     { path: '/assessment-assignments', label: 'Assignments', icon: <UserCheck className="h-5 w-5" />, roles: ['org_admin'], permission: 'assign_assessments' },
     { path: '/results', label: 'Analytics', icon: <BarChart4 className="h-5 w-5" />, roles: ['super_admin', 'org_admin'], permission: 'view_results' },
     { path: '/assessment-results', label: 'Assessment Results', icon: <Activity className="h-5 w-5" />, roles: ['super_admin', 'org_admin'], permission: 'view_results' },
+    { path: '/assessment-360', label: '360° Assessments', icon: <Users className="h-5 w-5" />, roles: ['super_admin', 'org_admin'], permission: 'view_results' },
     { path: '/import-export', label: 'Import/Export', icon: <Database className="h-5 w-5" />, roles: ['super_admin', 'org_admin'] },
     { path: '/my-results', label: 'My Results', icon: <BarChart4 className="h-5 w-5" />, roles: ['subscriber'] },
 
@@ -260,6 +261,22 @@ const Sidebar = ({ isOpen, toggleSidebar, user }: SidebarProps) => {
                   ))}
                 </div>
               </>
+            )}
+
+            {isSuperAdmin && (
+              <SidebarItem
+                to="/assessment-results"
+                icon={<BarChart3 className="h-5 w-5" />}
+                label="Assessment Results"
+              />
+            )}
+
+            {(isSuperAdmin || isOrgAdmin) && (
+              <SidebarItem
+                to="/assessments"
+                icon={<ClipboardList className="h-5 w-5" />}
+                label="360° Assessments"
+              />
             )}
           </nav>
           
