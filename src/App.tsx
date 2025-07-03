@@ -19,6 +19,7 @@ import Results from './pages/admin/Results';
 import AssessmentResults from './pages/admin/AssessmentResults';
 import PermissionManager from './pages/admin/PermissionManager';
 import ImportExport from './pages/admin/ImportExport';
+import TemplateManager from './pages/admin/TemplateManager';
 import NotFound from './pages/NotFound';
 import ProtectedRoute from './components/auth/ProtectedRoute';
 import UserAssessments from './pages/user/UserAssessments';
@@ -171,6 +172,12 @@ function App() {
               </ErrorBoundary>
             } />
 
+            <Route path="/templates" element={
+              <ErrorBoundary>
+                <TemplateManager />
+              </ErrorBoundary>
+            } />
+
             <Route path="/competencies" element={
               <ErrorBoundary>
                 <CompetencyManager />
@@ -199,48 +206,45 @@ function App() {
                 <Branding />
               </ErrorBoundary>
             } />
-            <Route path="/admin/branding" element={
+            <Route path="/organization-branding" element={
               <ErrorBoundary>
                 <OrganizationBrandingPage />
               </ErrorBoundary>
             } />
-            
+
             {/* User Routes */}
-            <Route path="/my-assessments" element={
+            <Route path="/user-assessments" element={
               <ErrorBoundary>
                 <UserAssessments />
               </ErrorBoundary>
             } />
-            <Route path="/my-assessments/:id" element={
-              <ErrorBoundary>
-                <AssessmentForm />
-              </ErrorBoundary>
-            } />
-            <Route path="/my-results" element={
+            <Route path="/user-results" element={
               <ErrorBoundary>
                 <UserResults />
               </ErrorBoundary>
             } />
-            <Route path="/profile" element={
+            <Route path="/user-profile" element={
               <ErrorBoundary>
                 <UserProfile />
               </ErrorBoundary>
             } />
-            
+            <Route path="/assessment/:id" element={
+              <ErrorBoundary>
+                <AssessmentForm />
+              </ErrorBoundary>
+            } />
+
             {/* Subscriber Routes */}
             <Route path="/subscriber-assessments" element={
               <ErrorBoundary>
                 <SubscriberAssessments />
               </ErrorBoundary>
             } />
+
+            {/* Default redirect */}
+            <Route path="/" element={<Navigate to="/dashboard" replace />} />
           </Route>
         </Route>
-        
-        {/* Root redirect - Always redirect to login if not authenticated */}
-        <Route 
-          path="/" 
-          element={user ? <Navigate to="/dashboard" replace /> : <Navigate to="/login" replace />} 
-        />
         
         {/* 404 Route */}
         <Route path="*" element={<NotFound />} />
