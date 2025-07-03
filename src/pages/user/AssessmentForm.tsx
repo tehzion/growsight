@@ -8,12 +8,14 @@ import QuestionCard from '../../components/assessments/QuestionCard';
 import ProgressBar from '../../components/assessments/ProgressBar';
 import { useAuthStore } from '../../stores/authStore';
 import { useAssessmentStore } from '../../stores/assessmentStore';
+import { useAssessmentResultsStore } from '../../stores/assessmentResultsStore';
 
 const AssessmentForm = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { user } = useAuthStore();
   const { currentAssessment, fetchAssessment, isLoading } = useAssessmentStore();
+  const { saveAssessmentResult } = useAssessmentResultsStore();
   
   const [showGuide, setShowGuide] = useState(true);
   const [currentSectionIndex, setCurrentSectionIndex] = useState(0);
@@ -177,8 +179,47 @@ const AssessmentForm = () => {
   const handleSubmit = async () => {
     setIsSubmitting(true);
     try {
-      // Simulate submission
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      if (!id || !user || !currentAssessment) {
+        throw new Error('Missing required data for submission');
+      }
+
+      // Calculate averages for each section
+      const sectionAverages: Record<string, number> = {};
+      currentAssessment.sections.forEach(section => {
+        const sectionResponses = section.questions
+          .map(q => responses[q.id]?.rating)
+          .filter(rating => rating !== undefined && rating !== null);
+        
+        if (sectionResponses.length > 0) {
+          sectionAverages[section.title] = sectionResponses.reduce((sum, rating) => sum + rating, 0) / sectionResponses.length;
+        }
+      });
+
+      // Calculate overall average
+      const allRatings = Object.values(responses)
+        .map(r => r.rating)
+        .filter(rating => rating !== undefined && rating !== null);
+      const overallAverage = allRatings.length > 0 
+        ? allRatings.reduce((sum, rating) => sum + rating, 0) / allRatings.length 
+        : 0;
+
+      // Prepare submission data
+      const submissionData = {
+        assessmentId: id,
+        userId: user.id,
+        organizationId: user.organization_id,
+        responses: responses,
+        sectionAverages: sectionAverages,
+        overallAverage: overallAverage,
+        status: 'completed',
+        completedAt: new Date().toISOString(),
+        relationshipType: 'self', // Self-assessment
+        revieweeId: user.id, // Self-review
+        reviewerId: user.id // Self-review
+      };
+
+      // Save to database using the assessment results store
+      await saveAssessmentResult(submissionData);
       
       // Clear saved responses
       if (id && user) {

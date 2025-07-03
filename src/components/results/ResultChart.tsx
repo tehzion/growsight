@@ -339,3 +339,4 @@ const ResultChart: React.FC<ResultChartProps> = ({
 };
 
 export default ResultChart;
+export { ResultChart };

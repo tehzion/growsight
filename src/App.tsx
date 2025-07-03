@@ -16,6 +16,7 @@ import Users from './pages/admin/Users';
 import Assessments from './pages/admin/Assessments';
 import AssessmentAssignments from './pages/admin/AssessmentAssignments';
 import Results from './pages/admin/Results';
+import AssessmentResults from './pages/admin/AssessmentResults';
 import PermissionManager from './pages/admin/PermissionManager';
 import NotFound from './pages/NotFound';
 import ProtectedRoute from './components/auth/ProtectedRoute';
@@ -37,6 +38,7 @@ import SupportHub from './pages/admin/SupportHub';
 import { ToastContainer } from './components/ui/ToastNotification';
 import ErrorBoundary from './components/ui/ErrorBoundary';
 import SecureLogger from './lib/secureLogger';
+import SubscriberAssessments from './pages/subscriber/SubscriberAssessments';
 
 function App() {
   const { user, refreshSession } = useAuthStore();
@@ -156,6 +158,11 @@ function App() {
                 <Results />
               </ErrorBoundary>
             } />
+            <Route path="/assessment-results" element={
+              <ErrorBoundary>
+                <AssessmentResults />
+              </ErrorBoundary>
+            } />
 
             <Route path="/competencies" element={
               <ErrorBoundary>
@@ -210,6 +217,13 @@ function App() {
             <Route path="/profile" element={
               <ErrorBoundary>
                 <UserProfile />
+              </ErrorBoundary>
+            } />
+            
+            {/* Subscriber Routes */}
+            <Route path="/subscriber-assessments" element={
+              <ErrorBoundary>
+                <SubscriberAssessments />
               </ErrorBoundary>
             } />
           </Route>

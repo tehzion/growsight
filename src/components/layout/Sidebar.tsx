@@ -47,8 +47,10 @@ const Sidebar = ({ isOpen, toggleSidebar, user }: SidebarProps) => {
     { path: '/assessments', label: 'Assessments', icon: <ClipboardList className="h-5 w-5" />, roles: ['super_admin', 'org_admin', 'subscriber'], permission: 'create_assessments' },
     { path: '/assessment-assignments', label: 'Assignments', icon: <UserCheck className="h-5 w-5" />, roles: ['org_admin'], permission: 'assign_assessments' },
     { path: '/results', label: 'Analytics', icon: <BarChart4 className="h-5 w-5" />, roles: ['super_admin', 'org_admin'], permission: 'view_results' },
+    { path: '/assessment-results', label: 'Assessment Results', icon: <Activity className="h-5 w-5" />, roles: ['super_admin', 'org_admin'], permission: 'view_results' },
     { path: '/my-results', label: 'My Results', icon: <BarChart4 className="h-5 w-5" />, roles: ['subscriber'] },
 
+    { path: '/subscriber-assessments', label: 'My Assessments', icon: <ClipboardList className="h-5 w-5" />, roles: ['subscriber'] },
     { path: '/competencies', label: 'Competencies', icon: <Tag className="h-5 w-5" />, roles: ['org_admin'], permission: 'create_assessments' },
     { path: '/support', label: 'Support & Consultation', icon: <MessageSquare className="h-5 w-5" />, roles: ['super_admin', 'org_admin', 'employee', 'reviewer', 'subscriber'] },
     
@@ -80,7 +82,7 @@ const Sidebar = ({ isOpen, toggleSidebar, user }: SidebarProps) => {
 
   // Group navigation items by category for Super Admin
   const getGroupedNavItems = () => {
-    if (!isSuperAdmin) return { main: filteredNavItems };
+    if (!isSuperAdmin) return { main: filteredNavItems, system: [] };
     
     return {
       main: filteredNavItems.filter(item => 

@@ -251,6 +251,31 @@ CREATE TABLE IF NOT EXISTS assessment_organization_assignments (
   UNIQUE(assessment_id, organization_id)
 );
 
+-- Create assessment results table for analytics and comparison
+CREATE TABLE IF NOT EXISTS assessment_results (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  assignment_id uuid REFERENCES assessment_assignments(id) ON DELETE CASCADE,
+  overall_score numeric(3,2) NOT NULL,
+  section_scores jsonb DEFAULT '{}',
+  completed_at timestamptz DEFAULT now(),
+  created_at timestamptz DEFAULT now(),
+  updated_at timestamptz DEFAULT now(),
+  UNIQUE(assignment_id)
+);
+
+-- Create assessment analytics cache table for performance
+CREATE TABLE IF NOT EXISTS assessment_analytics_cache (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  organization_id uuid REFERENCES organizations(id) ON DELETE CASCADE,
+  assessment_id uuid REFERENCES assessments(id) ON DELETE SET NULL,
+  analytics_data jsonb NOT NULL,
+  calculated_at timestamptz DEFAULT now(),
+  expires_at timestamptz NOT NULL,
+  created_at timestamptz DEFAULT now(),
+  updated_at timestamptz DEFAULT now(),
+  UNIQUE(organization_id, assessment_id)
+);
+
 -- Create departments table
 CREATE TABLE IF NOT EXISTS departments (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -432,6 +457,29 @@ CREATE INDEX IF NOT EXISTS idx_assessment_responses_assignment_id ON assessment_
 CREATE INDEX IF NOT EXISTS idx_assessment_responses_respondent_id ON assessment_responses(respondent_id);
 
 -- Assessment table indexes
+CREATE INDEX IF NOT EXISTS idx_assessment_sections_assessment_id ON assessment_sections(assessment_id);
+CREATE INDEX IF NOT EXISTS idx_assessment_questions_section_id ON assessment_questions(section_id);
+CREATE INDEX IF NOT EXISTS idx_assessment_assignments_assessment_id ON assessment_assignments(assessment_id);
+CREATE INDEX IF NOT EXISTS idx_assessment_assignments_status ON assessment_assignments(status);
+CREATE INDEX IF NOT EXISTS idx_assessment_responses_question_id ON assessment_responses(question_id);
+CREATE INDEX IF NOT EXISTS idx_assessment_organization_assignments_assessment_id ON assessment_organization_assignments(assessment_id);
+CREATE INDEX IF NOT EXISTS idx_assessment_organization_assignments_organization_id ON assessment_organization_assignments(organization_id);
+
+-- Assessment indexes
+CREATE INDEX IF NOT EXISTS idx_assessments_organization_id ON assessments(organization_id);
+CREATE INDEX IF NOT EXISTS idx_assessment_assignments_employee_id ON assessment_assignments(employee_id);
+CREATE INDEX IF NOT EXISTS idx_assessment_assignments_reviewer_id ON assessment_assignments(reviewer_id);
+CREATE INDEX IF NOT EXISTS idx_assessment_responses_assignment_id ON assessment_responses(assignment_id);
+CREATE INDEX IF NOT EXISTS idx_assessment_responses_respondent_id ON assessment_responses(respondent_id);
+
+-- Assessment results and analytics indexes
+CREATE INDEX IF NOT EXISTS idx_assessment_results_assignment_id ON assessment_results(assignment_id);
+CREATE INDEX IF NOT EXISTS idx_assessment_results_overall_score ON assessment_results(overall_score);
+CREATE INDEX IF NOT EXISTS idx_assessment_analytics_cache_organization_id ON assessment_analytics_cache(organization_id);
+CREATE INDEX IF NOT EXISTS idx_assessment_analytics_cache_assessment_id ON assessment_analytics_cache(assessment_id);
+CREATE INDEX IF NOT EXISTS idx_assessment_analytics_cache_expires_at ON assessment_analytics_cache(expires_at);
+
+-- Assessment structure indexes
 CREATE INDEX IF NOT EXISTS idx_assessment_sections_assessment_id ON assessment_sections(assessment_id);
 CREATE INDEX IF NOT EXISTS idx_assessment_questions_section_id ON assessment_questions(section_id);
 CREATE INDEX IF NOT EXISTS idx_assessment_assignments_assessment_id ON assessment_assignments(assessment_id);
@@ -1316,95 +1364,6 @@ CREATE POLICY "staff_assignments_insert_policy" ON staff_assignments
         )
     );
 
--- ASSESSMENT SECTIONS POLICIES
-CREATE POLICY "assessment_sections_select_policy" ON assessment_sections
-    FOR SELECT TO authenticated
-    USING (
-        EXISTS (
-            SELECT 1 FROM assessments a
-            WHERE a.id = assessment_sections.assessment_id
-            AND check_org_access(a.organization_id)
-        )
-    );
-
-CREATE POLICY "assessment_sections_insert_policy" ON assessment_sections
-    FOR INSERT TO authenticated
-    WITH CHECK (
-        EXISTS (
-            SELECT 1 FROM assessments a
-            WHERE a.id = NEW.assessment_id
-            AND EXISTS (
-                SELECT 1 FROM get_user_org_context() ctx
-                WHERE 
-                    ctx.is_super_admin OR
-                    (ctx.organization_id = a.organization_id AND ctx.user_role = 'org_admin') OR
-                    ctx.user_id = a.created_by_id
-            )
-        )
-    );
-
-CREATE POLICY "assessment_sections_update_policy" ON assessment_sections
-    FOR UPDATE TO authenticated
-    USING (
-        EXISTS (
-            SELECT 1 FROM assessments a
-            WHERE a.id = assessment_sections.assessment_id
-            AND EXISTS (
-                SELECT 1 FROM get_user_org_context() ctx
-                WHERE 
-                    ctx.is_super_admin OR
-                    (ctx.organization_id = a.organization_id AND ctx.user_role = 'org_admin') OR
-                    ctx.user_id = a.created_by_id
-            )
-        )
-    );
-
--- ASSESSMENT QUESTIONS POLICIES
-CREATE POLICY "assessment_questions_select_policy" ON assessment_questions
-    FOR SELECT TO authenticated
-    USING (
-        EXISTS (
-            SELECT 1 FROM assessment_sections s
-            JOIN assessments a ON a.id = s.assessment_id
-            WHERE s.id = assessment_questions.section_id
-            AND check_org_access(a.organization_id)
-        )
-    );
-
-CREATE POLICY "assessment_questions_insert_policy" ON assessment_questions
-    FOR INSERT TO authenticated
-    WITH CHECK (
-        EXISTS (
-            SELECT 1 FROM assessment_sections s
-            JOIN assessments a ON a.id = s.assessment_id
-            WHERE s.id = NEW.section_id
-            AND EXISTS (
-                SELECT 1 FROM get_user_org_context() ctx
-                WHERE 
-                    ctx.is_super_admin OR
-                    (ctx.organization_id = a.organization_id AND ctx.user_role = 'org_admin') OR
-                    ctx.user_id = a.created_by_id
-            )
-        )
-    );
-
-CREATE POLICY "assessment_questions_update_policy" ON assessment_questions
-    FOR UPDATE TO authenticated
-    USING (
-        EXISTS (
-            SELECT 1 FROM assessment_sections s
-            JOIN assessments a ON a.id = s.assessment_id
-            WHERE s.id = assessment_questions.section_id
-            AND EXISTS (
-                SELECT 1 FROM get_user_org_context() ctx
-                WHERE 
-                    ctx.is_super_admin OR
-                    (ctx.organization_id = a.organization_id AND ctx.user_role = 'org_admin') OR
-                    ctx.user_id = a.created_by_id
-            )
-        )
-    );
-
 -- ASSESSMENT ORGANIZATION ASSIGNMENTS POLICIES
 CREATE POLICY "assessment_org_assignments_select_policy" ON assessment_organization_assignments
     FOR SELECT TO authenticated
@@ -1629,529 +1588,6 @@ CREATE POLICY "staff_assignments_insert_policy" ON staff_assignments
             WHERE 
                 ctx.is_super_admin OR
                 (ctx.organization_id = NEW.organization_id AND ctx.user_role IN ('org_admin', 'super_admin'))
-        )
-    );
-
--- ASSESSMENT SECTIONS POLICIES
-CREATE POLICY "assessment_sections_select_policy" ON assessment_sections
-    FOR SELECT TO authenticated
-    USING (
-        EXISTS (
-            SELECT 1 FROM assessments a
-            WHERE a.id = assessment_sections.assessment_id
-            AND check_org_access(a.organization_id)
-        )
-    );
-
-CREATE POLICY "assessment_sections_insert_policy" ON assessment_sections
-    FOR INSERT TO authenticated
-    WITH CHECK (
-        EXISTS (
-            SELECT 1 FROM assessments a
-            WHERE a.id = NEW.assessment_id
-            AND EXISTS (
-                SELECT 1 FROM get_user_org_context() ctx
-                WHERE 
-                    ctx.is_super_admin OR
-                    (ctx.organization_id = a.organization_id AND ctx.user_role = 'org_admin') OR
-                    ctx.user_id = a.created_by_id
-            )
-        )
-    );
-
-CREATE POLICY "assessment_sections_update_policy" ON assessment_sections
-    FOR UPDATE TO authenticated
-    USING (
-        EXISTS (
-            SELECT 1 FROM assessments a
-            WHERE a.id = assessment_sections.assessment_id
-            AND EXISTS (
-                SELECT 1 FROM get_user_org_context() ctx
-                WHERE 
-                    ctx.is_super_admin OR
-                    (ctx.organization_id = a.organization_id AND ctx.user_role = 'org_admin') OR
-                    ctx.user_id = a.created_by_id
-            )
-        )
-    );
-
--- ASSESSMENT QUESTIONS POLICIES
-CREATE POLICY "assessment_questions_select_policy" ON assessment_questions
-    FOR SELECT TO authenticated
-    USING (
-        EXISTS (
-            SELECT 1 FROM assessment_sections s
-            JOIN assessments a ON a.id = s.assessment_id
-            WHERE s.id = assessment_questions.section_id
-            AND check_org_access(a.organization_id)
-        )
-    );
-
-CREATE POLICY "assessment_questions_insert_policy" ON assessment_questions
-    FOR INSERT TO authenticated
-    WITH CHECK (
-        EXISTS (
-            SELECT 1 FROM assessment_sections s
-            JOIN assessments a ON a.id = s.assessment_id
-            WHERE s.id = NEW.section_id
-            AND EXISTS (
-                SELECT 1 FROM get_user_org_context() ctx
-                WHERE 
-                    ctx.is_super_admin OR
-                    (ctx.organization_id = a.organization_id AND ctx.user_role = 'org_admin') OR
-                    ctx.user_id = a.created_by_id
-            )
-        )
-    );
-
-CREATE POLICY "assessment_questions_update_policy" ON assessment_questions
-    FOR UPDATE TO authenticated
-    USING (
-        EXISTS (
-            SELECT 1 FROM assessment_sections s
-            JOIN assessments a ON a.id = s.assessment_id
-            WHERE s.id = assessment_questions.section_id
-            AND EXISTS (
-                SELECT 1 FROM get_user_org_context() ctx
-                WHERE 
-                    ctx.is_super_admin OR
-                    (ctx.organization_id = a.organization_id AND ctx.user_role = 'org_admin') OR
-                    ctx.user_id = a.created_by_id
-            )
-        )
-    );
-
--- ASSESSMENT ORGANIZATION ASSIGNMENTS POLICIES
-CREATE POLICY "assessment_org_assignments_select_policy" ON assessment_organization_assignments
-    FOR SELECT TO authenticated
-    USING (
-        EXISTS (
-            SELECT 1 FROM assessments a
-            WHERE a.id = assessment_organization_assignments.assessment_id
-            AND check_org_access(a.organization_id)
-        )
-    );
-
-CREATE POLICY "assessment_org_assignments_insert_policy" ON assessment_organization_assignments
-    FOR INSERT TO authenticated
-    WITH CHECK (
-        EXISTS (
-            SELECT 1 FROM get_user_org_context() ctx
-            WHERE 
-                ctx.is_super_admin OR
-                (ctx.user_role = 'org_admin' AND ctx.organization_id = NEW.organization_id)
-        )
-    );
-
--- DEPARTMENTS POLICIES
-CREATE POLICY "departments_select_policy" ON departments
-    FOR SELECT TO authenticated
-    USING (
-        check_org_access(departments.organization_id)
-    );
-
-CREATE POLICY "departments_insert_policy" ON departments
-    FOR INSERT TO authenticated
-    WITH CHECK (
-        EXISTS (
-            SELECT 1 FROM get_user_org_context() ctx
-            WHERE 
-                ctx.is_super_admin OR
-                (ctx.organization_id = NEW.organization_id AND ctx.user_role = 'org_admin')
-        )
-    );
-
-CREATE POLICY "departments_update_policy" ON departments
-    FOR UPDATE TO authenticated
-    USING (
-        EXISTS (
-            SELECT 1 FROM get_user_org_context() ctx
-            WHERE 
-                ctx.is_super_admin OR
-                (ctx.organization_id = departments.organization_id AND ctx.user_role = 'org_admin')
-        )
-    );
-
--- COMPETENCIES POLICIES
-CREATE POLICY "competencies_select_policy" ON competencies
-    FOR SELECT TO authenticated
-    USING (
-        check_org_access(competencies.organization_id)
-    );
-
-CREATE POLICY "competencies_insert_policy" ON competencies
-    FOR INSERT TO authenticated
-    WITH CHECK (
-        EXISTS (
-            SELECT 1 FROM get_user_org_context() ctx
-            WHERE 
-                ctx.is_super_admin OR
-                (ctx.organization_id = NEW.organization_id AND ctx.user_role = 'org_admin')
-        )
-    );
-
--- QUESTION COMPETENCIES POLICIES
-CREATE POLICY "question_competencies_select_policy" ON question_competencies
-    FOR SELECT TO authenticated
-    USING (
-        EXISTS (
-            SELECT 1 FROM get_user_org_context() ctx
-            JOIN competencies c ON c.id = question_competencies.competency_id
-            WHERE 
-                ctx.is_super_admin OR
-                ctx.organization_id = c.organization_id
-        )
-    );
-
-CREATE POLICY "question_competencies_insert_policy" ON question_competencies
-    FOR INSERT TO authenticated
-    WITH CHECK (
-        EXISTS (
-            SELECT 1 FROM get_user_org_context() ctx
-            JOIN competencies c ON c.id = NEW.competency_id
-            WHERE 
-                ctx.is_super_admin OR
-                (ctx.organization_id = c.organization_id AND ctx.user_role = 'org_admin')
-        )
-    );
-
--- IMPORT LOGS POLICIES
-CREATE POLICY "import_logs_select_policy" ON import_logs
-    FOR SELECT TO authenticated
-    USING (
-        EXISTS (
-            SELECT 1 FROM get_user_org_context() ctx
-            WHERE 
-                ctx.is_super_admin OR
-                (ctx.organization_id = import_logs.organization_id AND ctx.user_role = 'org_admin') OR
-                ctx.user_id = import_logs.imported_by_id
-        )
-    );
-
-CREATE POLICY "import_logs_insert_policy" ON import_logs
-    FOR INSERT TO authenticated
-    WITH CHECK (
-        EXISTS (
-            SELECT 1 FROM get_user_org_context() ctx
-            WHERE 
-                ctx.is_super_admin OR
-                (ctx.organization_id = NEW.organization_id AND ctx.user_role = 'org_admin')
-        )
-    );
-
--- EXPORT LOGS POLICIES
-CREATE POLICY "export_logs_select_policy" ON export_logs
-    FOR SELECT TO authenticated
-    USING (
-        EXISTS (
-            SELECT 1 FROM get_user_org_context() ctx
-            WHERE 
-                ctx.is_super_admin OR
-                (ctx.organization_id = export_logs.organization_id AND ctx.user_role = 'org_admin') OR
-                ctx.user_id = export_logs.exported_by_id
-        )
-    );
-
-CREATE POLICY "export_logs_insert_policy" ON export_logs
-    FOR INSERT TO authenticated
-    WITH CHECK (
-        EXISTS (
-            SELECT 1 FROM get_user_org_context() ctx
-            WHERE 
-                ctx.is_super_admin OR
-                (ctx.organization_id = NEW.organization_id AND ctx.user_role = 'org_admin')
-        )
-    );
-
--- PDF BRANDING SETTINGS POLICIES
-CREATE POLICY "pdf_branding_settings_select_policy" ON pdf_branding_settings
-    FOR SELECT TO authenticated
-    USING (
-        check_org_access(pdf_branding_settings.organization_id)
-    );
-
-CREATE POLICY "pdf_branding_settings_insert_policy" ON pdf_branding_settings
-    FOR INSERT TO authenticated
-    WITH CHECK (
-        EXISTS (
-            SELECT 1 FROM get_user_org_context() ctx
-            WHERE 
-                ctx.is_super_admin OR
-                (ctx.organization_id = NEW.organization_id AND ctx.user_role = 'org_admin')
-        )
-    );
-
-CREATE POLICY "pdf_branding_settings_update_policy" ON pdf_branding_settings
-    FOR UPDATE TO authenticated
-    USING (
-        EXISTS (
-            SELECT 1 FROM get_user_org_context() ctx
-            WHERE 
-                ctx.is_super_admin OR
-                (ctx.organization_id = pdf_branding_settings.organization_id AND ctx.user_role = 'org_admin')
-        )
-    );
-
--- PROFILE TAGS POLICIES
-CREATE POLICY "profile_tags_select_policy" ON profile_tags
-    FOR SELECT TO authenticated
-    USING (
-        EXISTS (
-            SELECT 1 FROM get_user_org_context() ctx
-            JOIN users u ON u.id = profile_tags.user_id
-            WHERE 
-                ctx.is_super_admin OR
-                ctx.organization_id = u.organization_id
-        )
-    );
-
-CREATE POLICY "profile_tags_insert_policy" ON profile_tags
-    FOR INSERT TO authenticated
-    WITH CHECK (
-        EXISTS (
-            SELECT 1 FROM get_user_org_context() ctx
-            JOIN users u ON u.id = NEW.user_id
-            WHERE 
-                ctx.is_super_admin OR
-                (ctx.organization_id = u.organization_id AND ctx.user_role IN ('org_admin', 'super_admin'))
-        )
-    );
-
--- USER BEHAVIORS POLICIES
-CREATE POLICY "user_behaviors_select_policy" ON user_behaviors
-    FOR SELECT TO authenticated
-    USING (
-        check_org_access(user_behaviors.organization_id)
-    );
-
-CREATE POLICY "user_behaviors_insert_policy" ON user_behaviors
-    FOR INSERT TO authenticated
-    WITH CHECK (
-        check_org_access(NEW.organization_id)
-    );
-
--- STAFF ASSIGNMENTS POLICIES
-CREATE POLICY "staff_assignments_select_policy" ON staff_assignments
-    FOR SELECT TO authenticated
-    USING (
-        check_org_access(staff_assignments.organization_id)
-    );
-
-CREATE POLICY "staff_assignments_insert_policy" ON staff_assignments
-    FOR INSERT TO authenticated
-    WITH CHECK (
-        EXISTS (
-            SELECT 1 FROM get_user_org_context() ctx
-            WHERE 
-                ctx.is_super_admin OR
-                (ctx.organization_id = NEW.organization_id AND ctx.user_role IN ('org_admin', 'super_admin'))
-        )
-    );
-
--- ASSESSMENT SECTIONS POLICIES
-CREATE POLICY "assessment_sections_select_policy" ON assessment_sections
-    FOR SELECT TO authenticated
-    USING (
-        EXISTS (
-            SELECT 1 FROM assessments a
-            WHERE a.id = assessment_sections.assessment_id
-            AND check_org_access(a.organization_id)
-        )
-    );
-
-CREATE POLICY "assessment_sections_insert_policy" ON assessment_sections
-    FOR INSERT TO authenticated
-    WITH CHECK (
-        EXISTS (
-            SELECT 1 FROM assessments a
-            WHERE a.id = NEW.assessment_id
-            AND EXISTS (
-                SELECT 1 FROM get_user_org_context() ctx
-                WHERE 
-                    ctx.is_super_admin OR
-                    (ctx.organization_id = a.organization_id AND ctx.user_role = 'org_admin') OR
-                    ctx.user_id = a.created_by_id
-            )
-        )
-    );
-
-CREATE POLICY "assessment_sections_update_policy" ON assessment_sections
-    FOR UPDATE TO authenticated
-    USING (
-        EXISTS (
-            SELECT 1 FROM assessments a
-            WHERE a.id = assessment_sections.assessment_id
-            AND EXISTS (
-                SELECT 1 FROM get_user_org_context() ctx
-                WHERE 
-                    ctx.is_super_admin OR
-                    (ctx.organization_id = a.organization_id AND ctx.user_role = 'org_admin') OR
-                    ctx.user_id = a.created_by_id
-            )
-        )
-    );
-
--- ASSESSMENT QUESTIONS POLICIES
-CREATE POLICY "assessment_questions_select_policy" ON assessment_questions
-    FOR SELECT TO authenticated
-    USING (
-        EXISTS (
-            SELECT 1 FROM assessment_sections s
-            JOIN assessments a ON a.id = s.assessment_id
-            WHERE s.id = assessment_questions.section_id
-            AND check_org_access(a.organization_id)
-        )
-    );
-
-CREATE POLICY "assessment_questions_insert_policy" ON assessment_questions
-    FOR INSERT TO authenticated
-    WITH CHECK (
-        EXISTS (
-            SELECT 1 FROM assessment_sections s
-            JOIN assessments a ON a.id = s.assessment_id
-            WHERE s.id = NEW.section_id
-            AND EXISTS (
-                SELECT 1 FROM get_user_org_context() ctx
-                WHERE 
-                    ctx.is_super_admin OR
-                    (ctx.organization_id = a.organization_id AND ctx.user_role = 'org_admin') OR
-                    ctx.user_id = a.created_by_id
-            )
-        )
-    );
-
-CREATE POLICY "assessment_questions_update_policy" ON assessment_questions
-    FOR UPDATE TO authenticated
-    USING (
-        EXISTS (
-            SELECT 1 FROM assessment_sections s
-            JOIN assessments a ON a.id = s.assessment_id
-            WHERE s.id = assessment_questions.section_id
-            AND EXISTS (
-                SELECT 1 FROM get_user_org_context() ctx
-                WHERE 
-                    ctx.is_super_admin OR
-                    (ctx.organization_id = a.organization_id AND ctx.user_role = 'org_admin') OR
-                    ctx.user_id = a.created_by_id
-            )
-        )
-    );
-
--- ASSESSMENT ORGANIZATION ASSIGNMENTS POLICIES
-CREATE POLICY "assessment_org_assignments_select_policy" ON assessment_organization_assignments
-    FOR SELECT TO authenticated
-    USING (
-        EXISTS (
-            SELECT 1 FROM assessments a
-            WHERE a.id = assessment_organization_assignments.assessment_id
-            AND check_org_access(a.organization_id)
-        )
-    );
-
-CREATE POLICY "assessment_org_assignments_insert_policy" ON assessment_organization_assignments
-    FOR INSERT TO authenticated
-    WITH CHECK (
-        EXISTS (
-            SELECT 1 FROM get_user_org_context() ctx
-            WHERE 
-                ctx.is_super_admin OR
-                (ctx.user_role = 'org_admin' AND ctx.organization_id = NEW.organization_id)
-        )
-    );
-
--- SUPPORT TICKETS POLICIES
-CREATE POLICY "support_tickets_select_policy" ON support_tickets
-    FOR SELECT TO authenticated
-    USING (
-        EXISTS (
-            SELECT 1 FROM get_user_org_context() ctx
-            WHERE 
-                ctx.is_super_admin OR
-                ctx.user_id = support_tickets.staff_member_id OR
-                ctx.user_id = support_tickets.assigned_to_id OR
-                (ctx.user_role = 'org_admin' AND ctx.organization_id = support_tickets.organization_id)
-        )
-    );
-
-CREATE POLICY "support_tickets_insert_policy" ON support_tickets
-    FOR INSERT TO authenticated
-    WITH CHECK (
-        EXISTS (
-            SELECT 1 FROM get_user_org_context() ctx
-            WHERE 
-                ctx.organization_id = NEW.organization_id
-                AND ctx.user_id = NEW.staff_member_id
-        )
-    );
-
-CREATE POLICY "support_tickets_update_policy" ON support_tickets
-    FOR UPDATE TO authenticated
-    USING (
-        EXISTS (
-            SELECT 1 FROM get_user_org_context() ctx
-            WHERE 
-                ctx.is_super_admin OR
-                ctx.user_id = support_tickets.staff_member_id OR
-                ctx.user_id = support_tickets.assigned_to_id OR
-                (ctx.user_role = 'org_admin' AND ctx.organization_id = support_tickets.organization_id)
-        )
-    );
-
--- TICKET MESSAGES POLICIES
-CREATE POLICY "ticket_messages_select_policy" ON ticket_messages
-    FOR SELECT TO authenticated
-    USING (
-        EXISTS (
-            SELECT 1 FROM get_user_org_context() ctx
-            JOIN support_tickets st ON st.id = ticket_messages.ticket_id
-            WHERE 
-                ctx.is_super_admin OR
-                (ctx.user_id = st.staff_member_id OR 
-                 ctx.user_id = st.assigned_to_id OR
-                 ctx.user_id = ticket_messages.sender_id)
-                AND ctx.organization_id = st.organization_id
-        )
-    );
-
-CREATE POLICY "ticket_messages_insert_policy" ON ticket_messages
-    FOR INSERT TO authenticated
-    WITH CHECK (
-        EXISTS (
-            SELECT 1 FROM get_user_org_context() ctx
-            JOIN support_tickets st ON st.id = NEW.ticket_id
-            WHERE 
-                sender_id = ctx.user_id
-                AND (ctx.user_id = st.staff_member_id OR 
-                     ctx.user_id = st.assigned_to_id)
-                AND ctx.organization_id = st.organization_id
-        )
-    );
-
--- TICKET ATTACHMENTS POLICIES
-CREATE POLICY "ticket_attachments_select_policy" ON ticket_attachments
-    FOR SELECT TO authenticated
-    USING (
-        EXISTS (
-            SELECT 1 FROM get_user_org_context() ctx
-            JOIN support_tickets st ON st.id = ticket_attachments.ticket_id
-            WHERE 
-                ctx.is_super_admin OR
-                (ctx.user_id = st.staff_member_id OR 
-                 ctx.user_id = st.assigned_to_id)
-                AND ctx.organization_id = st.organization_id
-        )
-    );
-
-CREATE POLICY "ticket_attachments_insert_policy" ON ticket_attachments
-    FOR INSERT TO authenticated
-    WITH CHECK (
-        EXISTS (
-            SELECT 1 FROM get_user_org_context() ctx
-            JOIN support_tickets st ON st.id = NEW.ticket_id
-            WHERE 
-                (ctx.user_id = st.staff_member_id OR 
-                 ctx.user_id = st.assigned_to_id)
-                AND ctx.organization_id = st.organization_id
         )
     );
 
@@ -4825,4 +4261,6328 @@ CREATE POLICY "export_logs_insert_policy" ON export_logs
         )
     );
 
--- PDF BRANDING SETT
+-- PDF BRANDING SETTINGS POLICIES
+CREATE POLICY "pdf_branding_settings_select_policy" ON pdf_branding_settings
+    FOR SELECT TO authenticated
+    USING (
+        check_org_access(pdf_branding_settings.organization_id)
+    );
+
+CREATE POLICY "pdf_branding_settings_insert_policy" ON pdf_branding_settings
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+CREATE POLICY "pdf_branding_settings_update_policy" ON pdf_branding_settings
+    FOR UPDATE TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = pdf_branding_settings.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- PROFILE TAGS POLICIES
+CREATE POLICY "profile_tags_select_policy" ON profile_tags
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            JOIN users u ON u.id = profile_tags.user_id
+            WHERE 
+                ctx.is_super_admin OR
+                ctx.organization_id = u.organization_id
+        )
+    );
+
+CREATE POLICY "profile_tags_insert_policy" ON profile_tags
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            JOIN users u ON u.id = NEW.user_id
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = u.organization_id AND ctx.user_role IN ('org_admin', 'super_admin'))
+        )
+    );
+
+-- USER BEHAVIORS POLICIES
+CREATE POLICY "user_behaviors_select_policy" ON user_behaviors
+    FOR SELECT TO authenticated
+    USING (
+        check_org_access(user_behaviors.organization_id)
+    );
+
+CREATE POLICY "user_behaviors_insert_policy" ON user_behaviors
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        check_org_access(NEW.organization_id)
+    );
+
+-- STAFF ASSIGNMENTS POLICIES
+CREATE POLICY "staff_assignments_select_policy" ON staff_assignments
+    FOR SELECT TO authenticated
+    USING (
+        check_org_access(staff_assignments.organization_id)
+    );
+
+CREATE POLICY "staff_assignments_insert_policy" ON staff_assignments
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role IN ('org_admin', 'super_admin'))
+        )
+    );
+
+-- ASSESSMENT SECTIONS POLICIES
+CREATE POLICY "assessment_sections_select_policy" ON assessment_sections
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM assessments a
+            WHERE a.id = assessment_sections.assessment_id
+            AND check_org_access(a.organization_id)
+        )
+    );
+
+CREATE POLICY "assessment_sections_insert_policy" ON assessment_sections
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM assessments a
+            WHERE a.id = NEW.assessment_id
+            AND EXISTS (
+                SELECT 1 FROM get_user_org_context() ctx
+                WHERE 
+                    ctx.is_super_admin OR
+                    (ctx.organization_id = a.organization_id AND ctx.user_role = 'org_admin') OR
+                    ctx.user_id = a.created_by_id
+            )
+        )
+    );
+
+CREATE POLICY "assessment_sections_update_policy" ON assessment_sections
+    FOR UPDATE TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM assessments a
+            WHERE a.id = assessment_sections.assessment_id
+            AND EXISTS (
+                SELECT 1 FROM get_user_org_context() ctx
+                WHERE 
+                    ctx.is_super_admin OR
+                    (ctx.organization_id = a.organization_id AND ctx.user_role = 'org_admin') OR
+                    ctx.user_id = a.created_by_id
+            )
+        )
+    );
+
+-- ASSESSMENT QUESTIONS POLICIES
+CREATE POLICY "assessment_questions_select_policy" ON assessment_questions
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM assessment_sections s
+            JOIN assessments a ON a.id = s.assessment_id
+            WHERE s.id = assessment_questions.section_id
+            AND check_org_access(a.organization_id)
+        )
+    );
+
+CREATE POLICY "assessment_questions_insert_policy" ON assessment_questions
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM assessment_sections s
+            JOIN assessments a ON a.id = s.assessment_id
+            WHERE s.id = NEW.section_id
+            AND EXISTS (
+                SELECT 1 FROM get_user_org_context() ctx
+                WHERE 
+                    ctx.is_super_admin OR
+                    (ctx.organization_id = a.organization_id AND ctx.user_role = 'org_admin') OR
+                    ctx.user_id = a.created_by_id
+            )
+        )
+    );
+
+CREATE POLICY "assessment_questions_update_policy" ON assessment_questions
+    FOR UPDATE TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM assessment_sections s
+            JOIN assessments a ON a.id = s.assessment_id
+            WHERE s.id = assessment_questions.section_id
+            AND EXISTS (
+                SELECT 1 FROM get_user_org_context() ctx
+                WHERE 
+                    ctx.is_super_admin OR
+                    (ctx.organization_id = a.organization_id AND ctx.user_role = 'org_admin') OR
+                    ctx.user_id = a.created_by_id
+            )
+        )
+    );
+
+-- ASSESSMENT ORGANIZATION ASSIGNMENTS POLICIES
+CREATE POLICY "assessment_org_assignments_select_policy" ON assessment_organization_assignments
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM assessments a
+            WHERE a.id = assessment_organization_assignments.assessment_id
+            AND check_org_access(a.organization_id)
+        )
+    );
+
+CREATE POLICY "assessment_org_assignments_insert_policy" ON assessment_organization_assignments
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.user_role = 'org_admin' AND ctx.organization_id = NEW.organization_id)
+        )
+    );
+
+-- DEPARTMENTS POLICIES
+CREATE POLICY "departments_select_policy" ON departments
+    FOR SELECT TO authenticated
+    USING (
+        check_org_access(departments.organization_id)
+    );
+
+CREATE POLICY "departments_insert_policy" ON departments
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+CREATE POLICY "departments_update_policy" ON departments
+    FOR UPDATE TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = departments.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- COMPETENCIES POLICIES
+CREATE POLICY "competencies_select_policy" ON competencies
+    FOR SELECT TO authenticated
+    USING (
+        check_org_access(competencies.organization_id)
+    );
+
+CREATE POLICY "competencies_insert_policy" ON competencies
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- QUESTION COMPETENCIES POLICIES
+CREATE POLICY "question_competencies_select_policy" ON question_competencies
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            JOIN competencies c ON c.id = question_competencies.competency_id
+            WHERE 
+                ctx.is_super_admin OR
+                ctx.organization_id = c.organization_id
+        )
+    );
+
+CREATE POLICY "question_competencies_insert_policy" ON question_competencies
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            JOIN competencies c ON c.id = NEW.competency_id
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = c.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- IMPORT LOGS POLICIES
+CREATE POLICY "import_logs_select_policy" ON import_logs
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = import_logs.organization_id AND ctx.user_role = 'org_admin') OR
+                ctx.user_id = import_logs.imported_by_id
+        )
+    );
+
+CREATE POLICY "import_logs_insert_policy" ON import_logs
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- EXPORT LOGS POLICIES
+CREATE POLICY "export_logs_select_policy" ON export_logs
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = export_logs.organization_id AND ctx.user_role = 'org_admin') OR
+                ctx.user_id = export_logs.exported_by_id
+        )
+    );
+
+CREATE POLICY "export_logs_insert_policy" ON export_logs
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- PDF BRANDING SETTINGS POLICIES
+CREATE POLICY "pdf_branding_settings_select_policy" ON pdf_branding_settings
+    FOR SELECT TO authenticated
+    USING (
+        check_org_access(pdf_branding_settings.organization_id)
+    );
+
+CREATE POLICY "pdf_branding_settings_insert_policy" ON pdf_branding_settings
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+CREATE POLICY "pdf_branding_settings_update_policy" ON pdf_branding_settings
+    FOR UPDATE TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = pdf_branding_settings.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- PROFILE TAGS POLICIES
+CREATE POLICY "profile_tags_select_policy" ON profile_tags
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            JOIN users u ON u.id = profile_tags.user_id
+            WHERE 
+                ctx.is_super_admin OR
+                ctx.organization_id = u.organization_id
+        )
+    );
+
+CREATE POLICY "profile_tags_insert_policy" ON profile_tags
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            JOIN users u ON u.id = NEW.user_id
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = u.organization_id AND ctx.user_role IN ('org_admin', 'super_admin'))
+        )
+    );
+
+-- USER BEHAVIORS POLICIES
+CREATE POLICY "user_behaviors_select_policy" ON user_behaviors
+    FOR SELECT TO authenticated
+    USING (
+        check_org_access(user_behaviors.organization_id)
+    );
+
+CREATE POLICY "user_behaviors_insert_policy" ON user_behaviors
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        check_org_access(NEW.organization_id)
+    );
+
+-- STAFF ASSIGNMENTS POLICIES
+CREATE POLICY "staff_assignments_select_policy" ON staff_assignments
+    FOR SELECT TO authenticated
+    USING (
+        check_org_access(staff_assignments.organization_id)
+    );
+
+CREATE POLICY "staff_assignments_insert_policy" ON staff_assignments
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role IN ('org_admin', 'super_admin'))
+        )
+    );
+
+-- ASSESSMENT SECTIONS POLICIES
+CREATE POLICY "assessment_sections_select_policy" ON assessment_sections
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM assessments a
+            WHERE a.id = assessment_sections.assessment_id
+            AND check_org_access(a.organization_id)
+        )
+    );
+
+CREATE POLICY "assessment_sections_insert_policy" ON assessment_sections
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM assessments a
+            WHERE a.id = NEW.assessment_id
+            AND EXISTS (
+                SELECT 1 FROM get_user_org_context() ctx
+                WHERE 
+                    ctx.is_super_admin OR
+                    (ctx.organization_id = a.organization_id AND ctx.user_role = 'org_admin') OR
+                    ctx.user_id = a.created_by_id
+            )
+        )
+    );
+
+CREATE POLICY "assessment_sections_update_policy" ON assessment_sections
+    FOR UPDATE TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM assessments a
+            WHERE a.id = assessment_sections.assessment_id
+            AND EXISTS (
+                SELECT 1 FROM get_user_org_context() ctx
+                WHERE 
+                    ctx.is_super_admin OR
+                    (ctx.organization_id = a.organization_id AND ctx.user_role = 'org_admin') OR
+                    ctx.user_id = a.created_by_id
+            )
+        )
+    );
+
+-- ASSESSMENT QUESTIONS POLICIES
+CREATE POLICY "assessment_questions_select_policy" ON assessment_questions
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM assessment_sections s
+            JOIN assessments a ON a.id = s.assessment_id
+            WHERE s.id = assessment_questions.section_id
+            AND check_org_access(a.organization_id)
+        )
+    );
+
+CREATE POLICY "assessment_questions_insert_policy" ON assessment_questions
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM assessment_sections s
+            JOIN assessments a ON a.id = s.assessment_id
+            WHERE s.id = NEW.section_id
+            AND EXISTS (
+                SELECT 1 FROM get_user_org_context() ctx
+                WHERE 
+                    ctx.is_super_admin OR
+                    (ctx.organization_id = a.organization_id AND ctx.user_role = 'org_admin') OR
+                    ctx.user_id = a.created_by_id
+            )
+        )
+    );
+
+CREATE POLICY "assessment_questions_update_policy" ON assessment_questions
+    FOR UPDATE TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM assessment_sections s
+            JOIN assessments a ON a.id = s.assessment_id
+            WHERE s.id = assessment_questions.section_id
+            AND EXISTS (
+                SELECT 1 FROM get_user_org_context() ctx
+                WHERE 
+                    ctx.is_super_admin OR
+                    (ctx.organization_id = a.organization_id AND ctx.user_role = 'org_admin') OR
+                    ctx.user_id = a.created_by_id
+            )
+        )
+    );
+
+-- ASSESSMENT ORGANIZATION ASSIGNMENTS POLICIES
+CREATE POLICY "assessment_org_assignments_select_policy" ON assessment_organization_assignments
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM assessments a
+            WHERE a.id = assessment_organization_assignments.assessment_id
+            AND check_org_access(a.organization_id)
+        )
+    );
+
+CREATE POLICY "assessment_org_assignments_insert_policy" ON assessment_organization_assignments
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.user_role = 'org_admin' AND ctx.organization_id = NEW.organization_id)
+        )
+    );
+
+-- DEPARTMENTS POLICIES
+CREATE POLICY "departments_select_policy" ON departments
+    FOR SELECT TO authenticated
+    USING (
+        check_org_access(departments.organization_id)
+    );
+
+CREATE POLICY "departments_insert_policy" ON departments
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+CREATE POLICY "departments_update_policy" ON departments
+    FOR UPDATE TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = departments.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- COMPETENCIES POLICIES
+CREATE POLICY "competencies_select_policy" ON competencies
+    FOR SELECT TO authenticated
+    USING (
+        check_org_access(competencies.organization_id)
+    );
+
+CREATE POLICY "competencies_insert_policy" ON competencies
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- QUESTION COMPETENCIES POLICIES
+CREATE POLICY "question_competencies_select_policy" ON question_competencies
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            JOIN competencies c ON c.id = question_competencies.competency_id
+            WHERE 
+                ctx.is_super_admin OR
+                ctx.organization_id = c.organization_id
+        )
+    );
+
+CREATE POLICY "question_competencies_insert_policy" ON question_competencies
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            JOIN competencies c ON c.id = NEW.competency_id
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = c.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- IMPORT LOGS POLICIES
+CREATE POLICY "import_logs_select_policy" ON import_logs
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = import_logs.organization_id AND ctx.user_role = 'org_admin') OR
+                ctx.user_id = import_logs.imported_by_id
+        )
+    );
+
+CREATE POLICY "import_logs_insert_policy" ON import_logs
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- EXPORT LOGS POLICIES
+CREATE POLICY "export_logs_select_policy" ON export_logs
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = export_logs.organization_id AND ctx.user_role = 'org_admin') OR
+                ctx.user_id = export_logs.exported_by_id
+        )
+    );
+
+CREATE POLICY "export_logs_insert_policy" ON export_logs
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- PDF BRANDING SETTINGS POLICIES
+CREATE POLICY "pdf_branding_settings_select_policy" ON pdf_branding_settings
+    FOR SELECT TO authenticated
+    USING (
+        check_org_access(pdf_branding_settings.organization_id)
+    );
+
+CREATE POLICY "pdf_branding_settings_insert_policy" ON pdf_branding_settings
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+CREATE POLICY "pdf_branding_settings_update_policy" ON pdf_branding_settings
+    FOR UPDATE TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = pdf_branding_settings.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- PROFILE TAGS POLICIES
+CREATE POLICY "profile_tags_select_policy" ON profile_tags
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            JOIN users u ON u.id = profile_tags.user_id
+            WHERE 
+                ctx.is_super_admin OR
+                ctx.organization_id = u.organization_id
+        )
+    );
+
+CREATE POLICY "profile_tags_insert_policy" ON profile_tags
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            JOIN users u ON u.id = NEW.user_id
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = u.organization_id AND ctx.user_role IN ('org_admin', 'super_admin'))
+        )
+    );
+
+-- USER BEHAVIORS POLICIES
+CREATE POLICY "user_behaviors_select_policy" ON user_behaviors
+    FOR SELECT TO authenticated
+    USING (
+        check_org_access(user_behaviors.organization_id)
+    );
+
+CREATE POLICY "user_behaviors_insert_policy" ON user_behaviors
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        check_org_access(NEW.organization_id)
+    );
+
+-- STAFF ASSIGNMENTS POLICIES
+CREATE POLICY "staff_assignments_select_policy" ON staff_assignments
+    FOR SELECT TO authenticated
+    USING (
+        check_org_access(staff_assignments.organization_id)
+    );
+
+CREATE POLICY "staff_assignments_insert_policy" ON staff_assignments
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role IN ('org_admin', 'super_admin'))
+        )
+    );
+
+-- ASSESSMENT SECTIONS POLICIES
+CREATE POLICY "assessment_sections_select_policy" ON assessment_sections
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM assessments a
+            WHERE a.id = assessment_sections.assessment_id
+            AND check_org_access(a.organization_id)
+        )
+    );
+
+CREATE POLICY "assessment_sections_insert_policy" ON assessment_sections
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM assessments a
+            WHERE a.id = NEW.assessment_id
+            AND EXISTS (
+                SELECT 1 FROM get_user_org_context() ctx
+                WHERE 
+                    ctx.is_super_admin OR
+                    (ctx.organization_id = a.organization_id AND ctx.user_role = 'org_admin') OR
+                    ctx.user_id = a.created_by_id
+            )
+        )
+    );
+
+CREATE POLICY "assessment_sections_update_policy" ON assessment_sections
+    FOR UPDATE TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM assessments a
+            WHERE a.id = assessment_sections.assessment_id
+            AND EXISTS (
+                SELECT 1 FROM get_user_org_context() ctx
+                WHERE 
+                    ctx.is_super_admin OR
+                    (ctx.organization_id = a.organization_id AND ctx.user_role = 'org_admin') OR
+                    ctx.user_id = a.created_by_id
+            )
+        )
+    );
+
+-- ASSESSMENT QUESTIONS POLICIES
+CREATE POLICY "assessment_questions_select_policy" ON assessment_questions
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM assessment_sections s
+            JOIN assessments a ON a.id = s.assessment_id
+            WHERE s.id = assessment_questions.section_id
+            AND check_org_access(a.organization_id)
+        )
+    );
+
+CREATE POLICY "assessment_questions_insert_policy" ON assessment_questions
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM assessment_sections s
+            JOIN assessments a ON a.id = s.assessment_id
+            WHERE s.id = NEW.section_id
+            AND EXISTS (
+                SELECT 1 FROM get_user_org_context() ctx
+                WHERE 
+                    ctx.is_super_admin OR
+                    (ctx.organization_id = a.organization_id AND ctx.user_role = 'org_admin') OR
+                    ctx.user_id = a.created_by_id
+            )
+        )
+    );
+
+CREATE POLICY "assessment_questions_update_policy" ON assessment_questions
+    FOR UPDATE TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM assessment_sections s
+            JOIN assessments a ON a.id = s.assessment_id
+            WHERE s.id = assessment_questions.section_id
+            AND EXISTS (
+                SELECT 1 FROM get_user_org_context() ctx
+                WHERE 
+                    ctx.is_super_admin OR
+                    (ctx.organization_id = a.organization_id AND ctx.user_role = 'org_admin') OR
+                    ctx.user_id = a.created_by_id
+            )
+        )
+    );
+
+-- ASSESSMENT ORGANIZATION ASSIGNMENTS POLICIES
+CREATE POLICY "assessment_org_assignments_select_policy" ON assessment_organization_assignments
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM assessments a
+            WHERE a.id = assessment_organization_assignments.assessment_id
+            AND check_org_access(a.organization_id)
+        )
+    );
+
+CREATE POLICY "assessment_org_assignments_insert_policy" ON assessment_organization_assignments
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.user_role = 'org_admin' AND ctx.organization_id = NEW.organization_id)
+        )
+    );
+
+-- DEPARTMENTS POLICIES
+CREATE POLICY "departments_select_policy" ON departments
+    FOR SELECT TO authenticated
+    USING (
+        check_org_access(departments.organization_id)
+    );
+
+CREATE POLICY "departments_insert_policy" ON departments
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+CREATE POLICY "departments_update_policy" ON departments
+    FOR UPDATE TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = departments.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- COMPETENCIES POLICIES
+CREATE POLICY "competencies_select_policy" ON competencies
+    FOR SELECT TO authenticated
+    USING (
+        check_org_access(competencies.organization_id)
+    );
+
+CREATE POLICY "competencies_insert_policy" ON competencies
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- QUESTION COMPETENCIES POLICIES
+CREATE POLICY "question_competencies_select_policy" ON question_competencies
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            JOIN competencies c ON c.id = question_competencies.competency_id
+            WHERE 
+                ctx.is_super_admin OR
+                ctx.organization_id = c.organization_id
+        )
+    );
+
+CREATE POLICY "question_competencies_insert_policy" ON question_competencies
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            JOIN competencies c ON c.id = NEW.competency_id
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = c.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- IMPORT LOGS POLICIES
+CREATE POLICY "import_logs_select_policy" ON import_logs
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = import_logs.organization_id AND ctx.user_role = 'org_admin') OR
+                ctx.user_id = import_logs.imported_by_id
+        )
+    );
+
+CREATE POLICY "import_logs_insert_policy" ON import_logs
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- EXPORT LOGS POLICIES
+CREATE POLICY "export_logs_select_policy" ON export_logs
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = export_logs.organization_id AND ctx.user_role = 'org_admin') OR
+                ctx.user_id = export_logs.exported_by_id
+        )
+    );
+
+CREATE POLICY "export_logs_insert_policy" ON export_logs
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- PDF BRANDING SETTINGS POLICIES
+CREATE POLICY "pdf_branding_settings_select_policy" ON pdf_branding_settings
+    FOR SELECT TO authenticated
+    USING (
+        check_org_access(pdf_branding_settings.organization_id)
+    );
+
+CREATE POLICY "pdf_branding_settings_insert_policy" ON pdf_branding_settings
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+CREATE POLICY "pdf_branding_settings_update_policy" ON pdf_branding_settings
+    FOR UPDATE TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = pdf_branding_settings.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- PROFILE TAGS POLICIES
+CREATE POLICY "profile_tags_select_policy" ON profile_tags
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            JOIN users u ON u.id = profile_tags.user_id
+            WHERE 
+                ctx.is_super_admin OR
+                ctx.organization_id = u.organization_id
+        )
+    );
+
+CREATE POLICY "profile_tags_insert_policy" ON profile_tags
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            JOIN users u ON u.id = NEW.user_id
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = u.organization_id AND ctx.user_role IN ('org_admin', 'super_admin'))
+        )
+    );
+
+-- USER BEHAVIORS POLICIES
+CREATE POLICY "user_behaviors_select_policy" ON user_behaviors
+    FOR SELECT TO authenticated
+    USING (
+        check_org_access(user_behaviors.organization_id)
+    );
+
+CREATE POLICY "user_behaviors_insert_policy" ON user_behaviors
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        check_org_access(NEW.organization_id)
+    );
+
+-- STAFF ASSIGNMENTS POLICIES
+CREATE POLICY "staff_assignments_select_policy" ON staff_assignments
+    FOR SELECT TO authenticated
+    USING (
+        check_org_access(staff_assignments.organization_id)
+    );
+
+CREATE POLICY "staff_assignments_insert_policy" ON staff_assignments
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role IN ('org_admin', 'super_admin'))
+        )
+    );
+
+-- ASSESSMENT SECTIONS POLICIES
+CREATE POLICY "assessment_sections_select_policy" ON assessment_sections
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM assessments a
+            WHERE a.id = assessment_sections.assessment_id
+            AND check_org_access(a.organization_id)
+        )
+    );
+
+CREATE POLICY "assessment_sections_insert_policy" ON assessment_sections
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM assessments a
+            WHERE a.id = NEW.assessment_id
+            AND EXISTS (
+                SELECT 1 FROM get_user_org_context() ctx
+                WHERE 
+                    ctx.is_super_admin OR
+                    (ctx.organization_id = a.organization_id AND ctx.user_role = 'org_admin') OR
+                    ctx.user_id = a.created_by_id
+            )
+        )
+    );
+
+CREATE POLICY "assessment_sections_update_policy" ON assessment_sections
+    FOR UPDATE TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM assessments a
+            WHERE a.id = assessment_sections.assessment_id
+            AND EXISTS (
+                SELECT 1 FROM get_user_org_context() ctx
+                WHERE 
+                    ctx.is_super_admin OR
+                    (ctx.organization_id = a.organization_id AND ctx.user_role = 'org_admin') OR
+                    ctx.user_id = a.created_by_id
+            )
+        )
+    );
+
+-- ASSESSMENT QUESTIONS POLICIES
+CREATE POLICY "assessment_questions_select_policy" ON assessment_questions
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM assessment_sections s
+            JOIN assessments a ON a.id = s.assessment_id
+            WHERE s.id = assessment_questions.section_id
+            AND check_org_access(a.organization_id)
+        )
+    );
+
+CREATE POLICY "assessment_questions_insert_policy" ON assessment_questions
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM assessment_sections s
+            JOIN assessments a ON a.id = s.assessment_id
+            WHERE s.id = NEW.section_id
+            AND EXISTS (
+                SELECT 1 FROM get_user_org_context() ctx
+                WHERE 
+                    ctx.is_super_admin OR
+                    (ctx.organization_id = a.organization_id AND ctx.user_role = 'org_admin') OR
+                    ctx.user_id = a.created_by_id
+            )
+        )
+    );
+
+CREATE POLICY "assessment_questions_update_policy" ON assessment_questions
+    FOR UPDATE TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM assessment_sections s
+            JOIN assessments a ON a.id = s.assessment_id
+            WHERE s.id = assessment_questions.section_id
+            AND EXISTS (
+                SELECT 1 FROM get_user_org_context() ctx
+                WHERE 
+                    ctx.is_super_admin OR
+                    (ctx.organization_id = a.organization_id AND ctx.user_role = 'org_admin') OR
+                    ctx.user_id = a.created_by_id
+            )
+        )
+    );
+
+-- ASSESSMENT ORGANIZATION ASSIGNMENTS POLICIES
+CREATE POLICY "assessment_org_assignments_select_policy" ON assessment_organization_assignments
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM assessments a
+            WHERE a.id = assessment_organization_assignments.assessment_id
+            AND check_org_access(a.organization_id)
+        )
+    );
+
+CREATE POLICY "assessment_org_assignments_insert_policy" ON assessment_organization_assignments
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.user_role = 'org_admin' AND ctx.organization_id = NEW.organization_id)
+        )
+    );
+
+-- DEPARTMENTS POLICIES
+CREATE POLICY "departments_select_policy" ON departments
+    FOR SELECT TO authenticated
+    USING (
+        check_org_access(departments.organization_id)
+    );
+
+CREATE POLICY "departments_insert_policy" ON departments
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+CREATE POLICY "departments_update_policy" ON departments
+    FOR UPDATE TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = departments.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- COMPETENCIES POLICIES
+CREATE POLICY "competencies_select_policy" ON competencies
+    FOR SELECT TO authenticated
+    USING (
+        check_org_access(competencies.organization_id)
+    );
+
+CREATE POLICY "competencies_insert_policy" ON competencies
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- QUESTION COMPETENCIES POLICIES
+CREATE POLICY "question_competencies_select_policy" ON question_competencies
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            JOIN competencies c ON c.id = question_competencies.competency_id
+            WHERE 
+                ctx.is_super_admin OR
+                ctx.organization_id = c.organization_id
+        )
+    );
+
+CREATE POLICY "question_competencies_insert_policy" ON question_competencies
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            JOIN competencies c ON c.id = NEW.competency_id
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = c.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- IMPORT LOGS POLICIES
+CREATE POLICY "import_logs_select_policy" ON import_logs
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = import_logs.organization_id AND ctx.user_role = 'org_admin') OR
+                ctx.user_id = import_logs.imported_by_id
+        )
+    );
+
+CREATE POLICY "import_logs_insert_policy" ON import_logs
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- EXPORT LOGS POLICIES
+CREATE POLICY "export_logs_select_policy" ON export_logs
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = export_logs.organization_id AND ctx.user_role = 'org_admin') OR
+                ctx.user_id = export_logs.exported_by_id
+        )
+    );
+
+CREATE POLICY "export_logs_insert_policy" ON export_logs
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- PDF BRANDING SETTINGS POLICIES
+CREATE POLICY "pdf_branding_settings_select_policy" ON pdf_branding_settings
+    FOR SELECT TO authenticated
+    USING (
+        check_org_access(pdf_branding_settings.organization_id)
+    );
+
+CREATE POLICY "pdf_branding_settings_insert_policy" ON pdf_branding_settings
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+CREATE POLICY "pdf_branding_settings_update_policy" ON pdf_branding_settings
+    FOR UPDATE TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = pdf_branding_settings.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- PROFILE TAGS POLICIES
+CREATE POLICY "profile_tags_select_policy" ON profile_tags
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            JOIN users u ON u.id = profile_tags.user_id
+            WHERE 
+                ctx.is_super_admin OR
+                ctx.organization_id = u.organization_id
+        )
+    );
+
+CREATE POLICY "profile_tags_insert_policy" ON profile_tags
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            JOIN users u ON u.id = NEW.user_id
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = u.organization_id AND ctx.user_role IN ('org_admin', 'super_admin'))
+        )
+    );
+
+-- USER BEHAVIORS POLICIES
+CREATE POLICY "user_behaviors_select_policy" ON user_behaviors
+    FOR SELECT TO authenticated
+    USING (
+        check_org_access(user_behaviors.organization_id)
+    );
+
+CREATE POLICY "user_behaviors_insert_policy" ON user_behaviors
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        check_org_access(NEW.organization_id)
+    );
+
+-- STAFF ASSIGNMENTS POLICIES
+CREATE POLICY "staff_assignments_select_policy" ON staff_assignments
+    FOR SELECT TO authenticated
+    USING (
+        check_org_access(staff_assignments.organization_id)
+    );
+
+CREATE POLICY "staff_assignments_insert_policy" ON staff_assignments
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role IN ('org_admin', 'super_admin'))
+        )
+    );
+
+-- ASSESSMENT SECTIONS POLICIES
+CREATE POLICY "assessment_sections_select_policy" ON assessment_sections
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM assessments a
+            WHERE a.id = assessment_sections.assessment_id
+            AND check_org_access(a.organization_id)
+        )
+    );
+
+CREATE POLICY "assessment_sections_insert_policy" ON assessment_sections
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM assessments a
+            WHERE a.id = NEW.assessment_id
+            AND EXISTS (
+                SELECT 1 FROM get_user_org_context() ctx
+                WHERE 
+                    ctx.is_super_admin OR
+                    (ctx.organization_id = a.organization_id AND ctx.user_role = 'org_admin') OR
+                    ctx.user_id = a.created_by_id
+            )
+        )
+    );
+
+CREATE POLICY "assessment_sections_update_policy" ON assessment_sections
+    FOR UPDATE TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM assessments a
+            WHERE a.id = assessment_sections.assessment_id
+            AND EXISTS (
+                SELECT 1 FROM get_user_org_context() ctx
+                WHERE 
+                    ctx.is_super_admin OR
+                    (ctx.organization_id = a.organization_id AND ctx.user_role = 'org_admin') OR
+                    ctx.user_id = a.created_by_id
+            )
+        )
+    );
+
+-- ASSESSMENT QUESTIONS POLICIES
+CREATE POLICY "assessment_questions_select_policy" ON assessment_questions
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM assessment_sections s
+            JOIN assessments a ON a.id = s.assessment_id
+            WHERE s.id = assessment_questions.section_id
+            AND check_org_access(a.organization_id)
+        )
+    );
+
+CREATE POLICY "assessment_questions_insert_policy" ON assessment_questions
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM assessment_sections s
+            JOIN assessments a ON a.id = s.assessment_id
+            WHERE s.id = NEW.section_id
+            AND EXISTS (
+                SELECT 1 FROM get_user_org_context() ctx
+                WHERE 
+                    ctx.is_super_admin OR
+                    (ctx.organization_id = a.organization_id AND ctx.user_role = 'org_admin') OR
+                    ctx.user_id = a.created_by_id
+            )
+        )
+    );
+
+CREATE POLICY "assessment_questions_update_policy" ON assessment_questions
+    FOR UPDATE TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM assessment_sections s
+            JOIN assessments a ON a.id = s.assessment_id
+            WHERE s.id = assessment_questions.section_id
+            AND EXISTS (
+                SELECT 1 FROM get_user_org_context() ctx
+                WHERE 
+                    ctx.is_super_admin OR
+                    (ctx.organization_id = a.organization_id AND ctx.user_role = 'org_admin') OR
+                    ctx.user_id = a.created_by_id
+            )
+        )
+    );
+
+-- ASSESSMENT ORGANIZATION ASSIGNMENTS POLICIES
+CREATE POLICY "assessment_org_assignments_select_policy" ON assessment_organization_assignments
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM assessments a
+            WHERE a.id = assessment_organization_assignments.assessment_id
+            AND check_org_access(a.organization_id)
+        )
+    );
+
+CREATE POLICY "assessment_org_assignments_insert_policy" ON assessment_organization_assignments
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.user_role = 'org_admin' AND ctx.organization_id = NEW.organization_id)
+        )
+    );
+
+-- DEPARTMENTS POLICIES
+CREATE POLICY "departments_select_policy" ON departments
+    FOR SELECT TO authenticated
+    USING (
+        check_org_access(departments.organization_id)
+    );
+
+CREATE POLICY "departments_insert_policy" ON departments
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+CREATE POLICY "departments_update_policy" ON departments
+    FOR UPDATE TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = departments.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- COMPETENCIES POLICIES
+CREATE POLICY "competencies_select_policy" ON competencies
+    FOR SELECT TO authenticated
+    USING (
+        check_org_access(competencies.organization_id)
+    );
+
+CREATE POLICY "competencies_insert_policy" ON competencies
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- QUESTION COMPETENCIES POLICIES
+CREATE POLICY "question_competencies_select_policy" ON question_competencies
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            JOIN competencies c ON c.id = question_competencies.competency_id
+            WHERE 
+                ctx.is_super_admin OR
+                ctx.organization_id = c.organization_id
+        )
+    );
+
+CREATE POLICY "question_competencies_insert_policy" ON question_competencies
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            JOIN competencies c ON c.id = NEW.competency_id
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = c.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- IMPORT LOGS POLICIES
+CREATE POLICY "import_logs_select_policy" ON import_logs
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = import_logs.organization_id AND ctx.user_role = 'org_admin') OR
+                ctx.user_id = import_logs.imported_by_id
+        )
+    );
+
+CREATE POLICY "import_logs_insert_policy" ON import_logs
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- EXPORT LOGS POLICIES
+CREATE POLICY "export_logs_select_policy" ON export_logs
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = export_logs.organization_id AND ctx.user_role = 'org_admin') OR
+                ctx.user_id = export_logs.exported_by_id
+        )
+    );
+
+CREATE POLICY "export_logs_insert_policy" ON export_logs
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- PDF BRANDING SETTINGS POLICIES
+CREATE POLICY "pdf_branding_settings_select_policy" ON pdf_branding_settings
+    FOR SELECT TO authenticated
+    USING (
+        check_org_access(pdf_branding_settings.organization_id)
+    );
+
+CREATE POLICY "pdf_branding_settings_insert_policy" ON pdf_branding_settings
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+CREATE POLICY "pdf_branding_settings_update_policy" ON pdf_branding_settings
+    FOR UPDATE TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = pdf_branding_settings.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- PROFILE TAGS POLICIES
+CREATE POLICY "profile_tags_select_policy" ON profile_tags
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            JOIN users u ON u.id = profile_tags.user_id
+            WHERE 
+                ctx.is_super_admin OR
+                ctx.organization_id = u.organization_id
+        )
+    );
+
+CREATE POLICY "profile_tags_insert_policy" ON profile_tags
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            JOIN users u ON u.id = NEW.user_id
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = u.organization_id AND ctx.user_role IN ('org_admin', 'super_admin'))
+        )
+    );
+
+-- USER BEHAVIORS POLICIES
+CREATE POLICY "user_behaviors_select_policy" ON user_behaviors
+    FOR SELECT TO authenticated
+    USING (
+        check_org_access(user_behaviors.organization_id)
+    );
+
+CREATE POLICY "user_behaviors_insert_policy" ON user_behaviors
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        check_org_access(NEW.organization_id)
+    );
+
+-- STAFF ASSIGNMENTS POLICIES
+CREATE POLICY "staff_assignments_select_policy" ON staff_assignments
+    FOR SELECT TO authenticated
+    USING (
+        check_org_access(staff_assignments.organization_id)
+    );
+
+CREATE POLICY "staff_assignments_insert_policy" ON staff_assignments
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role IN ('org_admin', 'super_admin'))
+        )
+    );
+
+-- ASSESSMENT SECTIONS POLICIES
+CREATE POLICY "assessment_sections_select_policy" ON assessment_sections
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM assessments a
+            WHERE a.id = assessment_sections.assessment_id
+            AND check_org_access(a.organization_id)
+        )
+    );
+
+CREATE POLICY "assessment_sections_insert_policy" ON assessment_sections
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM assessments a
+            WHERE a.id = NEW.assessment_id
+            AND EXISTS (
+                SELECT 1 FROM get_user_org_context() ctx
+                WHERE 
+                    ctx.is_super_admin OR
+                    (ctx.organization_id = a.organization_id AND ctx.user_role = 'org_admin') OR
+                    ctx.user_id = a.created_by_id
+            )
+        )
+    );
+
+CREATE POLICY "assessment_sections_update_policy" ON assessment_sections
+    FOR UPDATE TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM assessments a
+            WHERE a.id = assessment_sections.assessment_id
+            AND EXISTS (
+                SELECT 1 FROM get_user_org_context() ctx
+                WHERE 
+                    ctx.is_super_admin OR
+                    (ctx.organization_id = a.organization_id AND ctx.user_role = 'org_admin') OR
+                    ctx.user_id = a.created_by_id
+            )
+        )
+    );
+
+-- ASSESSMENT QUESTIONS POLICIES
+CREATE POLICY "assessment_questions_select_policy" ON assessment_questions
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM assessment_sections s
+            JOIN assessments a ON a.id = s.assessment_id
+            WHERE s.id = assessment_questions.section_id
+            AND check_org_access(a.organization_id)
+        )
+    );
+
+CREATE POLICY "assessment_questions_insert_policy" ON assessment_questions
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM assessment_sections s
+            JOIN assessments a ON a.id = s.assessment_id
+            WHERE s.id = NEW.section_id
+            AND EXISTS (
+                SELECT 1 FROM get_user_org_context() ctx
+                WHERE 
+                    ctx.is_super_admin OR
+                    (ctx.organization_id = a.organization_id AND ctx.user_role = 'org_admin') OR
+                    ctx.user_id = a.created_by_id
+            )
+        )
+    );
+
+CREATE POLICY "assessment_questions_update_policy" ON assessment_questions
+    FOR UPDATE TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM assessment_sections s
+            JOIN assessments a ON a.id = s.assessment_id
+            WHERE s.id = assessment_questions.section_id
+            AND EXISTS (
+                SELECT 1 FROM get_user_org_context() ctx
+                WHERE 
+                    ctx.is_super_admin OR
+                    (ctx.organization_id = a.organization_id AND ctx.user_role = 'org_admin') OR
+                    ctx.user_id = a.created_by_id
+            )
+        )
+    );
+
+-- ASSESSMENT ORGANIZATION ASSIGNMENTS POLICIES
+CREATE POLICY "assessment_org_assignments_select_policy" ON assessment_organization_assignments
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM assessments a
+            WHERE a.id = assessment_organization_assignments.assessment_id
+            AND check_org_access(a.organization_id)
+        )
+    );
+
+CREATE POLICY "assessment_org_assignments_insert_policy" ON assessment_organization_assignments
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.user_role = 'org_admin' AND ctx.organization_id = NEW.organization_id)
+        )
+    );
+
+-- DEPARTMENTS POLICIES
+CREATE POLICY "departments_select_policy" ON departments
+    FOR SELECT TO authenticated
+    USING (
+        check_org_access(departments.organization_id)
+    );
+
+CREATE POLICY "departments_insert_policy" ON departments
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+CREATE POLICY "departments_update_policy" ON departments
+    FOR UPDATE TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = departments.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- COMPETENCIES POLICIES
+CREATE POLICY "competencies_select_policy" ON competencies
+    FOR SELECT TO authenticated
+    USING (
+        check_org_access(competencies.organization_id)
+    );
+
+CREATE POLICY "competencies_insert_policy" ON competencies
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- QUESTION COMPETENCIES POLICIES
+CREATE POLICY "question_competencies_select_policy" ON question_competencies
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            JOIN competencies c ON c.id = question_competencies.competency_id
+            WHERE 
+                ctx.is_super_admin OR
+                ctx.organization_id = c.organization_id
+        )
+    );
+
+CREATE POLICY "question_competencies_insert_policy" ON question_competencies
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            JOIN competencies c ON c.id = NEW.competency_id
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = c.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- IMPORT LOGS POLICIES
+CREATE POLICY "import_logs_select_policy" ON import_logs
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = import_logs.organization_id AND ctx.user_role = 'org_admin') OR
+                ctx.user_id = import_logs.imported_by_id
+        )
+    );
+
+CREATE POLICY "import_logs_insert_policy" ON import_logs
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- EXPORT LOGS POLICIES
+CREATE POLICY "export_logs_select_policy" ON export_logs
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = export_logs.organization_id AND ctx.user_role = 'org_admin') OR
+                ctx.user_id = export_logs.exported_by_id
+        )
+    );
+
+CREATE POLICY "export_logs_insert_policy" ON export_logs
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- PDF BRANDING SETTINGS POLICIES
+CREATE POLICY "pdf_branding_settings_select_policy" ON pdf_branding_settings
+    FOR SELECT TO authenticated
+    USING (
+        check_org_access(pdf_branding_settings.organization_id)
+    );
+
+CREATE POLICY "pdf_branding_settings_insert_policy" ON pdf_branding_settings
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+CREATE POLICY "pdf_branding_settings_update_policy" ON pdf_branding_settings
+    FOR UPDATE TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = pdf_branding_settings.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- PROFILE TAGS POLICIES
+CREATE POLICY "profile_tags_select_policy" ON profile_tags
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            JOIN users u ON u.id = profile_tags.user_id
+            WHERE 
+                ctx.is_super_admin OR
+                ctx.organization_id = u.organization_id
+        )
+    );
+
+CREATE POLICY "profile_tags_insert_policy" ON profile_tags
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            JOIN users u ON u.id = NEW.user_id
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = u.organization_id AND ctx.user_role IN ('org_admin', 'super_admin'))
+        )
+    );
+
+-- USER BEHAVIORS POLICIES
+CREATE POLICY "user_behaviors_select_policy" ON user_behaviors
+    FOR SELECT TO authenticated
+    USING (
+        check_org_access(user_behaviors.organization_id)
+    );
+
+CREATE POLICY "user_behaviors_insert_policy" ON user_behaviors
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        check_org_access(NEW.organization_id)
+    );
+
+-- STAFF ASSIGNMENTS POLICIES
+CREATE POLICY "staff_assignments_select_policy" ON staff_assignments
+    FOR SELECT TO authenticated
+    USING (
+        check_org_access(staff_assignments.organization_id)
+    );
+
+CREATE POLICY "staff_assignments_insert_policy" ON staff_assignments
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role IN ('org_admin', 'super_admin'))
+        )
+    );
+
+-- ASSESSMENT SECTIONS POLICIES
+CREATE POLICY "assessment_sections_select_policy" ON assessment_sections
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM assessments a
+            WHERE a.id = assessment_sections.assessment_id
+            AND check_org_access(a.organization_id)
+        )
+    );
+
+CREATE POLICY "assessment_sections_insert_policy" ON assessment_sections
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM assessments a
+            WHERE a.id = NEW.assessment_id
+            AND EXISTS (
+                SELECT 1 FROM get_user_org_context() ctx
+                WHERE 
+                    ctx.is_super_admin OR
+                    (ctx.organization_id = a.organization_id AND ctx.user_role = 'org_admin') OR
+                    ctx.user_id = a.created_by_id
+            )
+        )
+    );
+
+CREATE POLICY "assessment_sections_update_policy" ON assessment_sections
+    FOR UPDATE TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM assessments a
+            WHERE a.id = assessment_sections.assessment_id
+            AND EXISTS (
+                SELECT 1 FROM get_user_org_context() ctx
+                WHERE 
+                    ctx.is_super_admin OR
+                    (ctx.organization_id = a.organization_id AND ctx.user_role = 'org_admin') OR
+                    ctx.user_id = a.created_by_id
+            )
+        )
+    );
+
+-- ASSESSMENT QUESTIONS POLICIES
+CREATE POLICY "assessment_questions_select_policy" ON assessment_questions
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM assessment_sections s
+            JOIN assessments a ON a.id = s.assessment_id
+            WHERE s.id = assessment_questions.section_id
+            AND check_org_access(a.organization_id)
+        )
+    );
+
+CREATE POLICY "assessment_questions_insert_policy" ON assessment_questions
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM assessment_sections s
+            JOIN assessments a ON a.id = s.assessment_id
+            WHERE s.id = NEW.section_id
+            AND EXISTS (
+                SELECT 1 FROM get_user_org_context() ctx
+                WHERE 
+                    ctx.is_super_admin OR
+                    (ctx.organization_id = a.organization_id AND ctx.user_role = 'org_admin') OR
+                    ctx.user_id = a.created_by_id
+            )
+        )
+    );
+
+CREATE POLICY "assessment_questions_update_policy" ON assessment_questions
+    FOR UPDATE TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM assessment_sections s
+            JOIN assessments a ON a.id = s.assessment_id
+            WHERE s.id = assessment_questions.section_id
+            AND EXISTS (
+                SELECT 1 FROM get_user_org_context() ctx
+                WHERE 
+                    ctx.is_super_admin OR
+                    (ctx.organization_id = a.organization_id AND ctx.user_role = 'org_admin') OR
+                    ctx.user_id = a.created_by_id
+            )
+        )
+    );
+
+-- ASSESSMENT ORGANIZATION ASSIGNMENTS POLICIES
+CREATE POLICY "assessment_org_assignments_select_policy" ON assessment_organization_assignments
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM assessments a
+            WHERE a.id = assessment_organization_assignments.assessment_id
+            AND check_org_access(a.organization_id)
+        )
+    );
+
+CREATE POLICY "assessment_org_assignments_insert_policy" ON assessment_organization_assignments
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.user_role = 'org_admin' AND ctx.organization_id = NEW.organization_id)
+        )
+    );
+
+-- DEPARTMENTS POLICIES
+CREATE POLICY "departments_select_policy" ON departments
+    FOR SELECT TO authenticated
+    USING (
+        check_org_access(departments.organization_id)
+    );
+
+CREATE POLICY "departments_insert_policy" ON departments
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+CREATE POLICY "departments_update_policy" ON departments
+    FOR UPDATE TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = departments.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- COMPETENCIES POLICIES
+CREATE POLICY "competencies_select_policy" ON competencies
+    FOR SELECT TO authenticated
+    USING (
+        check_org_access(competencies.organization_id)
+    );
+
+CREATE POLICY "competencies_insert_policy" ON competencies
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- QUESTION COMPETENCIES POLICIES
+CREATE POLICY "question_competencies_select_policy" ON question_competencies
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            JOIN competencies c ON c.id = question_competencies.competency_id
+            WHERE 
+                ctx.is_super_admin OR
+                ctx.organization_id = c.organization_id
+        )
+    );
+
+CREATE POLICY "question_competencies_insert_policy" ON question_competencies
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            JOIN competencies c ON c.id = NEW.competency_id
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = c.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- IMPORT LOGS POLICIES
+CREATE POLICY "import_logs_select_policy" ON import_logs
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = import_logs.organization_id AND ctx.user_role = 'org_admin') OR
+                ctx.user_id = import_logs.imported_by_id
+        )
+    );
+
+CREATE POLICY "import_logs_insert_policy" ON import_logs
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- EXPORT LOGS POLICIES
+CREATE POLICY "export_logs_select_policy" ON export_logs
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = export_logs.organization_id AND ctx.user_role = 'org_admin') OR
+                ctx.user_id = export_logs.exported_by_id
+        )
+    );
+
+CREATE POLICY "export_logs_insert_policy" ON export_logs
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- PDF BRANDING SETTINGS POLICIES
+CREATE POLICY "pdf_branding_settings_select_policy" ON pdf_branding_settings
+    FOR SELECT TO authenticated
+    USING (
+        check_org_access(pdf_branding_settings.organization_id)
+    );
+
+CREATE POLICY "pdf_branding_settings_insert_policy" ON pdf_branding_settings
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+CREATE POLICY "pdf_branding_settings_update_policy" ON pdf_branding_settings
+    FOR UPDATE TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = pdf_branding_settings.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- PROFILE TAGS POLICIES
+CREATE POLICY "profile_tags_select_policy" ON profile_tags
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            JOIN users u ON u.id = profile_tags.user_id
+            WHERE 
+                ctx.is_super_admin OR
+                ctx.organization_id = u.organization_id
+        )
+    );
+
+CREATE POLICY "profile_tags_insert_policy" ON profile_tags
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            JOIN users u ON u.id = NEW.user_id
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = u.organization_id AND ctx.user_role IN ('org_admin', 'super_admin'))
+        )
+    );
+
+-- USER BEHAVIORS POLICIES
+CREATE POLICY "user_behaviors_select_policy" ON user_behaviors
+    FOR SELECT TO authenticated
+    USING (
+        check_org_access(user_behaviors.organization_id)
+    );
+
+CREATE POLICY "user_behaviors_insert_policy" ON user_behaviors
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        check_org_access(NEW.organization_id)
+    );
+
+-- STAFF ASSIGNMENTS POLICIES
+CREATE POLICY "staff_assignments_select_policy" ON staff_assignments
+    FOR SELECT TO authenticated
+    USING (
+        check_org_access(staff_assignments.organization_id)
+    );
+
+CREATE POLICY "staff_assignments_insert_policy" ON staff_assignments
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role IN ('org_admin', 'super_admin'))
+        )
+    );
+
+-- ASSESSMENT SECTIONS POLICIES
+CREATE POLICY "assessment_sections_select_policy" ON assessment_sections
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM assessments a
+            WHERE a.id = assessment_sections.assessment_id
+            AND check_org_access(a.organization_id)
+        )
+    );
+
+CREATE POLICY "assessment_sections_insert_policy" ON assessment_sections
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM assessments a
+            WHERE a.id = NEW.assessment_id
+            AND EXISTS (
+                SELECT 1 FROM get_user_org_context() ctx
+                WHERE 
+                    ctx.is_super_admin OR
+                    (ctx.organization_id = a.organization_id AND ctx.user_role = 'org_admin') OR
+                    ctx.user_id = a.created_by_id
+            )
+        )
+    );
+
+CREATE POLICY "assessment_sections_update_policy" ON assessment_sections
+    FOR UPDATE TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM assessments a
+            WHERE a.id = assessment_sections.assessment_id
+            AND EXISTS (
+                SELECT 1 FROM get_user_org_context() ctx
+                WHERE 
+                    ctx.is_super_admin OR
+                    (ctx.organization_id = a.organization_id AND ctx.user_role = 'org_admin') OR
+                    ctx.user_id = a.created_by_id
+            )
+        )
+    );
+
+-- ASSESSMENT QUESTIONS POLICIES
+CREATE POLICY "assessment_questions_select_policy" ON assessment_questions
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM assessment_sections s
+            JOIN assessments a ON a.id = s.assessment_id
+            WHERE s.id = assessment_questions.section_id
+            AND check_org_access(a.organization_id)
+        )
+    );
+
+CREATE POLICY "assessment_questions_insert_policy" ON assessment_questions
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM assessment_sections s
+            JOIN assessments a ON a.id = s.assessment_id
+            WHERE s.id = NEW.section_id
+            AND EXISTS (
+                SELECT 1 FROM get_user_org_context() ctx
+                WHERE 
+                    ctx.is_super_admin OR
+                    (ctx.organization_id = a.organization_id AND ctx.user_role = 'org_admin') OR
+                    ctx.user_id = a.created_by_id
+            )
+        )
+    );
+
+CREATE POLICY "assessment_questions_update_policy" ON assessment_questions
+    FOR UPDATE TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM assessment_sections s
+            JOIN assessments a ON a.id = s.assessment_id
+            WHERE s.id = assessment_questions.section_id
+            AND EXISTS (
+                SELECT 1 FROM get_user_org_context() ctx
+                WHERE 
+                    ctx.is_super_admin OR
+                    (ctx.organization_id = a.organization_id AND ctx.user_role = 'org_admin') OR
+                    ctx.user_id = a.created_by_id
+            )
+        )
+    );
+
+-- ASSESSMENT ORGANIZATION ASSIGNMENTS POLICIES
+CREATE POLICY "assessment_org_assignments_select_policy" ON assessment_organization_assignments
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM assessments a
+            WHERE a.id = assessment_organization_assignments.assessment_id
+            AND check_org_access(a.organization_id)
+        )
+    );
+
+CREATE POLICY "assessment_org_assignments_insert_policy" ON assessment_organization_assignments
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.user_role = 'org_admin' AND ctx.organization_id = NEW.organization_id)
+        )
+    );
+
+-- DEPARTMENTS POLICIES
+CREATE POLICY "departments_select_policy" ON departments
+    FOR SELECT TO authenticated
+    USING (
+        check_org_access(departments.organization_id)
+    );
+
+CREATE POLICY "departments_insert_policy" ON departments
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+CREATE POLICY "departments_update_policy" ON departments
+    FOR UPDATE TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = departments.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- COMPETENCIES POLICIES
+CREATE POLICY "competencies_select_policy" ON competencies
+    FOR SELECT TO authenticated
+    USING (
+        check_org_access(competencies.organization_id)
+    );
+
+CREATE POLICY "competencies_insert_policy" ON competencies
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- QUESTION COMPETENCIES POLICIES
+CREATE POLICY "question_competencies_select_policy" ON question_competencies
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            JOIN competencies c ON c.id = question_competencies.competency_id
+            WHERE 
+                ctx.is_super_admin OR
+                ctx.organization_id = c.organization_id
+        )
+    );
+
+CREATE POLICY "question_competencies_insert_policy" ON question_competencies
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            JOIN competencies c ON c.id = NEW.competency_id
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = c.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- IMPORT LOGS POLICIES
+CREATE POLICY "import_logs_select_policy" ON import_logs
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = import_logs.organization_id AND ctx.user_role = 'org_admin') OR
+                ctx.user_id = import_logs.imported_by_id
+        )
+    );
+
+CREATE POLICY "import_logs_insert_policy" ON import_logs
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- EXPORT LOGS POLICIES
+CREATE POLICY "export_logs_select_policy" ON export_logs
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = export_logs.organization_id AND ctx.user_role = 'org_admin') OR
+                ctx.user_id = export_logs.exported_by_id
+        )
+    );
+
+CREATE POLICY "export_logs_insert_policy" ON export_logs
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- PDF BRANDING SETTINGS POLICIES
+CREATE POLICY "pdf_branding_settings_select_policy" ON pdf_branding_settings
+    FOR SELECT TO authenticated
+    USING (
+        check_org_access(pdf_branding_settings.organization_id)
+    );
+
+CREATE POLICY "pdf_branding_settings_insert_policy" ON pdf_branding_settings
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+CREATE POLICY "pdf_branding_settings_update_policy" ON pdf_branding_settings
+    FOR UPDATE TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = pdf_branding_settings.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- PROFILE TAGS POLICIES
+CREATE POLICY "profile_tags_select_policy" ON profile_tags
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            JOIN users u ON u.id = profile_tags.user_id
+            WHERE 
+                ctx.is_super_admin OR
+                ctx.organization_id = u.organization_id
+        )
+    );
+
+CREATE POLICY "profile_tags_insert_policy" ON profile_tags
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            JOIN users u ON u.id = NEW.user_id
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = u.organization_id AND ctx.user_role IN ('org_admin', 'super_admin'))
+        )
+    );
+
+-- USER BEHAVIORS POLICIES
+CREATE POLICY "user_behaviors_select_policy" ON user_behaviors
+    FOR SELECT TO authenticated
+    USING (
+        check_org_access(user_behaviors.organization_id)
+    );
+
+CREATE POLICY "user_behaviors_insert_policy" ON user_behaviors
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        check_org_access(NEW.organization_id)
+    );
+
+-- STAFF ASSIGNMENTS POLICIES
+CREATE POLICY "staff_assignments_select_policy" ON staff_assignments
+    FOR SELECT TO authenticated
+    USING (
+        check_org_access(staff_assignments.organization_id)
+    );
+
+CREATE POLICY "staff_assignments_insert_policy" ON staff_assignments
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role IN ('org_admin', 'super_admin'))
+        )
+    );
+
+-- ASSESSMENT SECTIONS POLICIES
+CREATE POLICY "assessment_sections_select_policy" ON assessment_sections
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM assessments a
+            WHERE a.id = assessment_sections.assessment_id
+            AND check_org_access(a.organization_id)
+        )
+    );
+
+CREATE POLICY "assessment_sections_insert_policy" ON assessment_sections
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM assessments a
+            WHERE a.id = NEW.assessment_id
+            AND EXISTS (
+                SELECT 1 FROM get_user_org_context() ctx
+                WHERE 
+                    ctx.is_super_admin OR
+                    (ctx.organization_id = a.organization_id AND ctx.user_role = 'org_admin') OR
+                    ctx.user_id = a.created_by_id
+            )
+        )
+    );
+
+CREATE POLICY "assessment_sections_update_policy" ON assessment_sections
+    FOR UPDATE TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM assessments a
+            WHERE a.id = assessment_sections.assessment_id
+            AND EXISTS (
+                SELECT 1 FROM get_user_org_context() ctx
+                WHERE 
+                    ctx.is_super_admin OR
+                    (ctx.organization_id = a.organization_id AND ctx.user_role = 'org_admin') OR
+                    ctx.user_id = a.created_by_id
+            )
+        )
+    );
+
+-- ASSESSMENT QUESTIONS POLICIES
+CREATE POLICY "assessment_questions_select_policy" ON assessment_questions
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM assessment_sections s
+            JOIN assessments a ON a.id = s.assessment_id
+            WHERE s.id = assessment_questions.section_id
+            AND check_org_access(a.organization_id)
+        )
+    );
+
+CREATE POLICY "assessment_questions_insert_policy" ON assessment_questions
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM assessment_sections s
+            JOIN assessments a ON a.id = s.assessment_id
+            WHERE s.id = NEW.section_id
+            AND EXISTS (
+                SELECT 1 FROM get_user_org_context() ctx
+                WHERE 
+                    ctx.is_super_admin OR
+                    (ctx.organization_id = a.organization_id AND ctx.user_role = 'org_admin') OR
+                    ctx.user_id = a.created_by_id
+            )
+        )
+    );
+
+CREATE POLICY "assessment_questions_update_policy" ON assessment_questions
+    FOR UPDATE TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM assessment_sections s
+            JOIN assessments a ON a.id = s.assessment_id
+            WHERE s.id = assessment_questions.section_id
+            AND EXISTS (
+                SELECT 1 FROM get_user_org_context() ctx
+                WHERE 
+                    ctx.is_super_admin OR
+                    (ctx.organization_id = a.organization_id AND ctx.user_role = 'org_admin') OR
+                    ctx.user_id = a.created_by_id
+            )
+        )
+    );
+
+-- ASSESSMENT ORGANIZATION ASSIGNMENTS POLICIES
+CREATE POLICY "assessment_org_assignments_select_policy" ON assessment_organization_assignments
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM assessments a
+            WHERE a.id = assessment_organization_assignments.assessment_id
+            AND check_org_access(a.organization_id)
+        )
+    );
+
+CREATE POLICY "assessment_org_assignments_insert_policy" ON assessment_organization_assignments
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.user_role = 'org_admin' AND ctx.organization_id = NEW.organization_id)
+        )
+    );
+
+-- DEPARTMENTS POLICIES
+CREATE POLICY "departments_select_policy" ON departments
+    FOR SELECT TO authenticated
+    USING (
+        check_org_access(departments.organization_id)
+    );
+
+CREATE POLICY "departments_insert_policy" ON departments
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+CREATE POLICY "departments_update_policy" ON departments
+    FOR UPDATE TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = departments.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- COMPETENCIES POLICIES
+CREATE POLICY "competencies_select_policy" ON competencies
+    FOR SELECT TO authenticated
+    USING (
+        check_org_access(competencies.organization_id)
+    );
+
+CREATE POLICY "competencies_insert_policy" ON competencies
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- QUESTION COMPETENCIES POLICIES
+CREATE POLICY "question_competencies_select_policy" ON question_competencies
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            JOIN competencies c ON c.id = question_competencies.competency_id
+            WHERE 
+                ctx.is_super_admin OR
+                ctx.organization_id = c.organization_id
+        )
+    );
+
+CREATE POLICY "question_competencies_insert_policy" ON question_competencies
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            JOIN competencies c ON c.id = NEW.competency_id
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = c.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- IMPORT LOGS POLICIES
+CREATE POLICY "import_logs_select_policy" ON import_logs
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = import_logs.organization_id AND ctx.user_role = 'org_admin') OR
+                ctx.user_id = import_logs.imported_by_id
+        )
+    );
+
+CREATE POLICY "import_logs_insert_policy" ON import_logs
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- EXPORT LOGS POLICIES
+CREATE POLICY "export_logs_select_policy" ON export_logs
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = export_logs.organization_id AND ctx.user_role = 'org_admin') OR
+                ctx.user_id = export_logs.exported_by_id
+        )
+    );
+
+CREATE POLICY "export_logs_insert_policy" ON export_logs
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- PDF BRANDING SETTINGS POLICIES
+CREATE POLICY "pdf_branding_settings_select_policy" ON pdf_branding_settings
+    FOR SELECT TO authenticated
+    USING (
+        check_org_access(pdf_branding_settings.organization_id)
+    );
+
+CREATE POLICY "pdf_branding_settings_insert_policy" ON pdf_branding_settings
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+CREATE POLICY "pdf_branding_settings_update_policy" ON pdf_branding_settings
+    FOR UPDATE TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = pdf_branding_settings.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- PROFILE TAGS POLICIES
+CREATE POLICY "profile_tags_select_policy" ON profile_tags
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            JOIN users u ON u.id = profile_tags.user_id
+            WHERE 
+                ctx.is_super_admin OR
+                ctx.organization_id = u.organization_id
+        )
+    );
+
+CREATE POLICY "profile_tags_insert_policy" ON profile_tags
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            JOIN users u ON u.id = NEW.user_id
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = u.organization_id AND ctx.user_role IN ('org_admin', 'super_admin'))
+        )
+    );
+
+-- USER BEHAVIORS POLICIES
+CREATE POLICY "user_behaviors_select_policy" ON user_behaviors
+    FOR SELECT TO authenticated
+    USING (
+        check_org_access(user_behaviors.organization_id)
+    );
+
+CREATE POLICY "user_behaviors_insert_policy" ON user_behaviors
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        check_org_access(NEW.organization_id)
+    );
+
+-- STAFF ASSIGNMENTS POLICIES
+CREATE POLICY "staff_assignments_select_policy" ON staff_assignments
+    FOR SELECT TO authenticated
+    USING (
+        check_org_access(staff_assignments.organization_id)
+    );
+
+CREATE POLICY "staff_assignments_insert_policy" ON staff_assignments
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role IN ('org_admin', 'super_admin'))
+        )
+    );
+
+-- ASSESSMENT SECTIONS POLICIES
+CREATE POLICY "assessment_sections_select_policy" ON assessment_sections
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM assessments a
+            WHERE a.id = assessment_sections.assessment_id
+            AND check_org_access(a.organization_id)
+        )
+    );
+
+CREATE POLICY "assessment_sections_insert_policy" ON assessment_sections
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM assessments a
+            WHERE a.id = NEW.assessment_id
+            AND EXISTS (
+                SELECT 1 FROM get_user_org_context() ctx
+                WHERE 
+                    ctx.is_super_admin OR
+                    (ctx.organization_id = a.organization_id AND ctx.user_role = 'org_admin') OR
+                    ctx.user_id = a.created_by_id
+            )
+        )
+    );
+
+CREATE POLICY "assessment_sections_update_policy" ON assessment_sections
+    FOR UPDATE TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM assessments a
+            WHERE a.id = assessment_sections.assessment_id
+            AND EXISTS (
+                SELECT 1 FROM get_user_org_context() ctx
+                WHERE 
+                    ctx.is_super_admin OR
+                    (ctx.organization_id = a.organization_id AND ctx.user_role = 'org_admin') OR
+                    ctx.user_id = a.created_by_id
+            )
+        )
+    );
+
+-- ASSESSMENT QUESTIONS POLICIES
+CREATE POLICY "assessment_questions_select_policy" ON assessment_questions
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM assessment_sections s
+            JOIN assessments a ON a.id = s.assessment_id
+            WHERE s.id = assessment_questions.section_id
+            AND check_org_access(a.organization_id)
+        )
+    );
+
+CREATE POLICY "assessment_questions_insert_policy" ON assessment_questions
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM assessment_sections s
+            JOIN assessments a ON a.id = s.assessment_id
+            WHERE s.id = NEW.section_id
+            AND EXISTS (
+                SELECT 1 FROM get_user_org_context() ctx
+                WHERE 
+                    ctx.is_super_admin OR
+                    (ctx.organization_id = a.organization_id AND ctx.user_role = 'org_admin') OR
+                    ctx.user_id = a.created_by_id
+            )
+        )
+    );
+
+CREATE POLICY "assessment_questions_update_policy" ON assessment_questions
+    FOR UPDATE TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM assessment_sections s
+            JOIN assessments a ON a.id = s.assessment_id
+            WHERE s.id = assessment_questions.section_id
+            AND EXISTS (
+                SELECT 1 FROM get_user_org_context() ctx
+                WHERE 
+                    ctx.is_super_admin OR
+                    (ctx.organization_id = a.organization_id AND ctx.user_role = 'org_admin') OR
+                    ctx.user_id = a.created_by_id
+            )
+        )
+    );
+
+-- ASSESSMENT ORGANIZATION ASSIGNMENTS POLICIES
+CREATE POLICY "assessment_org_assignments_select_policy" ON assessment_organization_assignments
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM assessments a
+            WHERE a.id = assessment_organization_assignments.assessment_id
+            AND check_org_access(a.organization_id)
+        )
+    );
+
+CREATE POLICY "assessment_org_assignments_insert_policy" ON assessment_organization_assignments
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.user_role = 'org_admin' AND ctx.organization_id = NEW.organization_id)
+        )
+    );
+
+-- DEPARTMENTS POLICIES
+CREATE POLICY "departments_select_policy" ON departments
+    FOR SELECT TO authenticated
+    USING (
+        check_org_access(departments.organization_id)
+    );
+
+CREATE POLICY "departments_insert_policy" ON departments
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+CREATE POLICY "departments_update_policy" ON departments
+    FOR UPDATE TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = departments.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- COMPETENCIES POLICIES
+CREATE POLICY "competencies_select_policy" ON competencies
+    FOR SELECT TO authenticated
+    USING (
+        check_org_access(competencies.organization_id)
+    );
+
+CREATE POLICY "competencies_insert_policy" ON competencies
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- QUESTION COMPETENCIES POLICIES
+CREATE POLICY "question_competencies_select_policy" ON question_competencies
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            JOIN competencies c ON c.id = question_competencies.competency_id
+            WHERE 
+                ctx.is_super_admin OR
+                ctx.organization_id = c.organization_id
+        )
+    );
+
+CREATE POLICY "question_competencies_insert_policy" ON question_competencies
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            JOIN competencies c ON c.id = NEW.competency_id
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = c.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- IMPORT LOGS POLICIES
+CREATE POLICY "import_logs_select_policy" ON import_logs
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = import_logs.organization_id AND ctx.user_role = 'org_admin') OR
+                ctx.user_id = import_logs.imported_by_id
+        )
+    );
+
+CREATE POLICY "import_logs_insert_policy" ON import_logs
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- EXPORT LOGS POLICIES
+CREATE POLICY "export_logs_select_policy" ON export_logs
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = export_logs.organization_id AND ctx.user_role = 'org_admin') OR
+                ctx.user_id = export_logs.exported_by_id
+        )
+    );
+
+CREATE POLICY "export_logs_insert_policy" ON export_logs
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- PDF BRANDING SETTINGS POLICIES
+CREATE POLICY "pdf_branding_settings_select_policy" ON pdf_branding_settings
+    FOR SELECT TO authenticated
+    USING (
+        check_org_access(pdf_branding_settings.organization_id)
+    );
+
+CREATE POLICY "pdf_branding_settings_insert_policy" ON pdf_branding_settings
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+CREATE POLICY "pdf_branding_settings_update_policy" ON pdf_branding_settings
+    FOR UPDATE TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = pdf_branding_settings.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- PROFILE TAGS POLICIES
+CREATE POLICY "profile_tags_select_policy" ON profile_tags
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            JOIN users u ON u.id = profile_tags.user_id
+            WHERE 
+                ctx.is_super_admin OR
+                ctx.organization_id = u.organization_id
+        )
+    );
+
+CREATE POLICY "profile_tags_insert_policy" ON profile_tags
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            JOIN users u ON u.id = NEW.user_id
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = u.organization_id AND ctx.user_role IN ('org_admin', 'super_admin'))
+        )
+    );
+
+-- USER BEHAVIORS POLICIES
+CREATE POLICY "user_behaviors_select_policy" ON user_behaviors
+    FOR SELECT TO authenticated
+    USING (
+        check_org_access(user_behaviors.organization_id)
+    );
+
+CREATE POLICY "user_behaviors_insert_policy" ON user_behaviors
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        check_org_access(NEW.organization_id)
+    );
+
+-- STAFF ASSIGNMENTS POLICIES
+CREATE POLICY "staff_assignments_select_policy" ON staff_assignments
+    FOR SELECT TO authenticated
+    USING (
+        check_org_access(staff_assignments.organization_id)
+    );
+
+CREATE POLICY "staff_assignments_insert_policy" ON staff_assignments
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role IN ('org_admin', 'super_admin'))
+        )
+    );
+
+-- ASSESSMENT SECTIONS POLICIES
+CREATE POLICY "assessment_sections_select_policy" ON assessment_sections
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM assessments a
+            WHERE a.id = assessment_sections.assessment_id
+            AND check_org_access(a.organization_id)
+        )
+    );
+
+CREATE POLICY "assessment_sections_insert_policy" ON assessment_sections
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM assessments a
+            WHERE a.id = NEW.assessment_id
+            AND EXISTS (
+                SELECT 1 FROM get_user_org_context() ctx
+                WHERE 
+                    ctx.is_super_admin OR
+                    (ctx.organization_id = a.organization_id AND ctx.user_role = 'org_admin') OR
+                    ctx.user_id = a.created_by_id
+            )
+        )
+    );
+
+CREATE POLICY "assessment_sections_update_policy" ON assessment_sections
+    FOR UPDATE TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM assessments a
+            WHERE a.id = assessment_sections.assessment_id
+            AND EXISTS (
+                SELECT 1 FROM get_user_org_context() ctx
+                WHERE 
+                    ctx.is_super_admin OR
+                    (ctx.organization_id = a.organization_id AND ctx.user_role = 'org_admin') OR
+                    ctx.user_id = a.created_by_id
+            )
+        )
+    );
+
+-- ASSESSMENT QUESTIONS POLICIES
+CREATE POLICY "assessment_questions_select_policy" ON assessment_questions
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM assessment_sections s
+            JOIN assessments a ON a.id = s.assessment_id
+            WHERE s.id = assessment_questions.section_id
+            AND check_org_access(a.organization_id)
+        )
+    );
+
+CREATE POLICY "assessment_questions_insert_policy" ON assessment_questions
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM assessment_sections s
+            JOIN assessments a ON a.id = s.assessment_id
+            WHERE s.id = NEW.section_id
+            AND EXISTS (
+                SELECT 1 FROM get_user_org_context() ctx
+                WHERE 
+                    ctx.is_super_admin OR
+                    (ctx.organization_id = a.organization_id AND ctx.user_role = 'org_admin') OR
+                    ctx.user_id = a.created_by_id
+            )
+        )
+    );
+
+CREATE POLICY "assessment_questions_update_policy" ON assessment_questions
+    FOR UPDATE TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM assessment_sections s
+            JOIN assessments a ON a.id = s.assessment_id
+            WHERE s.id = assessment_questions.section_id
+            AND EXISTS (
+                SELECT 1 FROM get_user_org_context() ctx
+                WHERE 
+                    ctx.is_super_admin OR
+                    (ctx.organization_id = a.organization_id AND ctx.user_role = 'org_admin') OR
+                    ctx.user_id = a.created_by_id
+            )
+        )
+    );
+
+-- ASSESSMENT ORGANIZATION ASSIGNMENTS POLICIES
+CREATE POLICY "assessment_org_assignments_select_policy" ON assessment_organization_assignments
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM assessments a
+            WHERE a.id = assessment_organization_assignments.assessment_id
+            AND check_org_access(a.organization_id)
+        )
+    );
+
+CREATE POLICY "assessment_org_assignments_insert_policy" ON assessment_organization_assignments
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.user_role = 'org_admin' AND ctx.organization_id = NEW.organization_id)
+        )
+    );
+
+-- DEPARTMENTS POLICIES
+CREATE POLICY "departments_select_policy" ON departments
+    FOR SELECT TO authenticated
+    USING (
+        check_org_access(departments.organization_id)
+    );
+
+CREATE POLICY "departments_insert_policy" ON departments
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+CREATE POLICY "departments_update_policy" ON departments
+    FOR UPDATE TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = departments.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- COMPETENCIES POLICIES
+CREATE POLICY "competencies_select_policy" ON competencies
+    FOR SELECT TO authenticated
+    USING (
+        check_org_access(competencies.organization_id)
+    );
+
+CREATE POLICY "competencies_insert_policy" ON competencies
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- QUESTION COMPETENCIES POLICIES
+CREATE POLICY "question_competencies_select_policy" ON question_competencies
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            JOIN competencies c ON c.id = question_competencies.competency_id
+            WHERE 
+                ctx.is_super_admin OR
+                ctx.organization_id = c.organization_id
+        )
+    );
+
+CREATE POLICY "question_competencies_insert_policy" ON question_competencies
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            JOIN competencies c ON c.id = NEW.competency_id
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = c.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- IMPORT LOGS POLICIES
+CREATE POLICY "import_logs_select_policy" ON import_logs
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = import_logs.organization_id AND ctx.user_role = 'org_admin') OR
+                ctx.user_id = import_logs.imported_by_id
+        )
+    );
+
+CREATE POLICY "import_logs_insert_policy" ON import_logs
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- EXPORT LOGS POLICIES
+CREATE POLICY "export_logs_select_policy" ON export_logs
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = export_logs.organization_id AND ctx.user_role = 'org_admin') OR
+                ctx.user_id = export_logs.exported_by_id
+        )
+    );
+
+CREATE POLICY "export_logs_insert_policy" ON export_logs
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- PDF BRANDING SETTINGS POLICIES
+CREATE POLICY "pdf_branding_settings_select_policy" ON pdf_branding_settings
+    FOR SELECT TO authenticated
+    USING (
+        check_org_access(pdf_branding_settings.organization_id)
+    );
+
+CREATE POLICY "pdf_branding_settings_insert_policy" ON pdf_branding_settings
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+CREATE POLICY "pdf_branding_settings_update_policy" ON pdf_branding_settings
+    FOR UPDATE TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = pdf_branding_settings.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- PROFILE TAGS POLICIES
+CREATE POLICY "profile_tags_select_policy" ON profile_tags
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            JOIN users u ON u.id = profile_tags.user_id
+            WHERE 
+                ctx.is_super_admin OR
+                ctx.organization_id = u.organization_id
+        )
+    );
+
+CREATE POLICY "profile_tags_insert_policy" ON profile_tags
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            JOIN users u ON u.id = NEW.user_id
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = u.organization_id AND ctx.user_role IN ('org_admin', 'super_admin'))
+        )
+    );
+
+-- USER BEHAVIORS POLICIES
+CREATE POLICY "user_behaviors_select_policy" ON user_behaviors
+    FOR SELECT TO authenticated
+    USING (
+        check_org_access(user_behaviors.organization_id)
+    );
+
+CREATE POLICY "user_behaviors_insert_policy" ON user_behaviors
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        check_org_access(NEW.organization_id)
+    );
+
+-- STAFF ASSIGNMENTS POLICIES
+CREATE POLICY "staff_assignments_select_policy" ON staff_assignments
+    FOR SELECT TO authenticated
+    USING (
+        check_org_access(staff_assignments.organization_id)
+    );
+
+CREATE POLICY "staff_assignments_insert_policy" ON staff_assignments
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role IN ('org_admin', 'super_admin'))
+        )
+    );
+
+-- ASSESSMENT SECTIONS POLICIES
+CREATE POLICY "assessment_sections_select_policy" ON assessment_sections
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM assessments a
+            WHERE a.id = assessment_sections.assessment_id
+            AND check_org_access(a.organization_id)
+        )
+    );
+
+CREATE POLICY "assessment_sections_insert_policy" ON assessment_sections
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM assessments a
+            WHERE a.id = NEW.assessment_id
+            AND EXISTS (
+                SELECT 1 FROM get_user_org_context() ctx
+                WHERE 
+                    ctx.is_super_admin OR
+                    (ctx.organization_id = a.organization_id AND ctx.user_role = 'org_admin') OR
+                    ctx.user_id = a.created_by_id
+            )
+        )
+    );
+
+CREATE POLICY "assessment_sections_update_policy" ON assessment_sections
+    FOR UPDATE TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM assessments a
+            WHERE a.id = assessment_sections.assessment_id
+            AND EXISTS (
+                SELECT 1 FROM get_user_org_context() ctx
+                WHERE 
+                    ctx.is_super_admin OR
+                    (ctx.organization_id = a.organization_id AND ctx.user_role = 'org_admin') OR
+                    ctx.user_id = a.created_by_id
+            )
+        )
+    );
+
+-- ASSESSMENT QUESTIONS POLICIES
+CREATE POLICY "assessment_questions_select_policy" ON assessment_questions
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM assessment_sections s
+            JOIN assessments a ON a.id = s.assessment_id
+            WHERE s.id = assessment_questions.section_id
+            AND check_org_access(a.organization_id)
+        )
+    );
+
+CREATE POLICY "assessment_questions_insert_policy" ON assessment_questions
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM assessment_sections s
+            JOIN assessments a ON a.id = s.assessment_id
+            WHERE s.id = NEW.section_id
+            AND EXISTS (
+                SELECT 1 FROM get_user_org_context() ctx
+                WHERE 
+                    ctx.is_super_admin OR
+                    (ctx.organization_id = a.organization_id AND ctx.user_role = 'org_admin') OR
+                    ctx.user_id = a.created_by_id
+            )
+        )
+    );
+
+CREATE POLICY "assessment_questions_update_policy" ON assessment_questions
+    FOR UPDATE TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM assessment_sections s
+            JOIN assessments a ON a.id = s.assessment_id
+            WHERE s.id = assessment_questions.section_id
+            AND EXISTS (
+                SELECT 1 FROM get_user_org_context() ctx
+                WHERE 
+                    ctx.is_super_admin OR
+                    (ctx.organization_id = a.organization_id AND ctx.user_role = 'org_admin') OR
+                    ctx.user_id = a.created_by_id
+            )
+        )
+    );
+
+-- ASSESSMENT ORGANIZATION ASSIGNMENTS POLICIES
+CREATE POLICY "assessment_org_assignments_select_policy" ON assessment_organization_assignments
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM assessments a
+            WHERE a.id = assessment_organization_assignments.assessment_id
+            AND check_org_access(a.organization_id)
+        )
+    );
+
+CREATE POLICY "assessment_org_assignments_insert_policy" ON assessment_organization_assignments
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.user_role = 'org_admin' AND ctx.organization_id = NEW.organization_id)
+        )
+    );
+
+-- DEPARTMENTS POLICIES
+CREATE POLICY "departments_select_policy" ON departments
+    FOR SELECT TO authenticated
+    USING (
+        check_org_access(departments.organization_id)
+    );
+
+CREATE POLICY "departments_insert_policy" ON departments
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+CREATE POLICY "departments_update_policy" ON departments
+    FOR UPDATE TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = departments.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- COMPETENCIES POLICIES
+CREATE POLICY "competencies_select_policy" ON competencies
+    FOR SELECT TO authenticated
+    USING (
+        check_org_access(competencies.organization_id)
+    );
+
+CREATE POLICY "competencies_insert_policy" ON competencies
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- QUESTION COMPETENCIES POLICIES
+CREATE POLICY "question_competencies_select_policy" ON question_competencies
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            JOIN competencies c ON c.id = question_competencies.competency_id
+            WHERE 
+                ctx.is_super_admin OR
+                ctx.organization_id = c.organization_id
+        )
+    );
+
+CREATE POLICY "question_competencies_insert_policy" ON question_competencies
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            JOIN competencies c ON c.id = NEW.competency_id
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = c.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- IMPORT LOGS POLICIES
+CREATE POLICY "import_logs_select_policy" ON import_logs
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = import_logs.organization_id AND ctx.user_role = 'org_admin') OR
+                ctx.user_id = import_logs.imported_by_id
+        )
+    );
+
+CREATE POLICY "import_logs_insert_policy" ON import_logs
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- EXPORT LOGS POLICIES
+CREATE POLICY "export_logs_select_policy" ON export_logs
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = export_logs.organization_id AND ctx.user_role = 'org_admin') OR
+                ctx.user_id = export_logs.exported_by_id
+        )
+    );
+
+CREATE POLICY "export_logs_insert_policy" ON export_logs
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- PDF BRANDING SETTINGS POLICIES
+CREATE POLICY "pdf_branding_settings_select_policy" ON pdf_branding_settings
+    FOR SELECT TO authenticated
+    USING (
+        check_org_access(pdf_branding_settings.organization_id)
+    );
+
+CREATE POLICY "pdf_branding_settings_insert_policy" ON pdf_branding_settings
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+CREATE POLICY "pdf_branding_settings_update_policy" ON pdf_branding_settings
+    FOR UPDATE TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = pdf_branding_settings.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- PROFILE TAGS POLICIES
+CREATE POLICY "profile_tags_select_policy" ON profile_tags
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            JOIN users u ON u.id = profile_tags.user_id
+            WHERE 
+                ctx.is_super_admin OR
+                ctx.organization_id = u.organization_id
+        )
+    );
+
+CREATE POLICY "profile_tags_insert_policy" ON profile_tags
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            JOIN users u ON u.id = NEW.user_id
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = u.organization_id AND ctx.user_role IN ('org_admin', 'super_admin'))
+        )
+    );
+
+-- USER BEHAVIORS POLICIES
+CREATE POLICY "user_behaviors_select_policy" ON user_behaviors
+    FOR SELECT TO authenticated
+    USING (
+        check_org_access(user_behaviors.organization_id)
+    );
+
+CREATE POLICY "user_behaviors_insert_policy" ON user_behaviors
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        check_org_access(NEW.organization_id)
+    );
+
+-- STAFF ASSIGNMENTS POLICIES
+CREATE POLICY "staff_assignments_select_policy" ON staff_assignments
+    FOR SELECT TO authenticated
+    USING (
+        check_org_access(staff_assignments.organization_id)
+    );
+
+CREATE POLICY "staff_assignments_insert_policy" ON staff_assignments
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role IN ('org_admin', 'super_admin'))
+        )
+    );
+
+-- ASSESSMENT SECTIONS POLICIES
+CREATE POLICY "assessment_sections_select_policy" ON assessment_sections
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM assessments a
+            WHERE a.id = assessment_sections.assessment_id
+            AND check_org_access(a.organization_id)
+        )
+    );
+
+CREATE POLICY "assessment_sections_insert_policy" ON assessment_sections
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM assessments a
+            WHERE a.id = NEW.assessment_id
+            AND EXISTS (
+                SELECT 1 FROM get_user_org_context() ctx
+                WHERE 
+                    ctx.is_super_admin OR
+                    (ctx.organization_id = a.organization_id AND ctx.user_role = 'org_admin') OR
+                    ctx.user_id = a.created_by_id
+            )
+        )
+    );
+
+CREATE POLICY "assessment_sections_update_policy" ON assessment_sections
+    FOR UPDATE TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM assessments a
+            WHERE a.id = assessment_sections.assessment_id
+            AND EXISTS (
+                SELECT 1 FROM get_user_org_context() ctx
+                WHERE 
+                    ctx.is_super_admin OR
+                    (ctx.organization_id = a.organization_id AND ctx.user_role = 'org_admin') OR
+                    ctx.user_id = a.created_by_id
+            )
+        )
+    );
+
+-- ASSESSMENT QUESTIONS POLICIES
+CREATE POLICY "assessment_questions_select_policy" ON assessment_questions
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM assessment_sections s
+            JOIN assessments a ON a.id = s.assessment_id
+            WHERE s.id = assessment_questions.section_id
+            AND check_org_access(a.organization_id)
+        )
+    );
+
+CREATE POLICY "assessment_questions_insert_policy" ON assessment_questions
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM assessment_sections s
+            JOIN assessments a ON a.id = s.assessment_id
+            WHERE s.id = NEW.section_id
+            AND EXISTS (
+                SELECT 1 FROM get_user_org_context() ctx
+                WHERE 
+                    ctx.is_super_admin OR
+                    (ctx.organization_id = a.organization_id AND ctx.user_role = 'org_admin') OR
+                    ctx.user_id = a.created_by_id
+            )
+        )
+    );
+
+CREATE POLICY "assessment_questions_update_policy" ON assessment_questions
+    FOR UPDATE TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM assessment_sections s
+            JOIN assessments a ON a.id = s.assessment_id
+            WHERE s.id = assessment_questions.section_id
+            AND EXISTS (
+                SELECT 1 FROM get_user_org_context() ctx
+                WHERE 
+                    ctx.is_super_admin OR
+                    (ctx.organization_id = a.organization_id AND ctx.user_role = 'org_admin') OR
+                    ctx.user_id = a.created_by_id
+            )
+        )
+    );
+
+-- ASSESSMENT ORGANIZATION ASSIGNMENTS POLICIES
+CREATE POLICY "assessment_org_assignments_select_policy" ON assessment_organization_assignments
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM assessments a
+            WHERE a.id = assessment_organization_assignments.assessment_id
+            AND check_org_access(a.organization_id)
+        )
+    );
+
+CREATE POLICY "assessment_org_assignments_insert_policy" ON assessment_organization_assignments
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.user_role = 'org_admin' AND ctx.organization_id = NEW.organization_id)
+        )
+    );
+
+-- DEPARTMENTS POLICIES
+CREATE POLICY "departments_select_policy" ON departments
+    FOR SELECT TO authenticated
+    USING (
+        check_org_access(departments.organization_id)
+    );
+
+CREATE POLICY "departments_insert_policy" ON departments
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+CREATE POLICY "departments_update_policy" ON departments
+    FOR UPDATE TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = departments.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- COMPETENCIES POLICIES
+CREATE POLICY "competencies_select_policy" ON competencies
+    FOR SELECT TO authenticated
+    USING (
+        check_org_access(competencies.organization_id)
+    );
+
+CREATE POLICY "competencies_insert_policy" ON competencies
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- QUESTION COMPETENCIES POLICIES
+CREATE POLICY "question_competencies_select_policy" ON question_competencies
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            JOIN competencies c ON c.id = question_competencies.competency_id
+            WHERE 
+                ctx.is_super_admin OR
+                ctx.organization_id = c.organization_id
+        )
+    );
+
+CREATE POLICY "question_competencies_insert_policy" ON question_competencies
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            JOIN competencies c ON c.id = NEW.competency_id
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = c.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- IMPORT LOGS POLICIES
+CREATE POLICY "import_logs_select_policy" ON import_logs
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = import_logs.organization_id AND ctx.user_role = 'org_admin') OR
+                ctx.user_id = import_logs.imported_by_id
+        )
+    );
+
+CREATE POLICY "import_logs_insert_policy" ON import_logs
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- EXPORT LOGS POLICIES
+CREATE POLICY "export_logs_select_policy" ON export_logs
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = export_logs.organization_id AND ctx.user_role = 'org_admin') OR
+                ctx.user_id = export_logs.exported_by_id
+        )
+    );
+
+CREATE POLICY "export_logs_insert_policy" ON export_logs
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- PDF BRANDING SETTINGS POLICIES
+CREATE POLICY "pdf_branding_settings_select_policy" ON pdf_branding_settings
+    FOR SELECT TO authenticated
+    USING (
+        check_org_access(pdf_branding_settings.organization_id)
+    );
+
+CREATE POLICY "pdf_branding_settings_insert_policy" ON pdf_branding_settings
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+CREATE POLICY "pdf_branding_settings_update_policy" ON pdf_branding_settings
+    FOR UPDATE TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = pdf_branding_settings.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- PROFILE TAGS POLICIES
+CREATE POLICY "profile_tags_select_policy" ON profile_tags
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            JOIN users u ON u.id = profile_tags.user_id
+            WHERE 
+                ctx.is_super_admin OR
+                ctx.organization_id = u.organization_id
+        )
+    );
+
+CREATE POLICY "profile_tags_insert_policy" ON profile_tags
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            JOIN users u ON u.id = NEW.user_id
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = u.organization_id AND ctx.user_role IN ('org_admin', 'super_admin'))
+        )
+    );
+
+-- USER BEHAVIORS POLICIES
+CREATE POLICY "user_behaviors_select_policy" ON user_behaviors
+    FOR SELECT TO authenticated
+    USING (
+        check_org_access(user_behaviors.organization_id)
+    );
+
+CREATE POLICY "user_behaviors_insert_policy" ON user_behaviors
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        check_org_access(NEW.organization_id)
+    );
+
+-- STAFF ASSIGNMENTS POLICIES
+CREATE POLICY "staff_assignments_select_policy" ON staff_assignments
+    FOR SELECT TO authenticated
+    USING (
+        check_org_access(staff_assignments.organization_id)
+    );
+
+CREATE POLICY "staff_assignments_insert_policy" ON staff_assignments
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role IN ('org_admin', 'super_admin'))
+        )
+    );
+
+-- ASSESSMENT SECTIONS POLICIES
+CREATE POLICY "assessment_sections_select_policy" ON assessment_sections
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM assessments a
+            WHERE a.id = assessment_sections.assessment_id
+            AND check_org_access(a.organization_id)
+        )
+    );
+
+CREATE POLICY "assessment_sections_insert_policy" ON assessment_sections
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM assessments a
+            WHERE a.id = NEW.assessment_id
+            AND EXISTS (
+                SELECT 1 FROM get_user_org_context() ctx
+                WHERE 
+                    ctx.is_super_admin OR
+                    (ctx.organization_id = a.organization_id AND ctx.user_role = 'org_admin') OR
+                    ctx.user_id = a.created_by_id
+            )
+        )
+    );
+
+CREATE POLICY "assessment_sections_update_policy" ON assessment_sections
+    FOR UPDATE TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM assessments a
+            WHERE a.id = assessment_sections.assessment_id
+            AND EXISTS (
+                SELECT 1 FROM get_user_org_context() ctx
+                WHERE 
+                    ctx.is_super_admin OR
+                    (ctx.organization_id = a.organization_id AND ctx.user_role = 'org_admin') OR
+                    ctx.user_id = a.created_by_id
+            )
+        )
+    );
+
+-- ASSESSMENT QUESTIONS POLICIES
+CREATE POLICY "assessment_questions_select_policy" ON assessment_questions
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM assessment_sections s
+            JOIN assessments a ON a.id = s.assessment_id
+            WHERE s.id = assessment_questions.section_id
+            AND check_org_access(a.organization_id)
+        )
+    );
+
+CREATE POLICY "assessment_questions_insert_policy" ON assessment_questions
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM assessment_sections s
+            JOIN assessments a ON a.id = s.assessment_id
+            WHERE s.id = NEW.section_id
+            AND EXISTS (
+                SELECT 1 FROM get_user_org_context() ctx
+                WHERE 
+                    ctx.is_super_admin OR
+                    (ctx.organization_id = a.organization_id AND ctx.user_role = 'org_admin') OR
+                    ctx.user_id = a.created_by_id
+            )
+        )
+    );
+
+CREATE POLICY "assessment_questions_update_policy" ON assessment_questions
+    FOR UPDATE TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM assessment_sections s
+            JOIN assessments a ON a.id = s.assessment_id
+            WHERE s.id = assessment_questions.section_id
+            AND EXISTS (
+                SELECT 1 FROM get_user_org_context() ctx
+                WHERE 
+                    ctx.is_super_admin OR
+                    (ctx.organization_id = a.organization_id AND ctx.user_role = 'org_admin') OR
+                    ctx.user_id = a.created_by_id
+            )
+        )
+    );
+
+-- ASSESSMENT ORGANIZATION ASSIGNMENTS POLICIES
+CREATE POLICY "assessment_org_assignments_select_policy" ON assessment_organization_assignments
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM assessments a
+            WHERE a.id = assessment_organization_assignments.assessment_id
+            AND check_org_access(a.organization_id)
+        )
+    );
+
+CREATE POLICY "assessment_org_assignments_insert_policy" ON assessment_organization_assignments
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.user_role = 'org_admin' AND ctx.organization_id = NEW.organization_id)
+        )
+    );
+
+-- DEPARTMENTS POLICIES
+CREATE POLICY "departments_select_policy" ON departments
+    FOR SELECT TO authenticated
+    USING (
+        check_org_access(departments.organization_id)
+    );
+
+CREATE POLICY "departments_insert_policy" ON departments
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+CREATE POLICY "departments_update_policy" ON departments
+    FOR UPDATE TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = departments.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- COMPETENCIES POLICIES
+CREATE POLICY "competencies_select_policy" ON competencies
+    FOR SELECT TO authenticated
+    USING (
+        check_org_access(competencies.organization_id)
+    );
+
+CREATE POLICY "competencies_insert_policy" ON competencies
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- QUESTION COMPETENCIES POLICIES
+CREATE POLICY "question_competencies_select_policy" ON question_competencies
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            JOIN competencies c ON c.id = question_competencies.competency_id
+            WHERE 
+                ctx.is_super_admin OR
+                ctx.organization_id = c.organization_id
+        )
+    );
+
+CREATE POLICY "question_competencies_insert_policy" ON question_competencies
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            JOIN competencies c ON c.id = NEW.competency_id
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = c.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- IMPORT LOGS POLICIES
+CREATE POLICY "import_logs_select_policy" ON import_logs
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = import_logs.organization_id AND ctx.user_role = 'org_admin') OR
+                ctx.user_id = import_logs.imported_by_id
+        )
+    );
+
+CREATE POLICY "import_logs_insert_policy" ON import_logs
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- EXPORT LOGS POLICIES
+CREATE POLICY "export_logs_select_policy" ON export_logs
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = export_logs.organization_id AND ctx.user_role = 'org_admin') OR
+                ctx.user_id = export_logs.exported_by_id
+        )
+    );
+
+CREATE POLICY "export_logs_insert_policy" ON export_logs
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- PDF BRANDING SETTINGS POLICIES
+CREATE POLICY "pdf_branding_settings_select_policy" ON pdf_branding_settings
+    FOR SELECT TO authenticated
+    USING (
+        check_org_access(pdf_branding_settings.organization_id)
+    );
+
+CREATE POLICY "pdf_branding_settings_insert_policy" ON pdf_branding_settings
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+CREATE POLICY "pdf_branding_settings_update_policy" ON pdf_branding_settings
+    FOR UPDATE TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = pdf_branding_settings.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- PROFILE TAGS POLICIES
+CREATE POLICY "profile_tags_select_policy" ON profile_tags
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            JOIN users u ON u.id = profile_tags.user_id
+            WHERE 
+                ctx.is_super_admin OR
+                ctx.organization_id = u.organization_id
+        )
+    );
+
+CREATE POLICY "profile_tags_insert_policy" ON profile_tags
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            JOIN users u ON u.id = NEW.user_id
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = u.organization_id AND ctx.user_role IN ('org_admin', 'super_admin'))
+        )
+    );
+
+-- USER BEHAVIORS POLICIES
+CREATE POLICY "user_behaviors_select_policy" ON user_behaviors
+    FOR SELECT TO authenticated
+    USING (
+        check_org_access(user_behaviors.organization_id)
+    );
+
+CREATE POLICY "user_behaviors_insert_policy" ON user_behaviors
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        check_org_access(NEW.organization_id)
+    );
+
+-- STAFF ASSIGNMENTS POLICIES
+CREATE POLICY "staff_assignments_select_policy" ON staff_assignments
+    FOR SELECT TO authenticated
+    USING (
+        check_org_access(staff_assignments.organization_id)
+    );
+
+CREATE POLICY "staff_assignments_insert_policy" ON staff_assignments
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role IN ('org_admin', 'super_admin'))
+        )
+    );
+
+-- ASSESSMENT SECTIONS POLICIES
+CREATE POLICY "assessment_sections_select_policy" ON assessment_sections
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM assessments a
+            WHERE a.id = assessment_sections.assessment_id
+            AND check_org_access(a.organization_id)
+        )
+    );
+
+CREATE POLICY "assessment_sections_insert_policy" ON assessment_sections
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM assessments a
+            WHERE a.id = NEW.assessment_id
+            AND EXISTS (
+                SELECT 1 FROM get_user_org_context() ctx
+                WHERE 
+                    ctx.is_super_admin OR
+                    (ctx.organization_id = a.organization_id AND ctx.user_role = 'org_admin') OR
+                    ctx.user_id = a.created_by_id
+            )
+        )
+    );
+
+CREATE POLICY "assessment_sections_update_policy" ON assessment_sections
+    FOR UPDATE TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM assessments a
+            WHERE a.id = assessment_sections.assessment_id
+            AND EXISTS (
+                SELECT 1 FROM get_user_org_context() ctx
+                WHERE 
+                    ctx.is_super_admin OR
+                    (ctx.organization_id = a.organization_id AND ctx.user_role = 'org_admin') OR
+                    ctx.user_id = a.created_by_id
+            )
+        )
+    );
+
+-- ASSESSMENT QUESTIONS POLICIES
+CREATE POLICY "assessment_questions_select_policy" ON assessment_questions
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM assessment_sections s
+            JOIN assessments a ON a.id = s.assessment_id
+            WHERE s.id = assessment_questions.section_id
+            AND check_org_access(a.organization_id)
+        )
+    );
+
+CREATE POLICY "assessment_questions_insert_policy" ON assessment_questions
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM assessment_sections s
+            JOIN assessments a ON a.id = s.assessment_id
+            WHERE s.id = NEW.section_id
+            AND EXISTS (
+                SELECT 1 FROM get_user_org_context() ctx
+                WHERE 
+                    ctx.is_super_admin OR
+                    (ctx.organization_id = a.organization_id AND ctx.user_role = 'org_admin') OR
+                    ctx.user_id = a.created_by_id
+            )
+        )
+    );
+
+CREATE POLICY "assessment_questions_update_policy" ON assessment_questions
+    FOR UPDATE TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM assessment_sections s
+            JOIN assessments a ON a.id = s.assessment_id
+            WHERE s.id = assessment_questions.section_id
+            AND EXISTS (
+                SELECT 1 FROM get_user_org_context() ctx
+                WHERE 
+                    ctx.is_super_admin OR
+                    (ctx.organization_id = a.organization_id AND ctx.user_role = 'org_admin') OR
+                    ctx.user_id = a.created_by_id
+            )
+        )
+    );
+
+-- ASSESSMENT ORGANIZATION ASSIGNMENTS POLICIES
+CREATE POLICY "assessment_org_assignments_select_policy" ON assessment_organization_assignments
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM assessments a
+            WHERE a.id = assessment_organization_assignments.assessment_id
+            AND check_org_access(a.organization_id)
+        )
+    );
+
+CREATE POLICY "assessment_org_assignments_insert_policy" ON assessment_organization_assignments
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.user_role = 'org_admin' AND ctx.organization_id = NEW.organization_id)
+        )
+    );
+
+-- DEPARTMENTS POLICIES
+CREATE POLICY "departments_select_policy" ON departments
+    FOR SELECT TO authenticated
+    USING (
+        check_org_access(departments.organization_id)
+    );
+
+CREATE POLICY "departments_insert_policy" ON departments
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+CREATE POLICY "departments_update_policy" ON departments
+    FOR UPDATE TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = departments.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- COMPETENCIES POLICIES
+CREATE POLICY "competencies_select_policy" ON competencies
+    FOR SELECT TO authenticated
+    USING (
+        check_org_access(competencies.organization_id)
+    );
+
+CREATE POLICY "competencies_insert_policy" ON competencies
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- QUESTION COMPETENCIES POLICIES
+CREATE POLICY "question_competencies_select_policy" ON question_competencies
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            JOIN competencies c ON c.id = question_competencies.competency_id
+            WHERE 
+                ctx.is_super_admin OR
+                ctx.organization_id = c.organization_id
+        )
+    );
+
+CREATE POLICY "question_competencies_insert_policy" ON question_competencies
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            JOIN competencies c ON c.id = NEW.competency_id
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = c.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- IMPORT LOGS POLICIES
+CREATE POLICY "import_logs_select_policy" ON import_logs
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = import_logs.organization_id AND ctx.user_role = 'org_admin') OR
+                ctx.user_id = import_logs.imported_by_id
+        )
+    );
+
+CREATE POLICY "import_logs_insert_policy" ON import_logs
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- EXPORT LOGS POLICIES
+CREATE POLICY "export_logs_select_policy" ON export_logs
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = export_logs.organization_id AND ctx.user_role = 'org_admin') OR
+                ctx.user_id = export_logs.exported_by_id
+        )
+    );
+
+CREATE POLICY "export_logs_insert_policy" ON export_logs
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- PDF BRANDING SETTINGS POLICIES
+CREATE POLICY "pdf_branding_settings_select_policy" ON pdf_branding_settings
+    FOR SELECT TO authenticated
+    USING (
+        check_org_access(pdf_branding_settings.organization_id)
+    );
+
+CREATE POLICY "pdf_branding_settings_insert_policy" ON pdf_branding_settings
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+CREATE POLICY "pdf_branding_settings_update_policy" ON pdf_branding_settings
+    FOR UPDATE TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = pdf_branding_settings.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- PROFILE TAGS POLICIES
+CREATE POLICY "profile_tags_select_policy" ON profile_tags
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            JOIN users u ON u.id = profile_tags.user_id
+            WHERE 
+                ctx.is_super_admin OR
+                ctx.organization_id = u.organization_id
+        )
+    );
+
+CREATE POLICY "profile_tags_insert_policy" ON profile_tags
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            JOIN users u ON u.id = NEW.user_id
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = u.organization_id AND ctx.user_role IN ('org_admin', 'super_admin'))
+        )
+    );
+
+-- USER BEHAVIORS POLICIES
+CREATE POLICY "user_behaviors_select_policy" ON user_behaviors
+    FOR SELECT TO authenticated
+    USING (
+        check_org_access(user_behaviors.organization_id)
+    );
+
+CREATE POLICY "user_behaviors_insert_policy" ON user_behaviors
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        check_org_access(NEW.organization_id)
+    );
+
+-- STAFF ASSIGNMENTS POLICIES
+CREATE POLICY "staff_assignments_select_policy" ON staff_assignments
+    FOR SELECT TO authenticated
+    USING (
+        check_org_access(staff_assignments.organization_id)
+    );
+
+CREATE POLICY "staff_assignments_insert_policy" ON staff_assignments
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role IN ('org_admin', 'super_admin'))
+        )
+    );
+
+-- ASSESSMENT SECTIONS POLICIES
+CREATE POLICY "assessment_sections_select_policy" ON assessment_sections
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM assessments a
+            WHERE a.id = assessment_sections.assessment_id
+            AND check_org_access(a.organization_id)
+        )
+    );
+
+CREATE POLICY "assessment_sections_insert_policy" ON assessment_sections
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM assessments a
+            WHERE a.id = NEW.assessment_id
+            AND EXISTS (
+                SELECT 1 FROM get_user_org_context() ctx
+                WHERE 
+                    ctx.is_super_admin OR
+                    (ctx.organization_id = a.organization_id AND ctx.user_role = 'org_admin') OR
+                    ctx.user_id = a.created_by_id
+            )
+        )
+    );
+
+CREATE POLICY "assessment_sections_update_policy" ON assessment_sections
+    FOR UPDATE TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM assessments a
+            WHERE a.id = assessment_sections.assessment_id
+            AND EXISTS (
+                SELECT 1 FROM get_user_org_context() ctx
+                WHERE 
+                    ctx.is_super_admin OR
+                    (ctx.organization_id = a.organization_id AND ctx.user_role = 'org_admin') OR
+                    ctx.user_id = a.created_by_id
+            )
+        )
+    );
+
+-- ASSESSMENT QUESTIONS POLICIES
+CREATE POLICY "assessment_questions_select_policy" ON assessment_questions
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM assessment_sections s
+            JOIN assessments a ON a.id = s.assessment_id
+            WHERE s.id = assessment_questions.section_id
+            AND check_org_access(a.organization_id)
+        )
+    );
+
+CREATE POLICY "assessment_questions_insert_policy" ON assessment_questions
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM assessment_sections s
+            JOIN assessments a ON a.id = s.assessment_id
+            WHERE s.id = NEW.section_id
+            AND EXISTS (
+                SELECT 1 FROM get_user_org_context() ctx
+                WHERE 
+                    ctx.is_super_admin OR
+                    (ctx.organization_id = a.organization_id AND ctx.user_role = 'org_admin') OR
+                    ctx.user_id = a.created_by_id
+            )
+        )
+    );
+
+CREATE POLICY "assessment_questions_update_policy" ON assessment_questions
+    FOR UPDATE TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM assessment_sections s
+            JOIN assessments a ON a.id = s.assessment_id
+            WHERE s.id = assessment_questions.section_id
+            AND EXISTS (
+                SELECT 1 FROM get_user_org_context() ctx
+                WHERE 
+                    ctx.is_super_admin OR
+                    (ctx.organization_id = a.organization_id AND ctx.user_role = 'org_admin') OR
+                    ctx.user_id = a.created_by_id
+            )
+        )
+    );
+
+-- ASSESSMENT ORGANIZATION ASSIGNMENTS POLICIES
+CREATE POLICY "assessment_org_assignments_select_policy" ON assessment_organization_assignments
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM assessments a
+            WHERE a.id = assessment_organization_assignments.assessment_id
+            AND check_org_access(a.organization_id)
+        )
+    );
+
+CREATE POLICY "assessment_org_assignments_insert_policy" ON assessment_organization_assignments
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.user_role = 'org_admin' AND ctx.organization_id = NEW.organization_id)
+        )
+    );
+
+-- DEPARTMENTS POLICIES
+CREATE POLICY "departments_select_policy" ON departments
+    FOR SELECT TO authenticated
+    USING (
+        check_org_access(departments.organization_id)
+    );
+
+CREATE POLICY "departments_insert_policy" ON departments
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+CREATE POLICY "departments_update_policy" ON departments
+    FOR UPDATE TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = departments.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- COMPETENCIES POLICIES
+CREATE POLICY "competencies_select_policy" ON competencies
+    FOR SELECT TO authenticated
+    USING (
+        check_org_access(competencies.organization_id)
+    );
+
+CREATE POLICY "competencies_insert_policy" ON competencies
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- QUESTION COMPETENCIES POLICIES
+CREATE POLICY "question_competencies_select_policy" ON question_competencies
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            JOIN competencies c ON c.id = question_competencies.competency_id
+            WHERE 
+                ctx.is_super_admin OR
+                ctx.organization_id = c.organization_id
+        )
+    );
+
+CREATE POLICY "question_competencies_insert_policy" ON question_competencies
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            JOIN competencies c ON c.id = NEW.competency_id
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = c.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- IMPORT LOGS POLICIES
+CREATE POLICY "import_logs_select_policy" ON import_logs
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = import_logs.organization_id AND ctx.user_role = 'org_admin') OR
+                ctx.user_id = import_logs.imported_by_id
+        )
+    );
+
+CREATE POLICY "import_logs_insert_policy" ON import_logs
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- EXPORT LOGS POLICIES
+CREATE POLICY "export_logs_select_policy" ON export_logs
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = export_logs.organization_id AND ctx.user_role = 'org_admin') OR
+                ctx.user_id = export_logs.exported_by_id
+        )
+    );
+
+CREATE POLICY "export_logs_insert_policy" ON export_logs
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- PDF BRANDING SETTINGS POLICIES
+CREATE POLICY "pdf_branding_settings_select_policy" ON pdf_branding_settings
+    FOR SELECT TO authenticated
+    USING (
+        check_org_access(pdf_branding_settings.organization_id)
+    );
+
+CREATE POLICY "pdf_branding_settings_insert_policy" ON pdf_branding_settings
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+CREATE POLICY "pdf_branding_settings_update_policy" ON pdf_branding_settings
+    FOR UPDATE TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = pdf_branding_settings.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- PROFILE TAGS POLICIES
+CREATE POLICY "profile_tags_select_policy" ON profile_tags
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            JOIN users u ON u.id = profile_tags.user_id
+            WHERE 
+                ctx.is_super_admin OR
+                ctx.organization_id = u.organization_id
+        )
+    );
+
+CREATE POLICY "profile_tags_insert_policy" ON profile_tags
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            JOIN users u ON u.id = NEW.user_id
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = u.organization_id AND ctx.user_role IN ('org_admin', 'super_admin'))
+        )
+    );
+
+-- USER BEHAVIORS POLICIES
+CREATE POLICY "user_behaviors_select_policy" ON user_behaviors
+    FOR SELECT TO authenticated
+    USING (
+        check_org_access(user_behaviors.organization_id)
+    );
+
+CREATE POLICY "user_behaviors_insert_policy" ON user_behaviors
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        check_org_access(NEW.organization_id)
+    );
+
+-- STAFF ASSIGNMENTS POLICIES
+CREATE POLICY "staff_assignments_select_policy" ON staff_assignments
+    FOR SELECT TO authenticated
+    USING (
+        check_org_access(staff_assignments.organization_id)
+    );
+
+CREATE POLICY "staff_assignments_insert_policy" ON staff_assignments
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role IN ('org_admin', 'super_admin'))
+        )
+    );
+
+-- ASSESSMENT SECTIONS POLICIES
+CREATE POLICY "assessment_sections_select_policy" ON assessment_sections
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM assessments a
+            WHERE a.id = assessment_sections.assessment_id
+            AND check_org_access(a.organization_id)
+        )
+    );
+
+CREATE POLICY "assessment_sections_insert_policy" ON assessment_sections
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM assessments a
+            WHERE a.id = NEW.assessment_id
+            AND EXISTS (
+                SELECT 1 FROM get_user_org_context() ctx
+                WHERE 
+                    ctx.is_super_admin OR
+                    (ctx.organization_id = a.organization_id AND ctx.user_role = 'org_admin') OR
+                    ctx.user_id = a.created_by_id
+            )
+        )
+    );
+
+CREATE POLICY "assessment_sections_update_policy" ON assessment_sections
+    FOR UPDATE TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM assessments a
+            WHERE a.id = assessment_sections.assessment_id
+            AND EXISTS (
+                SELECT 1 FROM get_user_org_context() ctx
+                WHERE 
+                    ctx.is_super_admin OR
+                    (ctx.organization_id = a.organization_id AND ctx.user_role = 'org_admin') OR
+                    ctx.user_id = a.created_by_id
+            )
+        )
+    );
+
+-- ASSESSMENT QUESTIONS POLICIES
+CREATE POLICY "assessment_questions_select_policy" ON assessment_questions
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM assessment_sections s
+            JOIN assessments a ON a.id = s.assessment_id
+            WHERE s.id = assessment_questions.section_id
+            AND check_org_access(a.organization_id)
+        )
+    );
+
+CREATE POLICY "assessment_questions_insert_policy" ON assessment_questions
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM assessment_sections s
+            JOIN assessments a ON a.id = s.assessment_id
+            WHERE s.id = NEW.section_id
+            AND EXISTS (
+                SELECT 1 FROM get_user_org_context() ctx
+                WHERE 
+                    ctx.is_super_admin OR
+                    (ctx.organization_id = a.organization_id AND ctx.user_role = 'org_admin') OR
+                    ctx.user_id = a.created_by_id
+            )
+        )
+    );
+
+CREATE POLICY "assessment_questions_update_policy" ON assessment_questions
+    FOR UPDATE TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM assessment_sections s
+            JOIN assessments a ON a.id = s.assessment_id
+            WHERE s.id = assessment_questions.section_id
+            AND EXISTS (
+                SELECT 1 FROM get_user_org_context() ctx
+                WHERE 
+                    ctx.is_super_admin OR
+                    (ctx.organization_id = a.organization_id AND ctx.user_role = 'org_admin') OR
+                    ctx.user_id = a.created_by_id
+            )
+        )
+    );
+
+-- ASSESSMENT ORGANIZATION ASSIGNMENTS POLICIES
+CREATE POLICY "assessment_org_assignments_select_policy" ON assessment_organization_assignments
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM assessments a
+            WHERE a.id = assessment_organization_assignments.assessment_id
+            AND check_org_access(a.organization_id)
+        )
+    );
+
+CREATE POLICY "assessment_org_assignments_insert_policy" ON assessment_organization_assignments
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.user_role = 'org_admin' AND ctx.organization_id = NEW.organization_id)
+        )
+    );
+
+-- DEPARTMENTS POLICIES
+CREATE POLICY "departments_select_policy" ON departments
+    FOR SELECT TO authenticated
+    USING (
+        check_org_access(departments.organization_id)
+    );
+
+CREATE POLICY "departments_insert_policy" ON departments
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+CREATE POLICY "departments_update_policy" ON departments
+    FOR UPDATE TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = departments.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- COMPETENCIES POLICIES
+CREATE POLICY "competencies_select_policy" ON competencies
+    FOR SELECT TO authenticated
+    USING (
+        check_org_access(competencies.organization_id)
+    );
+
+CREATE POLICY "competencies_insert_policy" ON competencies
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- QUESTION COMPETENCIES POLICIES
+CREATE POLICY "question_competencies_select_policy" ON question_competencies
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            JOIN competencies c ON c.id = question_competencies.competency_id
+            WHERE 
+                ctx.is_super_admin OR
+                ctx.organization_id = c.organization_id
+        )
+    );
+
+CREATE POLICY "question_competencies_insert_policy" ON question_competencies
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            JOIN competencies c ON c.id = NEW.competency_id
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = c.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- IMPORT LOGS POLICIES
+CREATE POLICY "import_logs_select_policy" ON import_logs
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = import_logs.organization_id AND ctx.user_role = 'org_admin') OR
+                ctx.user_id = import_logs.imported_by_id
+        )
+    );
+
+CREATE POLICY "import_logs_insert_policy" ON import_logs
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- EXPORT LOGS POLICIES
+CREATE POLICY "export_logs_select_policy" ON export_logs
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = export_logs.organization_id AND ctx.user_role = 'org_admin') OR
+                ctx.user_id = export_logs.exported_by_id
+        )
+    );
+
+CREATE POLICY "export_logs_insert_policy" ON export_logs
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- PDF BRANDING SETTINGS POLICIES
+CREATE POLICY "pdf_branding_settings_select_policy" ON pdf_branding_settings
+    FOR SELECT TO authenticated
+    USING (
+        check_org_access(pdf_branding_settings.organization_id)
+    );
+
+CREATE POLICY "pdf_branding_settings_insert_policy" ON pdf_branding_settings
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+CREATE POLICY "pdf_branding_settings_update_policy" ON pdf_branding_settings
+    FOR UPDATE TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = pdf_branding_settings.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- PROFILE TAGS POLICIES
+CREATE POLICY "profile_tags_select_policy" ON profile_tags
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            JOIN users u ON u.id = profile_tags.user_id
+            WHERE 
+                ctx.is_super_admin OR
+                ctx.organization_id = u.organization_id
+        )
+    );
+
+CREATE POLICY "profile_tags_insert_policy" ON profile_tags
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            JOIN users u ON u.id = NEW.user_id
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = u.organization_id AND ctx.user_role IN ('org_admin', 'super_admin'))
+        )
+    );
+
+-- USER BEHAVIORS POLICIES
+CREATE POLICY "user_behaviors_select_policy" ON user_behaviors
+    FOR SELECT TO authenticated
+    USING (
+        check_org_access(user_behaviors.organization_id)
+    );
+
+CREATE POLICY "user_behaviors_insert_policy" ON user_behaviors
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        check_org_access(NEW.organization_id)
+    );
+
+-- STAFF ASSIGNMENTS POLICIES
+CREATE POLICY "staff_assignments_select_policy" ON staff_assignments
+    FOR SELECT TO authenticated
+    USING (
+        check_org_access(staff_assignments.organization_id)
+    );
+
+CREATE POLICY "staff_assignments_insert_policy" ON staff_assignments
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role IN ('org_admin', 'super_admin'))
+        )
+    );
+
+-- ASSESSMENT SECTIONS POLICIES
+CREATE POLICY "assessment_sections_select_policy" ON assessment_sections
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM assessments a
+            WHERE a.id = assessment_sections.assessment_id
+            AND check_org_access(a.organization_id)
+        )
+    );
+
+CREATE POLICY "assessment_sections_insert_policy" ON assessment_sections
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM assessments a
+            WHERE a.id = NEW.assessment_id
+            AND EXISTS (
+                SELECT 1 FROM get_user_org_context() ctx
+                WHERE 
+                    ctx.is_super_admin OR
+                    (ctx.organization_id = a.organization_id AND ctx.user_role = 'org_admin') OR
+                    ctx.user_id = a.created_by_id
+            )
+        )
+    );
+
+CREATE POLICY "assessment_sections_update_policy" ON assessment_sections
+    FOR UPDATE TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM assessments a
+            WHERE a.id = assessment_sections.assessment_id
+            AND EXISTS (
+                SELECT 1 FROM get_user_org_context() ctx
+                WHERE 
+                    ctx.is_super_admin OR
+                    (ctx.organization_id = a.organization_id AND ctx.user_role = 'org_admin') OR
+                    ctx.user_id = a.created_by_id
+            )
+        )
+    );
+
+-- ASSESSMENT QUESTIONS POLICIES
+CREATE POLICY "assessment_questions_select_policy" ON assessment_questions
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM assessment_sections s
+            JOIN assessments a ON a.id = s.assessment_id
+            WHERE s.id = assessment_questions.section_id
+            AND check_org_access(a.organization_id)
+        )
+    );
+
+CREATE POLICY "assessment_questions_insert_policy" ON assessment_questions
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM assessment_sections s
+            JOIN assessments a ON a.id = s.assessment_id
+            WHERE s.id = NEW.section_id
+            AND EXISTS (
+                SELECT 1 FROM get_user_org_context() ctx
+                WHERE 
+                    ctx.is_super_admin OR
+                    (ctx.organization_id = a.organization_id AND ctx.user_role = 'org_admin') OR
+                    ctx.user_id = a.created_by_id
+            )
+        )
+    );
+
+CREATE POLICY "assessment_questions_update_policy" ON assessment_questions
+    FOR UPDATE TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM assessment_sections s
+            JOIN assessments a ON a.id = s.assessment_id
+            WHERE s.id = assessment_questions.section_id
+            AND EXISTS (
+                SELECT 1 FROM get_user_org_context() ctx
+                WHERE 
+                    ctx.is_super_admin OR
+                    (ctx.organization_id = a.organization_id AND ctx.user_role = 'org_admin') OR
+                    ctx.user_id = a.created_by_id
+            )
+        )
+    );
+
+-- ASSESSMENT ORGANIZATION ASSIGNMENTS POLICIES
+CREATE POLICY "assessment_org_assignments_select_policy" ON assessment_organization_assignments
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM assessments a
+            WHERE a.id = assessment_organization_assignments.assessment_id
+            AND check_org_access(a.organization_id)
+        )
+    );
+
+CREATE POLICY "assessment_org_assignments_insert_policy" ON assessment_organization_assignments
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.user_role = 'org_admin' AND ctx.organization_id = NEW.organization_id)
+        )
+    );
+
+-- DEPARTMENTS POLICIES
+CREATE POLICY "departments_select_policy" ON departments
+    FOR SELECT TO authenticated
+    USING (
+        check_org_access(departments.organization_id)
+    );
+
+CREATE POLICY "departments_insert_policy" ON departments
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+CREATE POLICY "departments_update_policy" ON departments
+    FOR UPDATE TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = departments.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- COMPETENCIES POLICIES
+CREATE POLICY "competencies_select_policy" ON competencies
+    FOR SELECT TO authenticated
+    USING (
+        check_org_access(competencies.organization_id)
+    );
+
+CREATE POLICY "competencies_insert_policy" ON competencies
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- QUESTION COMPETENCIES POLICIES
+CREATE POLICY "question_competencies_select_policy" ON question_competencies
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            JOIN competencies c ON c.id = question_competencies.competency_id
+            WHERE 
+                ctx.is_super_admin OR
+                ctx.organization_id = c.organization_id
+        )
+    );
+
+CREATE POLICY "question_competencies_insert_policy" ON question_competencies
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            JOIN competencies c ON c.id = NEW.competency_id
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = c.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- IMPORT LOGS POLICIES
+CREATE POLICY "import_logs_select_policy" ON import_logs
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = import_logs.organization_id AND ctx.user_role = 'org_admin') OR
+                ctx.user_id = import_logs.imported_by_id
+        )
+    );
+
+CREATE POLICY "import_logs_insert_policy" ON import_logs
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- EXPORT LOGS POLICIES
+CREATE POLICY "export_logs_select_policy" ON export_logs
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = export_logs.organization_id AND ctx.user_role = 'org_admin') OR
+                ctx.user_id = export_logs.exported_by_id
+        )
+    );
+
+CREATE POLICY "export_logs_insert_policy" ON export_logs
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- PDF BRANDING SETTINGS POLICIES
+CREATE POLICY "pdf_branding_settings_select_policy" ON pdf_branding_settings
+    FOR SELECT TO authenticated
+    USING (
+        check_org_access(pdf_branding_settings.organization_id)
+    );
+
+CREATE POLICY "pdf_branding_settings_insert_policy" ON pdf_branding_settings
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+CREATE POLICY "pdf_branding_settings_update_policy" ON pdf_branding_settings
+    FOR UPDATE TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = pdf_branding_settings.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- PROFILE TAGS POLICIES
+CREATE POLICY "profile_tags_select_policy" ON profile_tags
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            JOIN users u ON u.id = profile_tags.user_id
+            WHERE 
+                ctx.is_super_admin OR
+                ctx.organization_id = u.organization_id
+        )
+    );
+
+CREATE POLICY "profile_tags_insert_policy" ON profile_tags
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            JOIN users u ON u.id = NEW.user_id
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = u.organization_id AND ctx.user_role IN ('org_admin', 'super_admin'))
+        )
+    );
+
+-- USER BEHAVIORS POLICIES
+CREATE POLICY "user_behaviors_select_policy" ON user_behaviors
+    FOR SELECT TO authenticated
+    USING (
+        check_org_access(user_behaviors.organization_id)
+    );
+
+CREATE POLICY "user_behaviors_insert_policy" ON user_behaviors
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        check_org_access(NEW.organization_id)
+    );
+
+-- STAFF ASSIGNMENTS POLICIES
+CREATE POLICY "staff_assignments_select_policy" ON staff_assignments
+    FOR SELECT TO authenticated
+    USING (
+        check_org_access(staff_assignments.organization_id)
+    );
+
+CREATE POLICY "staff_assignments_insert_policy" ON staff_assignments
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role IN ('org_admin', 'super_admin'))
+        )
+    );
+
+-- ASSESSMENT SECTIONS POLICIES
+CREATE POLICY "assessment_sections_select_policy" ON assessment_sections
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM assessments a
+            WHERE a.id = assessment_sections.assessment_id
+            AND check_org_access(a.organization_id)
+        )
+    );
+
+CREATE POLICY "assessment_sections_insert_policy" ON assessment_sections
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM assessments a
+            WHERE a.id = NEW.assessment_id
+            AND EXISTS (
+                SELECT 1 FROM get_user_org_context() ctx
+                WHERE 
+                    ctx.is_super_admin OR
+                    (ctx.organization_id = a.organization_id AND ctx.user_role = 'org_admin') OR
+                    ctx.user_id = a.created_by_id
+            )
+        )
+    );
+
+CREATE POLICY "assessment_sections_update_policy" ON assessment_sections
+    FOR UPDATE TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM assessments a
+            WHERE a.id = assessment_sections.assessment_id
+            AND EXISTS (
+                SELECT 1 FROM get_user_org_context() ctx
+                WHERE 
+                    ctx.is_super_admin OR
+                    (ctx.organization_id = a.organization_id AND ctx.user_role = 'org_admin') OR
+                    ctx.user_id = a.created_by_id
+            )
+        )
+    );
+
+-- ASSESSMENT QUESTIONS POLICIES
+CREATE POLICY "assessment_questions_select_policy" ON assessment_questions
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM assessment_sections s
+            JOIN assessments a ON a.id = s.assessment_id
+            WHERE s.id = assessment_questions.section_id
+            AND check_org_access(a.organization_id)
+        )
+    );
+
+CREATE POLICY "assessment_questions_insert_policy" ON assessment_questions
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM assessment_sections s
+            JOIN assessments a ON a.id = s.assessment_id
+            WHERE s.id = NEW.section_id
+            AND EXISTS (
+                SELECT 1 FROM get_user_org_context() ctx
+                WHERE 
+                    ctx.is_super_admin OR
+                    (ctx.organization_id = a.organization_id AND ctx.user_role = 'org_admin') OR
+                    ctx.user_id = a.created_by_id
+            )
+        )
+    );
+
+CREATE POLICY "assessment_questions_update_policy" ON assessment_questions
+    FOR UPDATE TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM assessment_sections s
+            JOIN assessments a ON a.id = s.assessment_id
+            WHERE s.id = assessment_questions.section_id
+            AND EXISTS (
+                SELECT 1 FROM get_user_org_context() ctx
+                WHERE 
+                    ctx.is_super_admin OR
+                    (ctx.organization_id = a.organization_id AND ctx.user_role = 'org_admin') OR
+                    ctx.user_id = a.created_by_id
+            )
+        )
+    );
+
+-- ASSESSMENT ORGANIZATION ASSIGNMENTS POLICIES
+CREATE POLICY "assessment_org_assignments_select_policy" ON assessment_organization_assignments
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM assessments a
+            WHERE a.id = assessment_organization_assignments.assessment_id
+            AND check_org_access(a.organization_id)
+        )
+    );
+
+CREATE POLICY "assessment_org_assignments_insert_policy" ON assessment_organization_assignments
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.user_role = 'org_admin' AND ctx.organization_id = NEW.organization_id)
+        )
+    );
+
+-- DEPARTMENTS POLICIES
+CREATE POLICY "departments_select_policy" ON departments
+    FOR SELECT TO authenticated
+    USING (
+        check_org_access(departments.organization_id)
+    );
+
+CREATE POLICY "departments_insert_policy" ON departments
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+CREATE POLICY "departments_update_policy" ON departments
+    FOR UPDATE TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = departments.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- COMPETENCIES POLICIES
+CREATE POLICY "competencies_select_policy" ON competencies
+    FOR SELECT TO authenticated
+    USING (
+        check_org_access(competencies.organization_id)
+    );
+
+CREATE POLICY "competencies_insert_policy" ON competencies
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- QUESTION COMPETENCIES POLICIES
+CREATE POLICY "question_competencies_select_policy" ON question_competencies
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            JOIN competencies c ON c.id = question_competencies.competency_id
+            WHERE 
+                ctx.is_super_admin OR
+                ctx.organization_id = c.organization_id
+        )
+    );
+
+CREATE POLICY "question_competencies_insert_policy" ON question_competencies
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            JOIN competencies c ON c.id = NEW.competency_id
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = c.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- IMPORT LOGS POLICIES
+CREATE POLICY "import_logs_select_policy" ON import_logs
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = import_logs.organization_id AND ctx.user_role = 'org_admin') OR
+                ctx.user_id = import_logs.imported_by_id
+        )
+    );
+
+CREATE POLICY "import_logs_insert_policy" ON import_logs
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- EXPORT LOGS POLICIES
+CREATE POLICY "export_logs_select_policy" ON export_logs
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = export_logs.organization_id AND ctx.user_role = 'org_admin') OR
+                ctx.user_id = export_logs.exported_by_id
+        )
+    );
+
+CREATE POLICY "export_logs_insert_policy" ON export_logs
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- PDF BRANDING SETTINGS POLICIES
+CREATE POLICY "pdf_branding_settings_select_policy" ON pdf_branding_settings
+    FOR SELECT TO authenticated
+    USING (
+        check_org_access(pdf_branding_settings.organization_id)
+    );
+
+CREATE POLICY "pdf_branding_settings_insert_policy" ON pdf_branding_settings
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+CREATE POLICY "pdf_branding_settings_update_policy" ON pdf_branding_settings
+    FOR UPDATE TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = pdf_branding_settings.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- PROFILE TAGS POLICIES
+CREATE POLICY "profile_tags_select_policy" ON profile_tags
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            JOIN users u ON u.id = profile_tags.user_id
+            WHERE 
+                ctx.is_super_admin OR
+                ctx.organization_id = u.organization_id
+        )
+    );
+
+CREATE POLICY "profile_tags_insert_policy" ON profile_tags
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            JOIN users u ON u.id = NEW.user_id
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = u.organization_id AND ctx.user_role IN ('org_admin', 'super_admin'))
+        )
+    );
+
+-- USER BEHAVIORS POLICIES
+CREATE POLICY "user_behaviors_select_policy" ON user_behaviors
+    FOR SELECT TO authenticated
+    USING (
+        check_org_access(user_behaviors.organization_id)
+    );
+
+CREATE POLICY "user_behaviors_insert_policy" ON user_behaviors
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        check_org_access(NEW.organization_id)
+    );
+
+-- STAFF ASSIGNMENTS POLICIES
+CREATE POLICY "staff_assignments_select_policy" ON staff_assignments
+    FOR SELECT TO authenticated
+    USING (
+        check_org_access(staff_assignments.organization_id)
+    );
+
+CREATE POLICY "staff_assignments_insert_policy" ON staff_assignments
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role IN ('org_admin', 'super_admin'))
+        )
+    );
+
+-- ASSESSMENT SECTIONS POLICIES
+CREATE POLICY "assessment_sections_select_policy" ON assessment_sections
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM assessments a
+            WHERE a.id = assessment_sections.assessment_id
+            AND check_org_access(a.organization_id)
+        )
+    );
+
+CREATE POLICY "assessment_sections_insert_policy" ON assessment_sections
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM assessments a
+            WHERE a.id = NEW.assessment_id
+            AND EXISTS (
+                SELECT 1 FROM get_user_org_context() ctx
+                WHERE 
+                    ctx.is_super_admin OR
+                    (ctx.organization_id = a.organization_id AND ctx.user_role = 'org_admin') OR
+                    ctx.user_id = a.created_by_id
+            )
+        )
+    );
+
+CREATE POLICY "assessment_sections_update_policy" ON assessment_sections
+    FOR UPDATE TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM assessments a
+            WHERE a.id = assessment_sections.assessment_id
+            AND EXISTS (
+                SELECT 1 FROM get_user_org_context() ctx
+                WHERE 
+                    ctx.is_super_admin OR
+                    (ctx.organization_id = a.organization_id AND ctx.user_role = 'org_admin') OR
+                    ctx.user_id = a.created_by_id
+            )
+        )
+    );
+
+-- ASSESSMENT QUESTIONS POLICIES
+CREATE POLICY "assessment_questions_select_policy" ON assessment_questions
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM assessment_sections s
+            JOIN assessments a ON a.id = s.assessment_id
+            WHERE s.id = assessment_questions.section_id
+            AND check_org_access(a.organization_id)
+        )
+    );
+
+CREATE POLICY "assessment_questions_insert_policy" ON assessment_questions
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM assessment_sections s
+            JOIN assessments a ON a.id = s.assessment_id
+            WHERE s.id = NEW.section_id
+            AND EXISTS (
+                SELECT 1 FROM get_user_org_context() ctx
+                WHERE 
+                    ctx.is_super_admin OR
+                    (ctx.organization_id = a.organization_id AND ctx.user_role = 'org_admin') OR
+                    ctx.user_id = a.created_by_id
+            )
+        )
+    );
+
+CREATE POLICY "assessment_questions_update_policy" ON assessment_questions
+    FOR UPDATE TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM assessment_sections s
+            JOIN assessments a ON a.id = s.assessment_id
+            WHERE s.id = assessment_questions.section_id
+            AND EXISTS (
+                SELECT 1 FROM get_user_org_context() ctx
+                WHERE 
+                    ctx.is_super_admin OR
+                    (ctx.organization_id = a.organization_id AND ctx.user_role = 'org_admin') OR
+                    ctx.user_id = a.created_by_id
+            )
+        )
+    );
+
+-- ASSESSMENT ORGANIZATION ASSIGNMENTS POLICIES
+CREATE POLICY "assessment_org_assignments_select_policy" ON assessment_organization_assignments
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM assessments a
+            WHERE a.id = assessment_organization_assignments.assessment_id
+            AND check_org_access(a.organization_id)
+        )
+    );
+
+CREATE POLICY "assessment_org_assignments_insert_policy" ON assessment_organization_assignments
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.user_role = 'org_admin' AND ctx.organization_id = NEW.organization_id)
+        )
+    );
+
+-- DEPARTMENTS POLICIES
+CREATE POLICY "departments_select_policy" ON departments
+    FOR SELECT TO authenticated
+    USING (
+        check_org_access(departments.organization_id)
+    );
+
+CREATE POLICY "departments_insert_policy" ON departments
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+CREATE POLICY "departments_update_policy" ON departments
+    FOR UPDATE TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = departments.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- COMPETENCIES POLICIES
+CREATE POLICY "competencies_select_policy" ON competencies
+    FOR SELECT TO authenticated
+    USING (
+        check_org_access(competencies.organization_id)
+    );
+
+CREATE POLICY "competencies_insert_policy" ON competencies
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- QUESTION COMPETENCIES POLICIES
+CREATE POLICY "question_competencies_select_policy" ON question_competencies
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            JOIN competencies c ON c.id = question_competencies.competency_id
+            WHERE 
+                ctx.is_super_admin OR
+                ctx.organization_id = c.organization_id
+        )
+    );
+
+CREATE POLICY "question_competencies_insert_policy" ON question_competencies
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            JOIN competencies c ON c.id = NEW.competency_id
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = c.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- IMPORT LOGS POLICIES
+CREATE POLICY "import_logs_select_policy" ON import_logs
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = import_logs.organization_id AND ctx.user_role = 'org_admin') OR
+                ctx.user_id = import_logs.imported_by_id
+        )
+    );
+
+CREATE POLICY "import_logs_insert_policy" ON import_logs
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- EXPORT LOGS POLICIES
+CREATE POLICY "export_logs_select_policy" ON export_logs
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = export_logs.organization_id AND ctx.user_role = 'org_admin') OR
+                ctx.user_id = export_logs.exported_by_id
+        )
+    );
+
+CREATE POLICY "export_logs_insert_policy" ON export_logs
+    FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM get_user_org_context() ctx
+            WHERE 
+                ctx.is_super_admin OR
+                (ctx.organization_id = NEW.organization_id AND ctx.user_role = 'org_admin')
+        )
+    );
+
+-- PDF BRANDING SETTINGS POLICIES
+CREATE POLICY "pdf_branding_settings_select_policy" ON pdf_branding_settings
+    FOR SELECT TO authenticated
+    USING (
+        check_org_access(pdf_branding_settings.organization_id)

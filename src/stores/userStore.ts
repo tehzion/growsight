@@ -4,6 +4,8 @@ import { User, Role } from '../types';
 import AccessControl from '../lib/accessControl';
 import SecureLogger from '../lib/secureLogger';
 import { useProfileStore } from './profileStore';
+import { emailService, UserCreationData } from '../services/emailService';
+import { useAssessmentResultsStore } from './assessmentResultsStore';
 
 interface UserProfile {
   phone?: string;
@@ -27,7 +29,7 @@ interface UserState {
   isLoading: boolean;
   error: string | null;
   fetchUsers: (organizationId?: string) => Promise<void>;
-  createUser: (data: Omit<User, 'id' | 'createdAt' | 'updatedAt'>) => Promise<void>;
+  createUser: (data: Omit<User, 'id' | 'createdAt' | 'updatedAt'>, currentUser?: User) => Promise<void>;
   updateUser: (id: string, data: Partial<User>) => Promise<void>;
   deleteUser: (id: string) => Promise<void>;
   updateUserProfile: (userId: string, profile: Partial<UserProfile>) => Promise<void>;
@@ -170,7 +172,7 @@ export const useUserStore = create<UserState>()(
         }
       },
       
-      createUser: async (data) => {
+      createUser: async (data, currentUser?: User) => {
         set({ isLoading: true, error: null });
         try {
           // Validate input
@@ -188,12 +190,26 @@ export const useUserStore = create<UserState>()(
 
           await new Promise(resolve => setTimeout(resolve, 500));
           
+          // Generate organization and staff IDs using assessment results store functions
+          const { generateOrganizationId, generateStaffId } = useAssessmentResultsStore.getState();
+          
+          // Generate organization ID if not provided
+          let organizationId = data.organizationId;
+          if (!organizationId && data.organizationName) {
+            organizationId = generateOrganizationId(data.organizationName);
+          }
+          
+          // Generate staff ID
+          const fullName = `${data.firstName} ${data.lastName}`;
+          const staffId = generateStaffId(data.organizationName || 'Organization', fullName);
+          
           const newUser: User = {
             ...data,
             id: `user-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
             email: data.email.toLowerCase().trim(),
             firstName: data.firstName.trim(),
             lastName: data.lastName.trim(),
+            organizationId,
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString()
           };
@@ -223,11 +239,41 @@ export const useUserStore = create<UserState>()(
             SecureLogger.info('Staff assignment created for new user', { 
               userId: newUser.id, 
               organizationId: newUser.organizationId,
-              departmentId: newUser.departmentId 
+              departmentId: newUser.departmentId,
+              staffId
             });
           } catch (assignmentError) {
             SecureLogger.warn('Failed to create staff assignment for new user', assignmentError);
             // Don't fail user creation if staff assignment fails
+          }
+
+          // Send email notification to the new user
+          try {
+            const userCreationData: UserCreationData = {
+              userId: newUser.id,
+              email: newUser.email,
+              firstName: newUser.firstName,
+              lastName: newUser.lastName,
+              role: newUser.role,
+              organizationId: newUser.organizationId,
+              organizationName: data.organizationName || 'Your Organization',
+              staffId,
+              departmentId: newUser.departmentId,
+              departmentName: data.departmentName,
+              assignedBy: currentUser ? `${currentUser.firstName} ${currentUser.lastName}` : 'System Administrator'
+            };
+
+            await emailService.sendUserCreationNotification(userCreationData);
+            
+            SecureLogger.info('User creation email sent successfully', {
+              userId: newUser.id,
+              email: newUser.email,
+              organizationId: newUser.organizationId,
+              staffId
+            });
+          } catch (emailError) {
+            SecureLogger.warn('Failed to send user creation email', emailError);
+            // Don't fail user creation if email fails
           }
           
           set(state => ({ 
@@ -236,6 +282,17 @@ export const useUserStore = create<UserState>()(
             isLoading: false,
             error: null
           }));
+
+          // Log successful user creation with IDs
+          SecureLogger.info('User created successfully', {
+            userId: newUser.id,
+            email: newUser.email,
+            organizationId: newUser.organizationId,
+            staffId,
+            role: newUser.role,
+            createdBy: currentUser?.id || 'system'
+          });
+
         } catch (error) {
           set({ error: (error as Error).message || 'Failed to create user', isLoading: false });
         }

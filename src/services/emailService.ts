@@ -1,12 +1,19 @@
 import { config } from '../config/environment';
 import SecureLogger from '../lib/secureLogger';
 import { supabase } from '../lib/supabase';
+import { useAssessmentResultsStore } from '../stores/assessmentResultsStore';
 
 export interface EmailNotification {
-  to: string;
+  id: string;
+  recipient_id: string;
+  recipient_email: string;
   subject: string;
-  template: 'assignment_created' | 'deadline_reminder' | 'assessment_completed' | 'password_reset' | 'welcome';
-  data: Record<string, any>;
+  body: string;
+  status: 'pending' | 'sent' | 'failed';
+  sent_at?: string;
+  error_message?: string;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface EmailBrandingSettings {
@@ -22,11 +29,13 @@ export interface EmailBrandingSettings {
 }
 
 export interface EmailTemplate {
+  id: string;
+  name: string;
   subject: string;
   body: string;
-  recipient_email: string;
-  recipient_name?: string;
-  template_data?: Record<string, any>;
+  variables: string[];
+  created_at: string;
+  updated_at: string;
 }
 
 export interface EmailPreview {
@@ -41,6 +50,20 @@ export interface SMTPConfig {
   secure: boolean;
   username: string;
   password: string;
+}
+
+export interface UserCreationData {
+  userId: string;
+  email: string;
+  firstName: string;
+  lastName: string;
+  role: string;
+  organizationId: string;
+  organizationName: string;
+  staffId?: string;
+  departmentId?: string;
+  departmentName?: string;
+  assignedBy: string;
 }
 
 export class EmailService {
@@ -983,6 +1006,314 @@ export class EmailService {
         message: `Failed to send test email: ${(error as Error).message}`
       };
     }
+  }
+
+  private generateOrganizationId = (organizationName: string): string => {
+    const sanitizedName = organizationName
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '');
+    
+    const timestamp = Date.now().toString(36);
+    const randomSuffix = Math.random().toString(36).substring(2, 8);
+    
+    return `${sanitizedName}-${timestamp}-${randomSuffix}`;
+  };
+
+  private generateStaffId = (organizationName: string, staffName: string): string => {
+    const orgPrefix = organizationName
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, '')
+      .substring(0, 3);
+    
+    const staffPrefix = staffName
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, '')
+      .substring(0, 3);
+    
+    const timestamp = Date.now().toString(36);
+    const randomSuffix = Math.random().toString(36).substring(2, 6);
+    
+    return `${orgPrefix}-${staffPrefix}-${timestamp}-${randomSuffix}`;
+  };
+
+  async sendUserCreationNotification(userData: UserCreationData): Promise<void> {
+    try {
+      // Generate staff ID if not provided
+      if (!userData.staffId) {
+        const fullName = `${userData.firstName} ${userData.lastName}`;
+        userData.staffId = this.generateStaffId(userData.organizationName, fullName);
+      }
+
+      // Generate organization ID if needed
+      if (!userData.organizationId) {
+        userData.organizationId = this.generateOrganizationId(userData.organizationName);
+      }
+
+      // Create email notification record
+      const notificationData = {
+        recipient_id: userData.userId,
+        recipient_email: userData.email,
+        subject: `Welcome to ${userData.organizationName} - Your Account Details`,
+        body: this.generateUserCreationEmailBody(userData),
+        status: 'pending',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      };
+
+      const { error } = await supabase
+        .from('email_notifications')
+        .insert(notificationData);
+
+      if (error) throw error;
+
+      // Send the actual email (implementation depends on your email provider)
+      await this.sendEmail(notificationData.recipient_email, notificationData.subject, notificationData.body);
+
+      // Update notification status to sent
+      await supabase
+        .from('email_notifications')
+        .update({ 
+          status: 'sent',
+          sent_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+        .eq('recipient_id', userData.userId)
+        .eq('subject', notificationData.subject);
+
+    } catch (error) {
+      console.error('Error sending user creation notification:', error);
+      
+      // Update notification status to failed
+      await supabase
+        .from('email_notifications')
+        .update({ 
+          status: 'failed',
+          error_message: error instanceof Error ? error.message : 'Unknown error',
+          updated_at: new Date().toISOString()
+        })
+        .eq('recipient_id', userData.userId);
+
+      throw error;
+    }
+  }
+
+  private generateUserCreationEmailBody(userData: UserCreationData): string {
+    const relationshipTypeLabels: Record<string, string> = {
+      'peer': 'Peer Review',
+      'supervisor': 'Supervisor Review', 
+      'subordinate': 'Subordinate Review',
+      'client': 'Client Review'
+    };
+
+    return `
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Welcome to ${userData.organizationName}</title>
+    <style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+        .header { background-color: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 20px; }
+        .details { background-color: #ffffff; padding: 20px; border: 1px solid #dee2e6; border-radius: 8px; }
+        .detail-row { margin-bottom: 15px; }
+        .label { font-weight: bold; color: #495057; }
+        .value { color: #212529; }
+        .footer { margin-top: 30px; padding-top: 20px; border-top: 1px solid #dee2e6; font-size: 14px; color: #6c757d; }
+        .highlight { background-color: #e3f2fd; padding: 10px; border-radius: 4px; margin: 15px 0; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Welcome to ${userData.organizationName}!</h1>
+            <p>Your account has been successfully created and you're now part of our assessment and feedback system.</p>
+        </div>
+
+        <div class="details">
+            <h2>Your Account Details</h2>
+            
+            <div class="detail-row">
+                <span class="label">Name:</span>
+                <span class="value">${userData.firstName} ${userData.lastName}</span>
+            </div>
+            
+            <div class="detail-row">
+                <span class="label">Email:</span>
+                <span class="value">${userData.email}</span>
+            </div>
+            
+            <div class="detail-row">
+                <span class="label">Role:</span>
+                <span class="value">${userData.role.charAt(0).toUpperCase() + userData.role.slice(1)}</span>
+            </div>
+            
+            <div class="detail-row">
+                <span class="label">Organization:</span>
+                <span class="value">${userData.organizationName}</span>
+            </div>
+            
+            <div class="detail-row">
+                <span class="label">Organization ID:</span>
+                <span class="value">${userData.organizationId}</span>
+            </div>
+            
+            <div class="detail-row">
+                <span class="label">Staff ID:</span>
+                <span class="value">${userData.staffId}</span>
+            </div>
+            
+            ${userData.departmentName ? `
+            <div class="detail-row">
+                <span class="label">Department:</span>
+                <span class="value">${userData.departmentName}</span>
+            </div>
+            ` : ''}
+            
+            <div class="detail-row">
+                <span class="label">Account Created By:</span>
+                <span class="value">${userData.assignedBy}</span>
+            </div>
+        </div>
+
+        <div class="highlight">
+            <h3>What's Next?</h3>
+            <p>You can now:</p>
+            <ul>
+                <li>Log in to your account using your email address</li>
+                <li>Complete your profile to get the most out of the system</li>
+                <li>Participate in assessments assigned to you</li>
+                <li>Review and provide feedback to colleagues</li>
+                <li>View your assessment results and analytics</li>
+            </ul>
+        </div>
+
+        <div class="footer">
+            <p><strong>Important Notes:</strong></p>
+            <ul>
+                <li>Keep your Organization ID and Staff ID for reference</li>
+                <li>These IDs are used for assessment assignments and result tracking</li>
+                <li>Different relationship types (${Object.values(relationshipTypeLabels).join(', ')}) help provide comprehensive feedback</li>
+                <li>Your privacy and data security are our top priorities</li>
+            </ul>
+            
+            <p>If you have any questions, please contact your organization administrator or our support team.</p>
+            
+            <p>Best regards,<br>
+            The ${userData.organizationName} Team</p>
+        </div>
+    </div>
+</body>
+</html>
+    `;
+  }
+
+  async sendAssessmentAssignmentNotification(
+    assignmentId: string,
+    employeeEmail: string,
+    reviewerEmail: string,
+    assessmentTitle: string,
+    dueDate: string,
+    relationshipType: string
+  ): Promise<void> {
+    const relationshipTypeLabel = {
+      'peer': 'Peer Review',
+      'supervisor': 'Supervisor Review',
+      'subordinate': 'Subordinate Review',
+      'client': 'Client Review'
+    }[relationshipType] || relationshipType;
+
+    const subject = `Assessment Assignment: ${assessmentTitle}`;
+    const body = `
+      <h2>Assessment Assignment</h2>
+      <p>You have been assigned to participate in: <strong>${assessmentTitle}</strong></p>
+      <p><strong>Relationship Type:</strong> ${relationshipTypeLabel}</p>
+      <p><strong>Due Date:</strong> ${new Date(dueDate).toLocaleDateString()}</p>
+      <p>Please log in to your account to complete this assessment.</p>
+    `;
+
+    // Send to employee
+    await this.sendEmail(employeeEmail, subject, body);
+    
+    // Send to reviewer
+    await this.sendEmail(reviewerEmail, subject, body);
+  }
+
+  async sendAssessmentCompletionNotification(
+    employeeEmail: string,
+    reviewerEmail: string,
+    assessmentTitle: string,
+    overallScore: number,
+    relationshipType: string
+  ): Promise<void> {
+    const relationshipTypeLabel = {
+      'peer': 'Peer Review',
+      'supervisor': 'Supervisor Review',
+      'subordinate': 'Subordinate Review',
+      'client': 'Client Review'
+    }[relationshipType] || relationshipType;
+
+    const subject = `Assessment Completed: ${assessmentTitle}`;
+    const body = `
+      <h2>Assessment Completed</h2>
+      <p>The assessment <strong>${assessmentTitle}</strong> has been completed.</p>
+      <p><strong>Relationship Type:</strong> ${relationshipTypeLabel}</p>
+      <p><strong>Overall Score:</strong> ${overallScore.toFixed(1)}/7.0</p>
+      <p>Log in to view detailed results and analytics.</p>
+    `;
+
+    // Send to both parties
+    await this.sendEmail(employeeEmail, subject, body);
+    await this.sendEmail(reviewerEmail, subject, body);
+  }
+
+  async getEmailTemplates(organizationId: string): Promise<EmailTemplate[]> {
+    const { data, error } = await supabase
+      .from('email_templates')
+      .select('*')
+      .eq('organization_id', organizationId)
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+    return data || [];
+  }
+
+  async createEmailTemplate(template: Omit<EmailTemplate, 'id' | 'created_at' | 'updated_at'>): Promise<string> {
+    const { data, error } = await supabase
+      .from('email_templates')
+      .insert({
+        ...template,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      })
+      .select('id')
+      .single();
+
+    if (error) throw error;
+    return data.id;
+  }
+
+  async updateEmailTemplate(id: string, updates: Partial<EmailTemplate>): Promise<void> {
+    const { error } = await supabase
+      .from('email_templates')
+      .update({
+        ...updates,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', id);
+
+    if (error) throw error;
+  }
+
+  async deleteEmailTemplate(id: string): Promise<void> {
+    const { error } = await supabase
+      .from('email_templates')
+      .delete()
+      .eq('id', id);
+
+    if (error) throw error;
   }
 }
 
