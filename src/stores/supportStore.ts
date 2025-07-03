@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { SupportTicket, TicketMessage, TicketAttachment, TicketStatus, PriorityLevel, TicketCategory, Role } from '../types';
+import { supportService, SupportTicketResponse, SupportTicketAttachment, ContactOption, CreateTicketData } from '../services/supportService';
 
 interface SupportState {
   tickets: SupportTicket[];
@@ -21,6 +22,44 @@ interface SupportState {
   sendMessage: (ticketId: string, messageText: string) => Promise<string | undefined>;
   addAttachment: (ticketId: string, messageId: string, file: File) => Promise<void>;
   submitSatisfactionRating: (ticketId: string, rating: number) => Promise<void>;
+}
+
+interface SupportStore {
+  tickets: SupportTicket[];
+  currentTicket: SupportTicket | null;
+  ticketResponses: SupportTicketResponse[];
+  ticketAttachments: SupportTicketAttachment[];
+  contactOptions: ContactOption[];
+  isLoading: boolean;
+  error: string | null;
+  
+  // Actions
+  createTicket: (userId: string, data: CreateTicketData) => Promise<void>;
+  fetchUserTickets: (userId: string) => Promise<void>;
+  fetchOrganizationTickets: (organizationId: string) => Promise<void>;
+  fetchTicket: (ticketId: string) => Promise<void>;
+  updateTicket: (ticketId: string, updates: Partial<SupportTicket>) => Promise<void>;
+  assignTicket: (ticketId: string, assignedToId: string) => Promise<void>;
+  resolveTicket: (ticketId: string) => Promise<void>;
+  closeTicket: (ticketId: string) => Promise<void>;
+  
+  // Response actions
+  addResponse: (ticketId: string, userId: string, responseText: string, isInternal?: boolean) => Promise<void>;
+  fetchTicketResponses: (ticketId: string) => Promise<void>;
+  
+  // Attachment actions
+  uploadAttachment: (ticketId: string, file: File, responseId?: string) => Promise<void>;
+  fetchTicketAttachments: (ticketId: string) => Promise<void>;
+  
+  // Contact options
+  fetchContactOptions: (userId: string) => Promise<void>;
+  
+  // Utility functions
+  getTicketById: (ticketId: string) => SupportTicket | null;
+  getTicketsByStatus: (status: string) => SupportTicket[];
+  getTicketsByPriority: (priority: string) => SupportTicket[];
+  clearError: () => void;
+  clearCurrentTicket: () => void;
 }
 
 // Mock data for demo
@@ -171,11 +210,14 @@ const mockMessages: Record<string, TicketMessage[]> = {
   ]
 };
 
-export const useSupportStore = create<SupportState>()(
+export const useSupportStore = create<SupportStore>()(
   persist(
     (set, get) => ({
       tickets: [],
-      messages: {},
+      currentTicket: null,
+      ticketResponses: [],
+      ticketAttachments: [],
+      contactOptions: [],
       isLoading: false,
       error: null,
       
@@ -253,53 +295,17 @@ export const useSupportStore = create<SupportState>()(
         }
       },
       
-      createTicket: async (data) => {
+      createTicket: async (userId: string, data: CreateTicketData) => {
         set({ isLoading: true, error: null });
         try {
-          await new Promise(resolve => setTimeout(resolve, 1000));
-          
-          // In a real implementation, this would create a ticket in the database
-          // For demo, we'll create a mock ticket
-          const newTicket: SupportTicket = {
-            id: `ticket-${Date.now()}`,
-            staffMemberId: '3', // Assuming current user is John Doe
-            organizationId: 'demo-org-1',
-            subject: data.subject,
-            description: data.description,
-            priority: data.priority,
-            category: data.category,
-            status: 'open',
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString()
-          };
-          
-          set(state => ({ 
-            tickets: [newTicket, ...state.tickets], 
-            isLoading: false 
+          const newTicket = await supportService.createTicket(userId, data);
+          set(state => ({
+            tickets: [newTicket, ...state.tickets],
+            isLoading: false
           }));
-          
-          // If there are attachments, we would upload them here
-          if (data.attachments && data.attachments.length > 0) {
-            // Create an initial message with the ticket description
-            const initialMessage: TicketMessage = {
-              id: `msg-${Date.now()}`,
-              ticketId: newTicket.id,
-              senderId: '3', // Assuming current user is John Doe
-              messageText: data.description || 'Ticket created',
-              createdAt: new Date().toISOString()
-            };
-            
-            set(state => ({
-              messages: {
-                ...state.messages,
-                [newTicket.id]: [initialMessage]
-              }
-            }));
-          }
         } catch (error) {
-          console.error('Failed to create ticket:', error);
           set({ 
-            error: (error as Error).message || 'Failed to create ticket', 
+            error: error instanceof Error ? error.message : 'Failed to create ticket',
             isLoading: false 
           });
         }
@@ -465,6 +471,163 @@ export const useSupportStore = create<SupportState>()(
             isLoading: false 
           });
         }
+      },
+      
+      fetchUserTickets: async (userId: string) => {
+        set({ isLoading: true, error: null });
+        try {
+          const tickets = await supportService.getUserTickets(userId);
+          set({ tickets, isLoading: false });
+        } catch (error) {
+          set({ 
+            error: error instanceof Error ? error.message : 'Failed to fetch tickets',
+            isLoading: false 
+          });
+        }
+      },
+      
+      fetchOrganizationTickets: async (organizationId: string) => {
+        set({ isLoading: true, error: null });
+        try {
+          const tickets = await supportService.getOrganizationTickets(organizationId);
+          set({ tickets, isLoading: false });
+        } catch (error) {
+          set({ 
+            error: error instanceof Error ? error.message : 'Failed to fetch organization tickets',
+            isLoading: false 
+          });
+        }
+      },
+      
+      fetchTicket: async (ticketId: string) => {
+        set({ isLoading: true, error: null });
+        try {
+          const ticket = await supportService.getTicket(ticketId);
+          set({ currentTicket: ticket, isLoading: false });
+        } catch (error) {
+          set({ 
+            error: error instanceof Error ? error.message : 'Failed to fetch ticket',
+            isLoading: false 
+          });
+        }
+      },
+      
+      updateTicket: async (ticketId: string, updates: Partial<SupportTicket>) => {
+        set({ isLoading: true, error: null });
+        try {
+          const updatedTicket = await supportService.updateTicket(ticketId, updates);
+          set(state => ({
+            tickets: state.tickets.map(ticket => 
+              ticket.id === ticketId ? updatedTicket : ticket
+            ),
+            currentTicket: state.currentTicket?.id === ticketId ? updatedTicket : state.currentTicket,
+            isLoading: false
+          }));
+        } catch (error) {
+          set({ 
+            error: error instanceof Error ? error.message : 'Failed to update ticket',
+            isLoading: false 
+          });
+        }
+      },
+      
+      resolveTicket: async (ticketId: string) => {
+        await get().updateTicket(ticketId, { status: 'resolved' });
+      },
+      
+      closeTicket: async (ticketId: string) => {
+        await get().updateTicket(ticketId, { status: 'closed' });
+      },
+      
+      addResponse: async (ticketId: string, userId: string, responseText: string, isInternal: boolean = false) => {
+        set({ isLoading: true, error: null });
+        try {
+          const newResponse = await supportService.addResponse(ticketId, userId, responseText, isInternal);
+          set(state => ({
+            ticketResponses: [...state.ticketResponses, newResponse],
+            isLoading: false
+          }));
+        } catch (error) {
+          set({ 
+            error: error instanceof Error ? error.message : 'Failed to add response',
+            isLoading: false 
+          });
+        }
+      },
+      
+      fetchTicketResponses: async (ticketId: string) => {
+        set({ isLoading: true, error: null });
+        try {
+          const responses = await supportService.getTicketResponses(ticketId);
+          set({ ticketResponses: responses, isLoading: false });
+        } catch (error) {
+          set({ 
+            error: error instanceof Error ? error.message : 'Failed to fetch responses',
+            isLoading: false 
+          });
+        }
+      },
+      
+      uploadAttachment: async (ticketId: string, file: File, responseId?: string) => {
+        set({ isLoading: true, error: null });
+        try {
+          const newAttachment = await supportService.uploadAttachment(ticketId, file, responseId);
+          set(state => ({
+            ticketAttachments: [...state.ticketAttachments, newAttachment],
+            isLoading: false
+          }));
+        } catch (error) {
+          set({ 
+            error: error instanceof Error ? error.message : 'Failed to upload attachment',
+            isLoading: false 
+          });
+        }
+      },
+      
+      fetchTicketAttachments: async (ticketId: string) => {
+        set({ isLoading: true, error: null });
+        try {
+          const attachments = await supportService.getTicketAttachments(ticketId);
+          set({ ticketAttachments: attachments, isLoading: false });
+        } catch (error) {
+          set({ 
+            error: error instanceof Error ? error.message : 'Failed to fetch attachments',
+            isLoading: false 
+          });
+        }
+      },
+      
+      fetchContactOptions: async (userId: string) => {
+        set({ isLoading: true, error: null });
+        try {
+          const options = await supportService.getContactOptions(userId);
+          set({ contactOptions: options, isLoading: false });
+        } catch (error) {
+          set({ 
+            error: error instanceof Error ? error.message : 'Failed to fetch contact options',
+            isLoading: false 
+          });
+        }
+      },
+      
+      getTicketById: (ticketId: string) => {
+        return get().tickets.find(ticket => ticket.id === ticketId) || null;
+      },
+      
+      getTicketsByStatus: (status: string) => {
+        return get().tickets.filter(ticket => ticket.status === status);
+      },
+      
+      getTicketsByPriority: (priority: string) => {
+        return get().tickets.filter(ticket => ticket.priority === priority);
+      },
+      
+      clearError: () => {
+        set({ error: null });
+      },
+      
+      clearCurrentTicket: () => {
+        set({ currentTicket: null, ticketResponses: [], ticketAttachments: [] });
       }
     }),
     {
