@@ -5,6 +5,121 @@ import SecureLogger from './secureLogger';
  * Access control utilities for organization and user data protection
  */
 export class AccessControl {
+  // Permission definitions
+  static readonly PERMISSIONS = {
+    // User management
+    MANAGE_USERS: 'manage_users',
+    VIEW_USERS: 'view_users',
+    CREATE_USERS: 'create_users',
+    DELETE_USERS: 'delete_users',
+    
+    // Assessment management
+    CREATE_ASSESSMENTS: 'create_assessments',
+    EDIT_ASSESSMENTS: 'edit_assessments',
+    DELETE_ASSESSMENTS: 'delete_assessments',
+    VIEW_ASSESSMENTS: 'view_assessments',
+    ASSIGN_ASSESSMENTS: 'assign_assessments',
+    
+    // Results and analytics
+    VIEW_RESULTS: 'view_results',
+    EXPORT_RESULTS: 'export_results',
+    VIEW_ANALYTICS: 'view_analytics',
+    
+    // Organization management
+    MANAGE_ORGANIZATIONS: 'manage_organizations',
+    VIEW_ORGANIZATIONS: 'view_organizations',
+    
+    // System management
+    MANAGE_SYSTEM: 'manage_system',
+    VIEW_REPORTS: 'view_reports',
+    MANAGE_TEMPLATES: 'manage_templates',
+    
+    // Support and communication
+    MANAGE_SUPPORT: 'manage_support',
+    VIEW_SUPPORT: 'view_support',
+    
+    // Branding and customization
+    MANAGE_BRANDING: 'manage_branding',
+    VIEW_BRANDING: 'view_branding'
+  } as const;
+
+  // Role-based permission mappings
+  static readonly ROLE_PERMISSIONS = {
+    root: [
+      'manage_users', 'view_users', 'create_users', 'delete_users',
+      'create_assessments', 'edit_assessments', 'delete_assessments', 'view_assessments', 'assign_assessments',
+      'view_results', 'export_results', 'view_analytics',
+      'manage_organizations', 'view_organizations',
+      'manage_system', 'view_reports', 'manage_templates',
+      'manage_support', 'view_support',
+      'manage_branding', 'view_branding'
+    ],
+    super_admin: [
+      'manage_users', 'view_users', 'create_users', 'delete_users',
+      'create_assessments', 'edit_assessments', 'delete_assessments', 'view_assessments', 'assign_assessments',
+      'view_results', 'export_results', 'view_analytics',
+      'manage_organizations', 'view_organizations',
+      'manage_system', 'view_reports', 'manage_templates',
+      'manage_support', 'view_support',
+      'manage_branding', 'view_branding'
+    ],
+    org_admin: [
+      'manage_users', 'view_users', 'create_users',
+      'create_assessments', 'edit_assessments', 'view_assessments', 'assign_assessments',
+      'view_results', 'export_results', 'view_analytics',
+      'view_reports',
+      'view_support',
+      'view_branding'
+    ],
+    reviewer: [
+      'view_assessments',
+      'view_results'
+    ],
+    employee: [
+      'view_assessments'
+    ],
+    subscriber: [
+      'view_assessments',
+      'view_results'
+    ]
+  } as const;
+
+  /**
+   * Checks if a user has a specific permission
+   */
+  static hasPermission(user: User | null, permission: string): boolean {
+    if (!user) {
+      return false;
+    }
+
+    const userPermissions = this.ROLE_PERMISSIONS[user.role as keyof typeof this.ROLE_PERMISSIONS] || [];
+    return userPermissions.includes(permission as any);
+  }
+
+  /**
+   * Checks if a user can access a specific feature
+   */
+  static canAccessFeature(user: User | null, feature: string): boolean {
+    if (!user) {
+      return false;
+    }
+
+    const featurePermissions: Record<string, string[]> = {
+      'reporting': ['view_reports'],
+      'user-management': ['manage_users'],
+      'assessment-builder': ['create_assessments'],
+      'assessment-results': ['view_results'],
+      'organization-management': ['manage_organizations'],
+      'system-settings': ['manage_system'],
+      'template-management': ['manage_templates'],
+      'support-hub': ['view_support'],
+      'branding': ['view_branding']
+    };
+
+    const requiredPermissions = featurePermissions[feature] || [];
+    return requiredPermissions.every(permission => this.hasPermission(user, permission));
+  }
+
   /**
    * Validates if a user can access data from a specific organization
    */
@@ -200,21 +315,71 @@ export class AccessControl {
       return true;
     }
 
-    // Org admins can perform actions in their organization
-    if (currentUser.role === 'org_admin' && currentUser.organizationId === targetOrganizationId) {
-      return true;
+    // Org admins can only perform actions in their organization
+    if (currentUser.role === 'org_admin') {
+      return currentUser.organizationId === targetOrganizationId;
     }
 
     SecureLogger.warn(`Admin action blocked: ${action}`, {
       userRole: currentUser.role,
-      userOrg: '[ORG_ID]',
-      targetOrg: '[ORG_ID]'
+      targetOrg: targetOrganizationId
     });
     return false;
   }
 
   /**
-   * Rate limiting for sensitive operations
+   * Gets available features for a user
+   */
+  static getAvailableFeatures(user: User | null): string[] {
+    if (!user) {
+      return [];
+    }
+
+    const allFeatures = [
+      'dashboard',
+      'reporting',
+      'user-management',
+      'assessment-builder',
+      'assessment-results',
+      'organization-management',
+      'system-settings',
+      'template-management',
+      'support-hub',
+      'branding',
+      'import-export',
+      'competencies',
+      'access-requests'
+    ];
+
+    return allFeatures.filter(feature => this.canAccessFeature(user, feature));
+  }
+
+  /**
+   * Validates reporting access based on user role and organization
+   */
+  static validateReportingAccess(
+    currentUser: User | null,
+    targetOrganizationId?: string
+  ): boolean {
+    if (!currentUser) {
+      return false;
+    }
+
+    // Super admins can access all reporting
+    if (currentUser.role === 'super_admin') {
+      return true;
+    }
+
+    // Org admins can only access reporting for their organization
+    if (currentUser.role === 'org_admin') {
+      return !targetOrganizationId || currentUser.organizationId === targetOrganizationId;
+    }
+
+    return false;
+  }
+
+  /**
+   * Rate limiting for security
    */
   private static rateLimitMap = new Map<string, number[]>();
 
@@ -227,23 +392,28 @@ export class AccessControl {
     const key = `${userId}:${action}`;
     const now = Date.now();
     const attempts = this.rateLimitMap.get(key) || [];
-
+    
     // Remove old attempts outside the window
-    const recentAttempts = attempts.filter(time => now - time < windowMs);
-
+    const recentAttempts = attempts.filter(timestamp => now - timestamp < windowMs);
+    
     if (recentAttempts.length >= maxAttempts) {
-      SecureLogger.warn(`Rate limit exceeded for action: ${action}`, {
-        userId: '[USER_ID]',
-        attempts: recentAttempts.length
-      });
+      SecureLogger.warn(`Rate limit exceeded for user ${userId}`, { action, attempts: recentAttempts.length });
       return false;
     }
-
+    
     // Add current attempt
     recentAttempts.push(now);
     this.rateLimitMap.set(key, recentAttempts);
-
+    
     return true;
+  }
+
+  /**
+   * Clears rate limit for a user
+   */
+  static clearRateLimit(userId: string, action: string): void {
+    const key = `${userId}:${action}`;
+    this.rateLimitMap.delete(key);
   }
 }
 

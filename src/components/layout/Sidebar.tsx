@@ -1,4 +1,3 @@
-import { NavLink } from 'react-router-dom';
 import { 
   X, 
   BarChart4, 
@@ -21,7 +20,8 @@ import {
   Tag,
   MessageSquare,
   Database,
-  Layers
+  Layers,
+  BarChart3
 } from 'lucide-react';
 import { User as UserType } from '../../types';
 import { useAuthStore } from '../../stores/authStore';
@@ -48,6 +48,7 @@ const Sidebar = ({ isOpen, toggleSidebar, user }: SidebarProps) => {
     { path: '/users', label: 'Users', icon: <Users className="h-5 w-5" />, roles: ['super_admin', 'org_admin', 'subscriber'], permission: 'manage_users' },
     { path: '/assessments', label: 'Assessments', icon: <ClipboardList className="h-5 w-5" />, roles: ['super_admin', 'org_admin', 'subscriber'], permission: 'create_assessments' },
     { path: '/templates', label: 'Templates', icon: <Layers className="h-5 w-5" />, roles: ['super_admin'] },
+    { path: '/reporting', label: 'Reporting', icon: <BarChart3 className="h-5 w-5" />, roles: ['super_admin', 'org_admin'] },
     { path: '/assessment-assignments', label: 'Assignments', icon: <UserCheck className="h-5 w-5" />, roles: ['org_admin'], permission: 'assign_assessments' },
     { path: '/results', label: 'Analytics', icon: <BarChart4 className="h-5 w-5" />, roles: ['super_admin', 'org_admin'], permission: 'view_results' },
     { path: '/assessment-results', label: 'Assessment Results', icon: <Activity className="h-5 w-5" />, roles: ['super_admin', 'org_admin'], permission: 'view_results' },

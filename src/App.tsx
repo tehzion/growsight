@@ -20,6 +20,7 @@ import AssessmentResults from './pages/admin/AssessmentResults';
 import PermissionManager from './pages/admin/PermissionManager';
 import ImportExport from './pages/admin/ImportExport';
 import TemplateManager from './pages/admin/TemplateManager';
+import Reporting from './pages/admin/Reporting';
 import NotFound from './pages/NotFound';
 import ProtectedRoute from './components/auth/ProtectedRoute';
 import UserAssessments from './pages/user/UserAssessments';
@@ -41,6 +42,7 @@ import { ToastContainer } from './components/ui/ToastNotification';
 import ErrorBoundary from './components/ui/ErrorBoundary';
 import SecureLogger from './lib/secureLogger';
 import SubscriberAssessments from './pages/subscriber/SubscriberAssessments';
+import RoleProtectedRoute from './components/auth/RoleProtectedRoute';
 
 function App() {
   const { user, refreshSession } = useAuthStore();
@@ -175,6 +177,18 @@ function App() {
             <Route path="/templates" element={
               <ErrorBoundary>
                 <TemplateManager />
+              </ErrorBoundary>
+            } />
+
+            <Route path="/reporting" element={
+              <ErrorBoundary>
+                <RoleProtectedRoute 
+                  allowedRoles={['super_admin', 'org_admin']}
+                  requiredPermissions={['view_reports']}
+                  requiredFeature="reporting"
+                >
+                  <Reporting />
+                </RoleProtectedRoute>
               </ErrorBoundary>
             } />
 
