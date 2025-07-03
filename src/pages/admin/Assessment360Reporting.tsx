@@ -17,7 +17,10 @@ import {
   AlertCircle,
   ArrowLeft,
   PieChart,
-  LineChart
+  LineChart,
+  Settings,
+  Shield,
+  Building2
 } from 'lucide-react';
 import { useAssessment360Store, Assessment360Summary, Assessment360Overview } from '../../stores/assessment360Store';
 import { useAuthStore } from '../../stores/authStore';
@@ -25,6 +28,7 @@ import { useAssessmentStore } from '../../stores/assessmentStore';
 import Button from '../../components/ui/Button';
 import { Card, CardHeader, CardTitle, CardContent } from '../../components/ui/Card';
 import FormInput from '../../components/ui/FormInput';
+import Assessment360ExportManager from '../../components/admin/Assessment360ExportManager';
 
 const Assessment360Reporting = () => {
   const { assessmentId, participantId } = useParams<{ assessmentId: string; participantId?: string }>();
@@ -40,15 +44,25 @@ const Assessment360Reporting = () => {
     fetchOverviews,
     calculateSummary,
     get360Results,
-    clearError
+    clearError,
+    checkPermissions,
+    canViewAllOrganizations,
+    canViewOrganization,
+    canViewOwnData,
+    canExportWithNames
   } = useAssessment360Store();
 
   const [selectedParticipant, setSelectedParticipant] = useState<string | null>(participantId || null);
-  const [viewMode, setViewMode] = useState<'overview' | 'detailed' | 'comparison'>('overview');
+  const [viewMode, setViewMode] = useState<'overview' | 'detailed' | 'comparison' | 'export'>('overview');
   const [selectedDimension, setSelectedDimension] = useState<string | null>(null);
+  const [showExportManager, setShowExportManager] = useState(false);
 
   const isSuperAdmin = user?.role === 'super_admin';
   const isOrgAdmin = user?.role === 'org_admin';
+
+  useEffect(() => {
+    checkPermissions();
+  }, []);
 
   useEffect(() => {
     if (assessmentId) {
@@ -72,16 +86,13 @@ const Assessment360Reporting = () => {
     }
   };
 
-  const handleExportResults = async (format: 'csv' | 'pdf') => {
-    if (!assessmentId || !selectedParticipant) return;
-    
-    try {
-      const results = await get360Results(assessmentId, selectedParticipant);
-      // Implementation for export functionality
-      console.log(`Exporting 360° results in ${format} format`, results);
-      alert(`${format.toUpperCase()} export completed successfully`);
-    } catch (error) {
-      console.error('Export failed:', error);
+  const handleExportComplete = (success: boolean, message: string) => {
+    if (success) {
+      // Show success notification
+      console.log('Export successful:', message);
+    } else {
+      // Show error notification
+      console.error('Export failed:', message);
     }
   };
 
@@ -112,6 +123,33 @@ const Assessment360Reporting = () => {
     return { status: 'Pending', color: 'text-red-600', icon: <AlertCircle className="h-4 w-4" /> };
   };
 
+  const getPermissionInfo = () => {
+    if (isSuperAdmin) {
+      return {
+        title: 'Super Admin Access',
+        description: 'You can view all 360° assessment data across all organizations',
+        icon: <Shield className="h-5 w-5 text-purple-600" />,
+        color: 'text-purple-600'
+      };
+    } else if (isOrgAdmin) {
+      return {
+        title: 'Organization Admin Access',
+        description: 'You can view 360° assessment data within your organization',
+        icon: <Building2 className="h-5 w-5 text-blue-600" />,
+        color: 'text-blue-600'
+      };
+    } else {
+      return {
+        title: 'User Access',
+        description: 'You can only view your own 360° assessment results',
+        icon: <Users className="h-5 w-5 text-green-600" />,
+        color: 'text-green-600'
+      };
+    }
+  };
+
+  const permissionInfo = getPermissionInfo();
+
   if (!assessmentId) {
     return (
       <div className="flex justify-center items-center h-64">
@@ -134,13 +172,13 @@ const Assessment360Reporting = () => {
               <div className="flex items-center space-x-4">
                 <Button
                   variant="ghost"
-                  onClick={() => navigate('/assessments')}
+                  onClick={() => navigate('/assessment-360')}
                   leftIcon={<ArrowLeft className="h-4 w-4" />}
                 >
                   Back
                 </Button>
                 <div>
-                  <h1 className="text-2xl font-bold text-gray-900">360° Leadership Assessment</h1>
+                  <h1 className="text-2xl font-bold text-gray-900">360° Assessment Reporting</h1>
                   <p className="text-gray-600">
                     {currentAssessment?.title || 'Assessment Results'}
                   </p>
@@ -158,22 +196,30 @@ const Assessment360Reporting = () => {
                 </Button>
                 
                 <Button
-                  onClick={() => handleExportResults('csv')}
+                  onClick={() => setViewMode('export')}
                   leftIcon={<Download className="h-4 w-4" />}
                 >
-                  Export CSV
-                </Button>
-                
-                <Button
-                  onClick={() => handleExportResults('pdf')}
-                  leftIcon={<Download className="h-4 w-4" />}
-                >
-                  Export PDF
+                  Export Data
                 </Button>
               </div>
             </div>
           </div>
         </div>
+      </div>
+
+      {/* Permission Info */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center space-x-3">
+              {permissionInfo.icon}
+              <div>
+                <h3 className={`font-medium ${permissionInfo.color}`}>{permissionInfo.title}</h3>
+                <p className="text-sm text-gray-600">{permissionInfo.description}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
       {/* Filters */}
@@ -205,7 +251,8 @@ const Assessment360Reporting = () => {
                 {[
                   { id: 'overview', label: 'Overview', icon: <BarChart3 className="h-4 w-4" /> },
                   { id: 'detailed', label: 'Detailed', icon: <Eye className="h-4 w-4" /> },
-                  { id: 'comparison', label: 'Comparison', icon: <LineChart className="h-4 w-4" /> }
+                  { id: 'comparison', label: 'Comparison', icon: <LineChart className="h-4 w-4" /> },
+                  { id: 'export', label: 'Export', icon: <Download className="h-4 w-4" /> }
                 ].map(mode => (
                   <button
                     key={mode.id}
@@ -248,7 +295,13 @@ const Assessment360Reporting = () => {
 
       {/* Main Content */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {viewMode === 'overview' && (
+        {viewMode === 'export' ? (
+          <Assessment360ExportManager
+            assessmentId={assessmentId}
+            participantId={selectedParticipant || undefined}
+            onExportComplete={handleExportComplete}
+          />
+        ) : viewMode === 'overview' ? (
           <div className="space-y-6">
             {/* Participant Overview */}
             {selectedParticipant && (
@@ -394,9 +447,7 @@ const Assessment360Reporting = () => {
               </CardContent>
             </Card>
           </div>
-        )}
-
-        {viewMode === 'detailed' && selectedParticipant && (
+        ) : viewMode === 'detailed' && selectedParticipant ? (
           <div className="space-y-6">
             {/* Detailed Results */}
             <Card>
@@ -516,9 +567,7 @@ const Assessment360Reporting = () => {
               </CardContent>
             </Card>
           </div>
-        )}
-
-        {viewMode === 'comparison' && selectedParticipant && (
+        ) : viewMode === 'comparison' && selectedParticipant ? (
           <div className="space-y-6">
             {/* Comparison Chart */}
             <Card>
@@ -635,7 +684,7 @@ const Assessment360Reporting = () => {
               </CardContent>
             </Card>
           </div>
-        )}
+        ) : null}
       </div>
     </div>
   );
