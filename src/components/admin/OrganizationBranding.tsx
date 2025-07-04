@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Palette, Save, CheckCircle, AlertTriangle, Image, Upload, FileText, Eye, EyeOff, RefreshCw, Building2, Globe, Mail, Settings, Info, RotateCcw } from 'lucide-react';
+import { Save, CheckCircle, AlertTriangle, FileText, RefreshCw, Globe, Mail, RotateCcw } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '../ui/Card';
 import Button from '../ui/Button';
 import FormInput from '../ui/FormInput';

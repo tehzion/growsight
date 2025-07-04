@@ -3,8 +3,6 @@ import {
   Download, 
   FileText, 
   FileSpreadsheet, 
-  FilePdf, 
-  Users, 
   Eye, 
   EyeOff,
   Filter,
@@ -133,7 +131,7 @@ const Assessment360ExportManager: React.FC<Assessment360ExportManagerProps> = ({
       case 'csv':
         return <FileText className="h-4 w-4" />;
       case 'pdf':
-        return <FilePdf className="h-4 w-4" />;
+        return <FileText className="h-4 w-4" />;
       case 'excel':
         return <FileSpreadsheet className="h-4 w-4" />;
       default:
@@ -189,7 +187,7 @@ const Assessment360ExportManager: React.FC<Assessment360ExportManagerProps> = ({
                 {[
                   { value: 'csv', label: 'CSV File', icon: <FileText className="h-4 w-4" />, description: 'Simple spreadsheet format' },
                   { value: 'excel', label: 'Excel File', icon: <FileSpreadsheet className="h-4 w-4" />, description: 'Advanced spreadsheet with multiple sheets' },
-                  { value: 'pdf', label: 'PDF Report', icon: <FilePdf className="h-4 w-4" />, description: 'Professional report format' }
+                  { value: 'pdf', label: 'PDF Report', icon: <FileText className="h-4 w-4" />, description: 'Professional report format' }
                 ].map(format => (
                   <label key={format.value} className="flex items-center space-x-3 p-3 border rounded-lg cursor-pointer hover:bg-gray-50">
                     <input
@@ -197,7 +195,7 @@ const Assessment360ExportManager: React.FC<Assessment360ExportManagerProps> = ({
                       name="format"
                       value={format.value}
                       checked={exportOptions.format === format.value}
-                      onChange={(e) => setExportOptions(prev => ({ ...prev, format: e.target.value as any }))}
+                      onChange={(e) => setExportOptions(prev => ({ ...prev, format: e.target.value as 'csv' | 'pdf' | 'excel' }))}
                       className="text-primary-600"
                     />
                     <div className="flex items-center space-x-2">

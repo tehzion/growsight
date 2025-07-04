@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/lib/supabase';
-import { Loader2, Upload, Eye, EyeOff, Palette, Type, Mail, FileText } from 'lucide-react';
+import { Loader2, Image, Eye, EyeOff, Palette, Settings, Info, Mail, FileText } from 'lucide-react';
 
 interface WebBrandingSettings {
   id?: string;
