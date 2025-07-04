@@ -2,6 +2,8 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { supabase } from '../lib/supabase';
 import { handleSupabaseError } from '../lib/supabaseError';
+import { emailNotificationService } from '../services/emailNotificationService';
+import { config } from '../config/environment';
 
 export interface AssessmentResponse {
   id: string;
@@ -219,6 +221,20 @@ export const useAssessmentResultsStore = create<AssessmentResultsState>()(
           const { user } = await supabase.auth.getUser();
           if (!user) throw new Error('User not authenticated');
 
+          // Get assignment details for email notification
+          const { data: assignmentData, error: assignmentFetchError } = await supabase
+            .from('assessment_assignments')
+            .select(`
+              *,
+              assessments!inner(*),
+              employees:users!assessment_assignments_employee_id_fkey(*),
+              reviewers:users!assessment_assignments_reviewer_id_fkey(*)
+            `)
+            .eq('id', assignmentId)
+            .single();
+
+          if (assignmentFetchError) throw assignmentFetchError;
+
           // Save all responses
           const responseData = responses.map(response => ({
             assignment_id: assignmentId,
@@ -267,6 +283,26 @@ export const useAssessmentResultsStore = create<AssessmentResultsState>()(
             .insert(resultData);
 
           if (resultError) throw resultError;
+
+          // Send email notifications if enabled
+          if (config.features.emailNotifications && config.email.provider !== 'demo' && assignmentData) {
+            try {
+              await emailNotificationService.sendAssessmentCompletionNotification({
+                assignmentId: assignmentId,
+                employeeEmail: assignmentData.employees?.email || '',
+                reviewerEmail: assignmentData.reviewers?.email || '',
+                employeeName: `${assignmentData.employees?.first_name || ''} ${assignmentData.employees?.last_name || ''}`.trim(),
+                reviewerName: `${assignmentData.reviewers?.first_name || ''} ${assignmentData.reviewers?.last_name || ''}`.trim(),
+                assessmentTitle: assignmentData.assessments?.title || 'Assessment',
+                overallScore: overallScore,
+                relationshipType: assignmentData.relationship_type,
+                organizationName: assignmentData.assessments?.organization_name || 'Your Organization'
+              });
+            } catch (emailError) {
+              console.error('Failed to send assessment completion notification:', emailError);
+              // Don't fail the assessment submission if email fails
+            }
+          }
 
           set({ isLoading: false, error: null });
         } catch (error) {

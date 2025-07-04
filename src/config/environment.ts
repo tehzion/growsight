@@ -40,6 +40,17 @@ export interface AppConfig {
     maxConcurrentRequests: number;
     requestTimeout: number;
   };
+  notifications: {
+    assignmentCreated: boolean;
+    assessmentCompleted: boolean;
+    deadlineReminders: boolean;
+    userCreated: boolean;
+    welcomeEmails: boolean;
+    passwordReset: boolean;
+    reminderDaysBeforeDeadline: number;
+    maxRetryAttempts: number;
+    retryDelayMinutes: number;
+  };
 }
 
 // Check if we're in demo mode
@@ -95,6 +106,17 @@ const getConfig = (): AppConfig => {
       maxConcurrentRequests: parseInt(import.meta.env.VITE_MAX_CONCURRENT_REQUESTS || '10'),
       requestTimeout: parseInt(import.meta.env.VITE_REQUEST_TIMEOUT || '30000'), // 30 seconds
     },
+    notifications: {
+      assignmentCreated: import.meta.env.VITE_ENABLE_ASSIGNMENT_NOTIFICATIONS !== 'false',
+      assessmentCompleted: import.meta.env.VITE_ENABLE_COMPLETION_NOTIFICATIONS !== 'false',
+      deadlineReminders: import.meta.env.VITE_ENABLE_DEADLINE_REMINDERS !== 'false',
+      userCreated: import.meta.env.VITE_ENABLE_USER_CREATION_NOTIFICATIONS !== 'false',
+      welcomeEmails: import.meta.env.VITE_ENABLE_WELCOME_EMAILS !== 'false',
+      passwordReset: import.meta.env.VITE_ENABLE_PASSWORD_RESET_EMAILS !== 'false',
+      reminderDaysBeforeDeadline: parseInt(import.meta.env.VITE_REMINDER_DAYS_BEFORE_DEADLINE || '3'),
+      maxRetryAttempts: parseInt(import.meta.env.VITE_MAX_EMAIL_RETRY_ATTEMPTS || '3'),
+      retryDelayMinutes: parseInt(import.meta.env.VITE_EMAIL_RETRY_DELAY_MINUTES || '5'),
+    },
   };
 };
 
@@ -124,10 +146,24 @@ export const validateEnvironment = (): { isValid: boolean; errors: string[] } =>
         if (!config.email.smtpUsername) {
           errors.push('SMTP username is required when using SMTP email provider');
         }
+        if (!config.email.smtpPassword) {
+          errors.push('SMTP password is required when using SMTP email provider');
+        }
       } else if (config.email.provider === 'sendgrid' || config.email.provider === 'mailgun' || config.email.provider === 'aws-ses') {
         if (!config.email.apiKey) {
           errors.push(`API key is required when using ${config.email.provider} email provider`);
         }
+      }
+      
+      // Validate notification settings
+      if (config.notifications.reminderDaysBeforeDeadline < 1) {
+        errors.push('Reminder days before deadline should be at least 1 day');
+      }
+      if (config.notifications.maxRetryAttempts < 1) {
+        errors.push('Max retry attempts should be at least 1');
+      }
+      if (config.notifications.retryDelayMinutes < 1) {
+        errors.push('Retry delay minutes should be at least 1 minute');
       }
     }
   }
@@ -151,7 +187,42 @@ export const isFeatureEnabled = (feature: keyof AppConfig['features']): boolean 
   return config.features[feature];
 };
 
+// Notification flags helper
+export const isNotificationEnabled = (notification: keyof AppConfig['notifications']): boolean => {
+  return config.notifications[notification];
+};
+
 // Environment helpers
 export const isProduction = () => config.app.environment === 'production';
 export const isStaging = () => config.app.environment === 'staging';
 export const isDevelopment = () => config.app.environment === 'development';
+
+// Email configuration helpers
+export const isEmailConfigured = (): boolean => {
+  if (!config.features.emailNotifications || config.email.provider === 'demo') {
+    return false;
+  }
+  
+  if (config.email.provider === 'smtp') {
+    return !!(config.email.smtpHost && config.email.smtpPort && config.email.smtpUsername && config.email.smtpPassword);
+  }
+  
+  return !!config.email.apiKey;
+};
+
+export const getEmailProviderName = (): string => {
+  switch (config.email.provider) {
+    case 'sendgrid':
+      return 'SendGrid';
+    case 'mailgun':
+      return 'Mailgun';
+    case 'aws-ses':
+      return 'AWS SES';
+    case 'smtp':
+      return 'SMTP';
+    case 'demo':
+      return 'Demo Mode';
+    default:
+      return 'Unknown';
+  }
+};

@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { AssessmentAssignment, AssessmentNotification, RelationshipType } from '../types';
+import { emailService } from '../services/emailService';
+import { config } from '../config/environment';
 
 interface AssignmentState {
   assignments: AssessmentAssignment[];
@@ -14,6 +16,12 @@ interface AssignmentState {
     reviewerId: string;
     relationshipType: RelationshipType;
     deadline: string;
+    assessmentTitle?: string;
+    employeeEmail?: string;
+    reviewerEmail?: string;
+    employeeName?: string;
+    reviewerName?: string;
+    organizationName?: string;
   }) => Promise<void>;
   updateAssignmentStatus: (id: string, status: 'pending' | 'in_progress' | 'completed') => Promise<void>;
   fetchNotifications: (userId: string) => Promise<void>;
@@ -99,7 +107,11 @@ export const useAssignmentStore = create<AssignmentState>()(
           
           const newAssignment: AssessmentAssignment = {
             id: `assign-${Date.now()}`,
-            ...data,
+            assessmentId: data.assessmentId,
+            employeeId: data.employeeId,
+            reviewerId: data.reviewerId,
+            relationshipType: data.relationshipType,
+            deadline: data.deadline,
             assignedById: 'current-user-id', // Would be actual user ID
             status: 'pending',
             dueDate: data.deadline,
@@ -113,8 +125,38 @@ export const useAssignmentStore = create<AssignmentState>()(
             isLoading: false,
           }));
 
-          // Simulate email notification
-          console.log(`Email notification sent for assignment ${newAssignment.id}`);
+          // Send email notifications if enabled
+          if (config.features.emailNotifications && config.email.provider !== 'demo') {
+            try {
+              // Send assignment notification to employee and reviewer
+              if (data.employeeEmail && data.reviewerEmail && data.employeeName && data.reviewerName) {
+                await emailService.sendAssignmentNotification({
+                  employeeEmail: data.employeeEmail,
+                  reviewerEmail: data.reviewerEmail,
+                  employeeName: data.employeeName,
+                  reviewerName: data.reviewerName,
+                  assessmentTitle: data.assessmentTitle || 'Assessment',
+                  deadline: data.deadline,
+                  organizationName: data.organizationName || 'Your Organization'
+                });
+              }
+
+              // Send 360° assessment assignment notification if applicable
+              if (data.assessmentTitle && data.employeeEmail && data.reviewerEmail) {
+                await emailService.sendAssessmentAssignmentNotification(
+                  newAssignment.id,
+                  data.employeeEmail,
+                  data.reviewerEmail,
+                  data.assessmentTitle,
+                  data.deadline,
+                  data.relationshipType
+                );
+              }
+            } catch (emailError) {
+              console.error('Failed to send assignment notification emails:', emailError);
+              // Don't fail the assignment creation if email fails
+            }
+          }
           
         } catch (error) {
           set({ error: 'Failed to create assignment', isLoading: false });
@@ -126,6 +168,9 @@ export const useAssignmentStore = create<AssignmentState>()(
         try {
           await new Promise(resolve => setTimeout(resolve, 300));
           
+          const { assignments } = get();
+          const assignment = assignments.find(a => a.id === id);
+          
           set(state => ({
             assignments: state.assignments.map(assignment =>
               assignment.id === id 
@@ -134,6 +179,17 @@ export const useAssignmentStore = create<AssignmentState>()(
             ),
             isLoading: false,
           }));
+
+          // Send completion notification if assessment is completed
+          if (status === 'completed' && assignment && config.features.emailNotifications && config.email.provider !== 'demo') {
+            try {
+              // This would need the actual email addresses and names from the database
+              // For now, we'll just log the completion
+              console.log(`Assessment completed notification should be sent for assignment ${id}`);
+            } catch (emailError) {
+              console.error('Failed to send completion notification:', emailError);
+            }
+          }
         } catch (error) {
           set({ error: 'Failed to update assignment status', isLoading: false });
         }
