@@ -1,0 +1,29 @@
+name: Deploy to Server
+
+on:
+  pull_request:
+    branches: [ deploy ]
+    types: [ closed ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.merged == true
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Deploy to server
+      uses: appleboy/ssh-action@v1.0.0
+      with:
+        host: ${{ secrets.HOST }}
+        port: ${{ secrets.SSH_PORT }}
+        username: ${{ secrets.USERNAME }}
+        key: ${{ secrets.SSH_KEY }}
+        script: |
+          cd /opt/leadership
+          git config --global --add safe.directory /opt/leadership
+          ssh-keyscan github.com >> ~/.ssh/known_hosts
+          git pull origin deploy
+          npm install
+          npm run build
