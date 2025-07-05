@@ -28,6 +28,7 @@ dist-ssr
 .claude/*
 
 # Supabase
+volumes/caddy
 volumes/db/data
 volumes/storage
 test.http
