@@ -63,6 +63,7 @@ const Sidebar = ({ isOpen, toggleSidebar, user }: SidebarProps) => {
     // Super Admin System Management
     { path: '/system-settings', label: 'System Settings', icon: <Settings className="h-5 w-5" />, roles: ['super_admin'] },
     { path: '/access-requests', label: 'Access Requests', icon: <UserPlus className="h-5 w-5" />, roles: ['super_admin'] },
+    { path: '/access-requests', label: 'Access Requests', icon: <UserPlus className="h-5 w-5" />, roles: ['super_admin'] },
     { path: '/branding', label: 'Branding', icon: <Palette className="h-5 w-5" />, roles: ['super_admin'] },
     { path: '/admin/branding', label: 'Organization Branding', icon: <Palette className="h-5 w-5" />, roles: ['org_admin'] },
     

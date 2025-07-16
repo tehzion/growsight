@@ -339,9 +339,9 @@ const Users = () => {
     } else if (isOrgAdmin) {
       return [
         { value: 'org_admin', label: 'Organization Admin' },
-        { value: 'subscriber', label: 'Subscriber' },
         { value: 'employee', label: 'Employee' },
-        { value: 'reviewer', label: 'Reviewer' }
+        { value: 'reviewer', label: 'Reviewer' },
+        { value: 'subscriber', label: 'Subscriber' }
       ];
     }
     return [];

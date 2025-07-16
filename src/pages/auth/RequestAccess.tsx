@@ -18,9 +18,11 @@ const requestAccessSchema = z.object({
 
 type RequestAccessFormData = z.infer<typeof requestAccessSchema>;
 
+import { useAccessRequestStore } from '../../stores/accessRequestStore';
+
 const RequestAccess = () => {
   const [isSubmitted, setIsSubmitted] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
+  const { createRequest, isLoading } = useAccessRequestStore();
   
   const {
     register,
@@ -39,22 +41,11 @@ const RequestAccess = () => {
   });
   
   const onSubmit = async (data: RequestAccessFormData) => {
-    setIsLoading(true);
     try {
-      // Simulate API call to request access
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      // In a real implementation, this would:
-      // 1. Send an email to super admins
-      // 2. Create a pending access request
-      // 3. Notify the user that their request has been submitted
-      
-      console.log('Access request submitted:', data);
+      await createRequest(data);
       setIsSubmitted(true);
     } catch (error) {
       console.error('Failed to submit access request:', error);
-    } finally {
-      setIsLoading(false);
     }
   };
   

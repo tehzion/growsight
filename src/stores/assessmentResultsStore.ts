@@ -71,6 +71,8 @@ export interface ComparisonData {
 
 interface AssessmentResultsState {
   results: AssessmentResult[];
+  selfAssessment: AssessmentResult | null;
+  peerReviews: AssessmentResult[];
   assignments: AssessmentAssignment[];
   analytics: AssessmentAnalytics | null;
   comparisonData: ComparisonData[];
@@ -137,12 +139,12 @@ const generateStaffId = (organizationName: string, staffName: string): string =>
 };
 
 // Calculate averages for responses
-const calculateAverages = (responses: AssessmentResponse[]): Record<string, number> => {
+const calculateAverages = (responses: AssessmentResponse[], selfRespondentId?: string): Record<string, number> => {
   const questionAverages: Record<string, number> = {};
   const questionCounts: Record<string, number> = {};
   
   responses.forEach(response => {
-    if (response.rating) {
+    if (response.rating && response.respondentId !== selfRespondentId) {
       if (!questionAverages[response.questionId]) {
         questionAverages[response.questionId] = 0;
         questionCounts[response.questionId] = 0;
@@ -179,6 +181,8 @@ export const useAssessmentResultsStore = create<AssessmentResultsState>()(
   persist(
     (set, get) => ({
       results: [],
+      selfAssessment: null,
+      peerReviews: [],
       assignments: [],
       analytics: null,
       comparisonData: [],
@@ -266,7 +270,7 @@ export const useAssessmentResultsStore = create<AssessmentResultsState>()(
           if (assignmentError) throw assignmentError;
 
           // Calculate and save result analytics
-          const questionAverages = calculateAverages(responses);
+          const questionAverages = calculateAverages(responses, user.id);
           const overallScore = Object.values(questionAverages).reduce((sum, avg) => sum + avg, 0) / Object.keys(questionAverages).length;
 
           const resultData = {
@@ -375,7 +379,9 @@ export const useAssessmentResultsStore = create<AssessmentResultsState>()(
                 *,
                 assessments!inner(*),
                 employees:users!assessment_assignments_employee_id_fkey(*),
-                reviewers:users!assessment_assignments_reviewer_id_fkey(*)
+                reviewers:users!assessment_assignments_reviewer_id_fkey(*),
+                employee_id,
+                reviewer_id
               ),
               assessment_responses(*)
             `)
@@ -398,7 +404,10 @@ export const useAssessmentResultsStore = create<AssessmentResultsState>()(
             updatedAt: item.updated_at
           })) || [];
 
-          set({ results, isLoading: false, error: null });
+          const selfAssessment = results.find(r => r.employeeId === userId && r.reviewerId === userId) || null;
+          const peerReviews = results.filter(r => r.employeeId === userId && r.reviewerId !== userId);
+
+          set({ selfAssessment, peerReviews, isLoading: false, error: null });
         } catch (error) {
           set({ error: handleSupabaseError(error), isLoading: false });
         }

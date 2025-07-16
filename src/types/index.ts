@@ -1,4 +1,4 @@
-export type Role = 'root' | 'super_admin' | 'org_admin' | 'employee' | 'reviewer' | 'subscriber';
+export type Role = 'super_admin' | 'org_admin' | 'employee' | 'reviewer' | 'subscriber';
 
 export type QuestionType = 'rating' | 'multiple_choice' | 'yes_no' | 'text';
 

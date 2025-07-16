@@ -175,7 +175,7 @@ export const useAssessmentStore = create<AssessmentState>()(
             const filteredAssessments = organizationId 
               ? allAssessments.filter(a => 
                   a.organizationId === organizationId || 
-                  a.assignedOrganizations?.some(org => org.id === organizationId)
+                  (a.assessmentType === 'preset' && a.assignedOrganizations?.some(org => org.id === organizationId))
                 )
               : allAssessments;
             

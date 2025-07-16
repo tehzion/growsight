@@ -20,9 +20,9 @@ interface UserResultsProps {}
 
 export const UserResults: React.FC<UserResultsProps> = () => {
   const { 
-    fetchSelfAssessments,
-    fetchReviewsAboutMe,
-    fetchReviewsDoneByMe,
+    selfAssessment,
+    peerReviews,
+    fetchUserResults,
     exportAllResultsAsCSV
   } = useAssessmentResultsStore();
   
@@ -30,34 +30,17 @@ export const UserResults: React.FC<UserResultsProps> = () => {
   const { currentOrganization } = useOrganizationStore();
   
   const [viewMode, setViewMode] = useState<'overview' | 'self' | 'reviews'>('overview');
-  const [selfAssessments, setSelfAssessments] = useState<any[]>([]);
-  const [reviewsAboutMe, setReviewsAboutMe] = useState<any[]>([]);
-  const [reviewsDoneByMe, setReviewsDoneByMe] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
-    if (user?.id && currentOrganization?.id) {
-      loadUserData();
+    if (user?.id) {
+      fetchUserResults(user.id);
     }
-  }, [user?.id, currentOrganization?.id]);
+  }, [user?.id, fetchUserResults]);
 
   const loadUserData = async () => {
-    setIsLoading(true);
-    try {
-      const [selfResults, aboutMeResults, doneByMeResults] = await Promise.all([
-        fetchSelfAssessments(user!.id, currentOrganization!.id),
-        fetchReviewsAboutMe(user!.id, currentOrganization!.id),
-        fetchReviewsDoneByMe(user!.id, currentOrganization!.id)
-      ]);
-      
-      setSelfAssessments(selfResults);
-      setReviewsAboutMe(aboutMeResults);
-      setReviewsDoneByMe(doneByMeResults);
-    } catch (error) {
-      console.error('Error loading user data:', error);
-    } finally {
-      setIsLoading(false);
-    }
+    // Data is now fetched directly by fetchUserResults in the useEffect
+    // This function can be removed or repurposed if needed
   };
 
   const handleExportResults = async () => {
@@ -105,16 +88,33 @@ export const UserResults: React.FC<UserResultsProps> = () => {
     return 'Needs Improvement';
   };
 
-  const calculateAverageScore = (assessments: any[]): number => {
-    if (assessments.length === 0) return 0;
-    const total = assessments.reduce((sum, assessment) => sum + (assessment.average_score || 0), 0);
-    return total / assessments.length;
+  const calculateAverageScore = (): number => {
+    if (!selfAssessment && peerReviews.length === 0) return 0;
+    
+    let totalScore = 0;
+    let totalAssessments = 0;
+
+    if (selfAssessment) {
+      totalScore += selfAssessment.overallScore;
+      totalAssessments++;
+    }
+
+    peerReviews.forEach(review => {
+      totalScore += review.overallScore;
+      totalAssessments++;
+    });
+
+    return totalAssessments > 0 ? totalScore / totalAssessments : 0;
   };
 
-  const getCompletionRate = (assessments: any[]): number => {
-    if (assessments.length === 0) return 0;
-    const completed = assessments.filter(a => a.status === 'completed').length;
-    return (completed / assessments.length) * 100;
+  const getCompletionRate = (): number => {
+    const allAssessments = [];
+    if (selfAssessment) allAssessments.push(selfAssessment);
+    allAssessments.push(...peerReviews);
+
+    if (allAssessments.length === 0) return 0;
+    const completed = allAssessments.filter(a => a.status === 'completed').length;
+    return (completed / allAssessments.length) * 100;
   };
 
   if (isLoading) {
@@ -188,7 +188,7 @@ export const UserResults: React.FC<UserResultsProps> = () => {
                   </div>
                   <div className="ml-4">
                     <p className="text-sm font-medium text-gray-600">Self-Assessments</p>
-                    <p className="text-2xl font-bold text-gray-900">{selfAssessments.length}</p>
+                    <p className="text-2xl font-bold text-gray-900">{selfAssessment ? 1 : 0}</p>
                   </div>
                 </div>
               </div>
@@ -202,7 +202,7 @@ export const UserResults: React.FC<UserResultsProps> = () => {
                   </div>
                   <div className="ml-4">
                     <p className="text-sm font-medium text-gray-600">Reviews About Me</p>
-                    <p className="text-2xl font-bold text-gray-900">{reviewsAboutMe.length}</p>
+                    <p className="text-2xl font-bold text-gray-900">{peerReviews.length}</p>
                   </div>
                 </div>
               </div>
@@ -216,8 +216,8 @@ export const UserResults: React.FC<UserResultsProps> = () => {
                   </div>
                   <div className="ml-4">
                     <p className="text-sm font-medium text-gray-600">Average Score</p>
-                    <p className={`text-2xl font-bold ${getScoreColor(calculateAverageScore([...selfAssessments, ...reviewsAboutMe]))}`}>
-                      {calculateAverageScore([...selfAssessments, ...reviewsAboutMe]).toFixed(1)}
+                    <p className={`text-2xl font-bold ${getScoreColor(calculateAverageScore())}`}>
+                      {calculateAverageScore().toFixed(1)}
                     </p>
                   </div>
                 </div>
@@ -233,7 +233,7 @@ export const UserResults: React.FC<UserResultsProps> = () => {
                   <div className="ml-4">
                     <p className="text-sm font-medium text-gray-600">Completion Rate</p>
                     <p className="text-2xl font-bold text-gray-900">
-                      {getCompletionRate([...selfAssessments, ...reviewsAboutMe]).toFixed(1)}%
+                      {getCompletionRate().toFixed(1)}%
                     </p>
                   </div>
                 </div>
@@ -246,23 +246,23 @@ export const UserResults: React.FC<UserResultsProps> = () => {
             <div className="p-6">
               <h3 className="text-lg font-semibold mb-4">Recent Assessment Activity</h3>
               <div className="space-y-4">
-                {[...selfAssessments, ...reviewsAboutMe]
-                  .sort((a, b) => new Date(b.completed_at || b.created_at).getTime() - new Date(a.completed_at || a.created_at).getTime())
+                {[...(selfAssessment ? [selfAssessment] : []), ...peerReviews]
+                  .sort((a, b) => new Date(b.completedAt || b.createdAt).getTime() - new Date(a.completedAt || a.createdAt).getTime())
                   .slice(0, 5)
                   .map((assessment) => (
                     <div key={assessment.id} className="flex justify-between items-center p-3 border rounded-lg">
                       <div>
-                        <h4 className="font-medium text-gray-900">{assessment.assessment_title}</h4>
+                        <h4 className="font-medium text-gray-900">{assessment.assessmentId}</h4>
                         <p className="text-sm text-gray-600">
-                          {assessment.reviewer_name ? `Review by ${assessment.reviewer_name}` : 'Self-assessment'}
+                          {assessment.reviewerId === user?.id ? 'Self-assessment' : `Review by Anonymous`}
                         </p>
                         <p className="text-sm text-gray-600">
-                          {new Date(assessment.completed_at || assessment.created_at).toLocaleDateString()}
+                          {new Date(assessment.completedAt || assessment.createdAt).toLocaleDateString()}
                         </p>
                       </div>
                       <div className="text-right">
-                        <p className={`text-lg font-bold ${getScoreColor(assessment.average_score || 0)}`}>
-                          {assessment.average_score?.toFixed(1) || 'N/A'}
+                        <p className={`text-lg font-bold ${getScoreColor(assessment.overallScore || 0)}`}>
+                          {assessment.overallScore?.toFixed(1) || 'N/A'}
                         </p>
                         <span className={`px-2 py-1 rounded text-xs font-medium ${
                           assessment.status === 'completed' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
@@ -297,38 +297,36 @@ export const UserResults: React.FC<UserResultsProps> = () => {
         <Card>
           <div className="p-6">
             <h3 className="text-lg font-semibold mb-4">My Self-Assessments</h3>
-            {selfAssessments.length > 0 ? (
+            {selfAssessment ? (
               <div className="space-y-4">
-                {selfAssessments.map((assessment) => (
-                  <div key={assessment.id} className="border rounded-lg p-4">
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <h4 className="font-medium text-gray-900">{assessment.assessment_title}</h4>
-                        <p className="text-sm text-gray-600">Completed: {new Date(assessment.completed_at).toLocaleDateString()}</p>
-                        <p className="text-sm text-gray-600">Average Score: {assessment.average_score?.toFixed(1) || 'N/A'}</p>
-                        {assessment.section_averages && (
-                          <div className="mt-2">
-                            <p className="text-sm font-medium text-gray-700">Section Averages:</p>
-                            <div className="flex flex-wrap gap-2 mt-1">
-                              {Object.entries(assessment.section_averages).map(([section, avg]: [string, any]) => (
-                                <span key={section} className="text-xs bg-gray-100 px-2 py-1 rounded">
-                                  {section}: {avg.toFixed(1)}
-                                </span>
-                              ))}
-                            </div>
+                <div key={selfAssessment.id} className="border rounded-lg p-4">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <h4 className="font-medium text-gray-900">{selfAssessment.assessmentId}</h4>
+                      <p className="text-sm text-gray-600">Completed: {new Date(selfAssessment.completedAt).toLocaleDateString()}</p>
+                      <p className="text-sm text-gray-600">Average Score: {selfAssessment.overallScore?.toFixed(1) || 'N/A'}</p>
+                      {selfAssessment.sectionScores && (
+                        <div className="mt-2">
+                          <p className="text-sm font-medium text-gray-700">Section Averages:</p>
+                          <div className="flex flex-wrap gap-2 mt-1">
+                            {Object.entries(selfAssessment.sectionScores).map(([section, avg]: [string, any]) => (
+                              <span key={section} className="text-xs bg-gray-100 px-2 py-1 rounded">
+                                {section}: {avg.toFixed(1)}
+                              </span>
+                            ))}
                           </div>
-                        )}
-                      </div>
-                      <div className="text-right">
-                        <span className={`px-2 py-1 rounded text-xs font-medium ${
-                          assessment.status === 'completed' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
-                        }`}>
-                          {assessment.status}
-                        </span>
-                      </div>
+                        </div>
+                      )}
+                    </div>
+                    <div className="text-right">
+                      <span className={`px-2 py-1 rounded text-xs font-medium ${
+                        selfAssessment.status === 'completed' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
+                      }`}>
+                        {selfAssessment.status}
+                      </span>
                     </div>
                   </div>
-                ))}
+                </div>
               </div>
             ) : (
               <p className="text-gray-600 text-center py-8">No self-assessments found.</p>
@@ -343,21 +341,21 @@ export const UserResults: React.FC<UserResultsProps> = () => {
           <Card>
             <div className="p-6">
               <h3 className="text-lg font-semibold mb-4">Reviews About Me</h3>
-              {reviewsAboutMe.length > 0 ? (
+              {peerReviews.length > 0 ? (
                 <div className="space-y-4">
-                  {reviewsAboutMe.map((review) => (
+                  {peerReviews.map((review) => (
                     <div key={review.id} className="border rounded-lg p-4">
                       <div className="flex justify-between items-start">
                         <div>
-                          <h4 className="font-medium text-gray-900">{review.assessment_title}</h4>
-                          <p className="text-sm text-gray-600">Reviewer: {review.reviewer_name}</p>
-                          <p className="text-sm text-gray-600">Relationship: {getRelationshipTypeLabel(review.relationship_type)}</p>
-                          <p className="text-sm text-gray-600">Score: {review.average_score?.toFixed(1) || 'N/A'}</p>
-                          {review.section_averages && (
+                          <h4 className="font-medium text-gray-900">{review.assessmentId}</h4>
+                          <p className="text-sm text-gray-600">Reviewer: Anonymous</p>
+                          <p className="text-sm text-gray-600">Relationship: {getRelationshipTypeLabel(review.relationshipType)}</p>
+                          <p className="text-sm text-gray-600">Score: {review.overallScore?.toFixed(1) || 'N/A'}</p>
+                          {review.sectionScores && (
                             <div className="mt-2">
                               <p className="text-sm font-medium text-gray-700">Section Averages:</p>
                               <div className="flex flex-wrap gap-2 mt-1">
-                                {Object.entries(review.section_averages).map(([section, avg]: [string, any]) => (
+                                {Object.entries(review.sectionScores).map(([section, avg]: [string, any]) => (
                                   <span key={section} className="text-xs bg-gray-100 px-2 py-1 rounded">
                                     {section}: {avg.toFixed(1)}
                                   </span>
@@ -392,10 +390,10 @@ export const UserResults: React.FC<UserResultsProps> = () => {
                     <div key={review.id} className="border rounded-lg p-4">
                       <div className="flex justify-between items-start">
                         <div>
-                          <h4 className="font-medium text-gray-900">{review.assessment_title}</h4>
-                          <p className="text-sm text-gray-600">Reviewee: {review.reviewee_name}</p>
-                          <p className="text-sm text-gray-600">Relationship: {getRelationshipTypeLabel(review.relationship_type)}</p>
-                          <p className="text-sm text-gray-600">Score: {review.average_score?.toFixed(1) || 'N/A'}</p>
+                          <h4 className="font-medium text-gray-900">{review.assessmentId}</h4>
+                          <p className="text-sm text-gray-600">Reviewee: {review.employeeId}</p>
+                          <p className="text-sm text-gray-600">Relationship: {getRelationshipTypeLabel(review.relationshipType)}</p>
+                          <p className="text-sm text-gray-600">Score: {review.overallScore?.toFixed(1) || 'N/A'}</p>
                         </div>
                         <div className="text-right">
                           <span className={`px-2 py-1 rounded text-xs font-medium ${

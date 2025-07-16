@@ -231,7 +231,7 @@ const Assessments = () => {
       )}
 
       {/* System Preset Assessments */}
-      {presetAssessments.length > 0 && (
+      {isSuperAdmin && presetAssessments.length > 0 && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center">
