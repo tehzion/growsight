@@ -1,40 +1,28 @@
-import React, { useState, useEffect } from 'react';
-import { 
-  Activity, 
-  Server, 
-  Users, 
-  Building2, 
-  BarChart3, 
-  TrendingUp, 
-  AlertTriangle,
-  CheckCircle,
-  Clock,
-  Database,
-  Shield,
-  Globe,
-  Cpu,
-  HardDrive,
-  Wifi,
-  Zap,
-  Eye,
-  Settings,
-  Download,
-  RefreshCw,
-  Bell,
-  Lightbulb,
-  Target,
-  Award
-} from 'lucide-react';
-import { Card, CardHeader, CardTitle, CardContent } from '../../components/ui/Card';
-import Button from '../../components/ui/Button';
-import BehavioralInsights from '../../components/root/BehavioralInsights';
-import { RootDashboardData, SystemMetrics, SystemHealth, TagInsight } from '../../types';
 import { useAuthStore } from '../../stores/authStore';
 import { useNotificationStore } from '../../stores/notificationStore';
+import { useOrganizationStore } from '../../stores/organizationStore';
+import { useUserStore } from '../../stores/userStore';
+import { useAssessmentStore } from '../../stores/assessmentStore';
+import { useAssessmentResultsStore } from '../../stores/assessmentResultsStore';
+import { useAccessRequestStore } from '../../stores/accessRequestStore';
+import { useSupportStore } from '../../stores/supportStore';
+
+import { RootDashboardData } from '../../types';
+import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/Card';
+import Button from '../../components/ui/Button';
+import { AlertTriangle, CheckCircle, RefreshCw, Clock, Activity, BarChart3, Server, Shield } from 'lucide-react';
+import { useEffect, useState } from 'react';
 
 const RootDashboard: React.FC = () => {
   const { user } = useAuthStore();
   const { addNotification } = useNotificationStore();
+  const { organizations, fetchOrganizations } = useOrganizationStore();
+  const { users, fetchUsers } = useUserStore();
+  const { assessments, fetchAssessments } = useAssessmentStore();
+  const { results, fetchAllOrgResults } = useAssessmentResultsStore();
+  const { requests, fetchRequests } = useAccessRequestStore();
+  const { tickets, fetchTickets } = useSupportStore();
+  
   
   // State management
   const [dashboardData, setDashboardData] = useState<RootDashboardData | null>(null);
@@ -46,32 +34,74 @@ const RootDashboard: React.FC = () => {
 
   // Load dashboard data
   useEffect(() => {
-    fetchDashboardData();
-  }, [timeRange]);
+    const loadData = async () => {
+      setIsLoading(true);
+      setError(null);
+      try {
+        await Promise.all([
+          fetchOrganizations(),
+          fetchUsers(),
+          fetchAssessments(),
+          fetchAllOrgResults(),
+          fetchRequests(),
+          fetchTickets(),
+          fetchSystemMetrics(),
+          fetchSystemHealth()
+        ]);
 
-  const fetchDashboardData = async () => {
-    setIsLoading(true);
-    setError(null);
-    
-    try {
-      // Mock API call - replace with actual API
-      const response = await fetch(`/api/root/dashboard?timeRange=${timeRange}`);
-      const data = await response.json();
-      setDashboardData(data);
-    } catch (error) {
-      setError((error as Error).message);
-      addNotification({
-        title: 'Error',
-        message: 'Failed to load dashboard data',
-        type: 'error'
-      });
-    } finally {
-      setIsLoading(false);
-    }
-  };
+        const totalOrganizations = organizations.length;
+        const totalUsers = users.length;
+        const totalAssessments = assessments.length;
+        const completedAssessments = results.filter(r => r.status === 'completed').length;
+        const pendingAccessRequests = requests.filter(req => req.status === 'pending').length;
+        const openSupportTickets = tickets.filter(ticket => ticket.status === 'open' || ticket.status === 'in_progress').length;
+
+        setDashboardData({
+          
+          globalAnalytics: {
+            totalOrganizations,
+            totalUsers,
+            totalAssessments,
+            activeAssessments: assessments.filter(a => a.isPublished).length,
+            systemUptime: 99.9, // Mock data for now
+            averageResponseTime: 120, // Mock data for now
+            storageUsage: 500, // Mock data for now
+            bandwidthUsage: 1000 // Mock data for now
+          },
+          recentActivity: {
+            userRegistrations: users.filter(u => new Date(u.createdAt) > new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)).length,
+            assessmentCompletions: results.filter(r => r.completedAt && new Date(r.completedAt) > new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)).length,
+            systemAlerts: systemHealth.filter(s => s.status === 'critical' || s.status === 'warning').length,
+            supportTickets: openSupportTickets
+          },
+          topInsights: [], // To be implemented
+          criticalAlerts: systemHealth.filter(s => s.status === 'critical')
+        });
+      } catch (err) {
+        setError((err as Error).message);
+        addNotification({
+          title: 'Error',
+          message: 'Failed to load dashboard data',
+          type: 'error'
+        });
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadData();
+  }, [timeRange, organizations.length, users.length, assessments.length, results.length, requests.length, tickets.length, systemMetrics.length, systemHealth.length]);
 
   const handleRefresh = () => {
-    fetchDashboardData();
+    // Re-fetch all data
+    fetchOrganizations();
+    fetchUsers();
+    fetchAssessments();
+    fetchAllOrgResults();
+    fetchRequests();
+    fetchTickets();
+    fetchSystemMetrics();
+    fetchSystemHealth();
   };
 
   const getStatusColor = (status: string) => {
@@ -119,7 +149,7 @@ const RootDashboard: React.FC = () => {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={fetchDashboardData}
+                onClick={handleRefresh}
                 className="ml-auto"
               >
                 Retry
@@ -141,138 +171,129 @@ const RootDashboard: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="border-b border-gray-200 pb-4 flex justify-between items-center">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Root Behavioral Insights Dashboard</h1>
-          <p className="text-sm text-gray-500 mt-1">
-            Organizational patterns, behavioral insights, and data-driven recommendations
-          </p>
-        </div>
-        <div className="flex items-center space-x-4">
-          <select
-            value={privacyLevel}
-            onChange={(e) => setPrivacyLevel(e.target.value as any)}
-            className="rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500"
-          >
-            <option value="aggregated">Aggregated Data</option>
-            <option value="anonymized">Anonymized Insights</option>
-            <option value="detailed">Detailed Analysis</option>
-          </select>
-          
-          <select
-            value={timeRange}
-            onChange={(e) => setTimeRange(e.target.value)}
-            className="rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500"
-          >
-            <option value="7d">Last 7 Days</option>
-            <option value="30d">Last 30 Days</option>
-            <option value="90d">Last 90 Days</option>
-            <option value="1y">Last Year</option>
-          </select>
-          
-          <Button
-            variant="outline"
-            onClick={handleRefresh}
-            leftIcon={<RefreshCw className="h-4 w-4" />}
-          >
-            Refresh
-          </Button>
-        </div>
-      </div>
+      
 
-      {/* Tab Navigation */}
-      <div className="border-b border-gray-200">
-        <nav className="-mb-px flex space-x-8">
-          {[
-            { id: 'behavioral', label: 'Behavioral Insights', icon: <Brain className="h-4 w-4" /> },
-            { id: 'system', label: 'System Status', icon: <Server className="h-4 w-4" /> },
-            { id: 'privacy', label: 'Privacy & Compliance', icon: <Shield className="h-4 w-4" /> }
-          ].map(tab => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id as any)}
-              className={`py-2 px-1 border-b-2 font-medium text-sm flex items-center space-x-2 ${
-                activeTab === tab.id
-                  ? 'border-primary-500 text-primary-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
-            >
-              {tab.icon}
-              <span>{tab.label}</span>
-            </button>
-          ))}
-        </nav>
-      </div>
+      {/* Global Analytics */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center">
+            <BarChart3 className="h-5 w-5 mr-2 text-primary-600" />
+            Global Analytics
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="p-4 border border-gray-200 rounded-lg">
+              <h4 className="font-medium text-gray-900">Total Organizations</h4>
+              <p className="text-2xl font-bold text-gray-900">{dashboardData.globalAnalytics.totalOrganizations}</p>
+            </div>
+            <div className="p-4 border border-gray-200 rounded-lg">
+              <h4 className="font-medium text-gray-900">Total Users</h4>
+              <p className="text-2xl font-bold text-gray-900">{dashboardData.globalAnalytics.totalUsers}</p>
+            </div>
+            <div className="p-4 border border-gray-200 rounded-lg">
+              <h4 className="font-medium text-gray-900">Total Assessments</h4>
+              <p className="text-2xl font-bold text-gray-900">{dashboardData.globalAnalytics.totalAssessments}</p>
+            </div>
+            <div className="p-4 border border-gray-200 rounded-lg">
+              <h4 className="font-medium text-gray-900">Completed Assessments</h4>
+              <p className="text-2xl font-bold text-gray-900">{dashboardData.globalAnalytics.completedAssessments}</p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
-      {/* Behavioral Insights Tab */}
-      {activeTab === 'behavioral' && (
-        <BehavioralInsights privacyLevel={privacyLevel} />
-      )}
+      {/* Recent Activity */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center">
+            <Activity className="h-5 w-5 mr-2 text-primary-600" />
+            Recent Activity
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="p-4 border border-gray-200 rounded-lg">
+              <h4 className="font-medium text-gray-900">User Registrations (Last 30 Days)</h4>
+              <p className="text-2xl font-bold text-gray-900">{dashboardData.recentActivity.userRegistrations}</p>
+            </div>
+            <div className="p-4 border border-gray-200 rounded-lg">
+              <h4 className="font-medium text-gray-900">Assessment Completions (Last 30 Days)</h4>
+              <p className="text-2xl font-bold text-gray-900">{dashboardData.recentActivity.assessmentCompletions}</p>
+            </div>
+            <div className="p-4 border border-gray-200 rounded-lg">
+              <h4 className="font-medium text-gray-900">System Alerts</h4>
+              <p className="text-2xl font-bold text-gray-900">{dashboardData.recentActivity.systemAlerts}</p>
+            </div>
+            <div className="p-4 border border-gray-200 rounded-lg">
+              <h4 className="font-medium text-gray-900">Open Support Tickets</h4>
+              <p className="text-2xl font-bold text-gray-900">{dashboardData.recentActivity.supportTickets}</p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* System Status Tab */}
-      {activeTab === 'system' && (
-        <div className="space-y-6">
-          {/* System Health */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center">
-                <Server className="h-5 w-5 mr-2 text-primary-600" />
-                System Health
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {dashboardData.systemHealth.map(health => (
-                  <div key={health.id} className="p-4 border border-gray-200 rounded-lg">
-                    <div className="flex items-center justify-between mb-2">
-                      <h4 className="font-medium text-gray-900">{health.component}</h4>
-                      <div className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(health.status)}`}>
-                        {health.status}
-                      </div>
-                    </div>
-                    <p className="text-sm text-gray-600 mb-2">{health.message}</p>
-                    <div className="flex items-center justify-between text-xs text-gray-500">
-                      <span>{new Date(health.timestamp).toLocaleString()}</span>
-                      {health.duration && <span>Duration: {health.duration}s</span>}
+      <div className="space-y-6">
+        {/* System Health */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center">
+              <Server className="h-5 w-5 mr-2 text-primary-600" />
+              System Health
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {dashboardData.systemHealth.map(health => (
+                <div key={health.id} className="p-4 border border-gray-200 rounded-lg">
+                  <div className="flex items-center justify-between mb-2">
+                    <h4 className="font-medium text-gray-900">{health.component}</h4>
+                    <div className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(health.status)}`}>
+                      {health.status}
                     </div>
                   </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
+                  <p className="text-sm text-gray-600 mb-2">{health.message}</p>
+                  <div className="flex items-center justify-between text-xs text-gray-500">
+                    <span>{new Date(health.timestamp).toLocaleString()}</span>
+                    {health.duration && <span>Duration: {health.duration}s</span>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
 
-          {/* System Metrics */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center">
-                <BarChart3 className="h-5 w-5 mr-2 text-primary-600" />
-                System Metrics
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {dashboardData.systemMetrics.map(metric => (
-                  <div key={metric.id} className="p-4 border border-gray-200 rounded-lg">
-                    <div className="flex items-center space-x-3 mb-2">
-                      <div>
-                        <h4 className="font-medium text-gray-900">{metric.metricKey}</h4>
-                        <p className="text-sm text-gray-600">{metric.category}</p>
-                      </div>
-                    </div>
-                    <div className="text-2xl font-bold text-gray-900">
-                      {metric.metricValue}{metric.metricUnit && ` ${metric.metricUnit}`}
-                    </div>
-                    <div className="text-xs text-gray-500 mt-1">
-                      {new Date(metric.timestamp).toLocaleString()}
+        {/* System Metrics */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center">
+              <BarChart3 className="h-5 w-5 mr-2 text-primary-600" />
+              System Metrics
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {dashboardData.systemMetrics.map(metric => (
+                <div key={metric.id} className="p-4 border border-gray-200 rounded-lg">
+                  <div className="flex items-center space-x-3 mb-2">
+                    <div>
+                      <h4 className="font-medium text-gray-900">{metric.metricKey}</h4>
+                      <p className="text-sm text-gray-600">{metric.category}</p>
                     </div>
                   </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      )}
+                  <div className="text-2xl font-bold text-gray-900">
+                    {metric.metricValue}{metric.metricUnit && ` ${metric.metricUnit}`}
+                  </div>
+                  <div className="text-xs text-gray-500 mt-1">
+                    {new Date(metric.timestamp).toLocaleString()}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
 
       {/* Privacy & Compliance Tab */}
       {activeTab === 'privacy' && (

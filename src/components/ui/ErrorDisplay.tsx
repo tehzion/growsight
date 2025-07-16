@@ -229,10 +229,12 @@ export const ErrorBoundaryDisplay: React.FC<ErrorBoundaryDisplayProps> = ({
             <div className="mt-2 p-3 bg-gray-100 rounded-md font-mono">
               <p><strong>Error:</strong> {error.message}</p>
               {errorInfo && (
-                <p><strong>Component Stack:</strong></p>
-                <pre className="mt-1 text-xs overflow-auto">
-                  {errorInfo.componentStack}
-                </pre>
+                <>
+                  <p><strong>Component Stack:</strong></p>
+                  <pre className="mt-1 text-xs overflow-auto">
+                    {errorInfo.componentStack}
+                  </pre>
+                </>
               )}
             </div>
           </details>

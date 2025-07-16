@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { BarChart3, TrendingUp, Users, Target, Award, Calendar, Clock, CheckCircle } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
 import { useAssessmentResultsStore } from '../../stores/assessmentResultsStore';
@@ -40,13 +40,147 @@ const AssessmentAnalytics = ({
 
   const currentUserId = userId || user?.id;
 
-  useEffect(() => {
-    if (currentUserId) {
-      loadAnalytics();
-    }
-  }, [currentUserId, selectedTimeRange]);
+  const calculatePerformanceMetrics = useCallback(() => {
+    const now = new Date();
+    const timeRangeMs = {
+      week: 7 * 24 * 60 * 60 * 1000,
+      month: 30 * 24 * 60 * 60 * 1000,
+      quarter: 90 * 24 * 60 * 60 * 1000,
+      year: 365 * 24 * 60 * 60 * 1000
+    };
 
-  const loadAnalytics = async () => {
+    const cutoffDate = new Date(now.getTime() - timeRangeMs[selectedTimeRange]);
+    
+    const recentResults = userResults.filter(result => 
+      new Date(result.completedAt) >= cutoffDate
+    );
+
+    const previousPeriodStart = new Date(cutoffDate.getTime() - timeRangeMs[selectedTimeRange]);
+    const previousResults = userResults.filter(result => 
+      new Date(result.completedAt) >= previousPeriodStart && 
+      new Date(result.completedAt) < cutoffDate
+    );
+
+    const metrics: PerformanceMetric[] = [
+      {
+        label: 'Completion Rate',
+        value: recentResults.length > 0 ? (recentResults.filter(r => r.status === 'completed').length / recentResults.length) * 100 : 0,
+        change: calculateChange(
+          recentResults.filter(r => r.status === 'completed').length / recentResults.length,
+          previousResults.filter(r => r.status === 'completed').length / previousResults.length
+        ),
+        trend: getTrend(
+          recentResults.filter(r => r.status === 'completed').length / recentResults.length,
+          previousResults.filter(r => r.status === 'completed').length / previousResults.length
+        )
+      },
+      {
+        label: 'Average Score',
+        value: recentResults.length > 0 ? 
+          recentResults.reduce((sum, r) => sum + (r.totalScore || 0), 0) / recentResults.length : 0,
+        change: calculateChange(
+          recentResults.reduce((sum, r) => sum + (r.totalScore || 0), 0) / recentResults.length,
+          previousResults.reduce((sum, r) => sum + (r.totalScore || 0), 0) / previousResults.length
+        ),
+        trend: getTrend(
+          recentResults.reduce((sum, r) => sum + (r.totalScore || 0), 0) / recentResults.length,
+          previousResults.reduce((sum, r) => sum + (r.totalScore || 0), 0) / previousResults.length
+        )
+      },
+      {
+        label: 'Assessments Completed',
+        value: recentResults.length,
+        change: calculateChange(recentResults.length, previousResults.length),
+        trend: getTrend(recentResults.length, previousResults.length)
+      },
+      {
+        label: 'Time to Complete',
+        value: recentResults.length > 0 ? 
+          recentResults.reduce((sum, r) => {
+            const startTime = new Date(r.startedAt).getTime();
+            const endTime = new Date(r.completedAt).getTime();
+            return sum + (endTime - startTime) / (1000 * 60); // in minutes
+          }, 0) / recentResults.length : 0,
+        change: calculateChange(
+          recentResults.reduce((sum, r) => {
+            const startTime = new Date(r.startedAt).getTime();
+            const endTime = new Date(r.completedAt).getTime();
+            return sum + (endTime - startTime) / (1000 * 60);
+          }, 0) / recentResults.length,
+          previousResults.reduce((sum, r) => {
+            const startTime = new Date(r.startedAt).getTime();
+            const endTime = new Date(r.completedAt).getTime();
+            return sum + (endTime - startTime) / (1000 * 60);
+          }, 0) / previousResults.length
+        ),
+        trend: getTrend(
+          recentResults.reduce((sum, r) => {
+            const startTime = new Date(r.startedAt).getTime();
+            const endTime = new Date(r.completedAt).getTime();
+            return sum + (endTime - startTime) / (1000 * 60);
+          }, 0) / recentResults.length,
+          previousResults.reduce((sum, r) => {
+            const startTime = new Date(r.startedAt).getTime();
+            const endTime = new Date(r.completedAt).getTime();
+            return sum + (endTime - startTime) / (1000 * 60);
+          }, 0) / previousResults.length
+        )
+      }
+    ];
+
+    setPerformanceMetrics(metrics);
+  }, [userResults, selectedTimeRange]);
+
+  const calculateCategoryPerformance = useCallback(() => {
+    const categoryMap = new Map<string, { scores: number[], count: number }>();
+
+    userResults.forEach(result => {
+      if (result.sectionResults) {
+        result.sectionResults.forEach(section => {
+          if (!categoryMap.has(section.sectionName)) {
+            categoryMap.set(section.sectionName, { scores: [], count: 0 });
+          }
+          const category = categoryMap.get(section.sectionName)!;
+          category.scores.push(section.averageScore || 0);
+          category.count++;
+        });
+      }
+    });
+
+    const categories: CategoryPerformance[] = Array.from(categoryMap.entries()).map(([category, data]) => ({
+      category,
+      averageScore: data.scores.reduce((sum, score) => sum + score, 0) / data.scores.length,
+      totalAssessments: data.count,
+      improvement: 0 // This would be calculated based on historical data
+    }));
+
+    setCategoryPerformance(categories.sort((a, b) => b.averageScore - a.averageScore));
+  }, [userResults]);
+
+  const calculatePeerComparison = useCallback(() => {
+    if (!organizationResults || organizationResults.length === 0) {
+      setPeerComparison(null);
+      return;
+    }
+
+    const userAvgScore = userResults.length > 0 ? 
+      userResults.reduce((sum, r) => sum + (r.totalScore || 0), 0) / userResults.length : 0;
+    
+    const orgAvgScore = organizationResults.length > 0 ?
+      organizationResults.reduce((sum, r) => sum + (r.totalScore || 0), 0) / organizationResults.length : 0;
+
+    const percentile = organizationResults.filter(r => (r.totalScore || 0) <= userAvgScore).length / organizationResults.length * 100;
+
+    setPeerComparison({
+      userAverage: userAvgScore,
+      organizationAverage: orgAvgScore,
+      percentile: Math.round(percentile),
+      rank: organizationResults.filter(r => (r.totalScore || 0) > userAvgScore).length + 1,
+      totalPeers: organizationResults.length
+    });
+  }, [organizationResults, userResults]);
+
+  const loadAnalytics = useCallback(async () => {
     if (!currentUserId) return;
 
     setIsLoading(true);
@@ -68,6 +202,23 @@ const AssessmentAnalytics = ({
     } finally {
       setIsLoading(false);
     }
+  }, [currentUserId, fetchUserResults, fetchOrganizationResults, organizationId, user?.role, user?.organizationId, calculatePerformanceMetrics, calculateCategoryPerformance, calculatePeerComparison]);
+
+  useEffect(() => {
+    if (currentUserId) {
+      loadAnalytics();
+    }
+  }, [currentUserId, selectedTimeRange, loadAnalytics]);
+
+  const calculateChange = (current: number, previous: number): number => {
+    if (previous === 0) return current > 0 ? 100 : 0;
+    return ((current - previous) / previous) * 100;
+  };
+
+  const getTrend = (current: number, previous: number): 'up' | 'down' | 'stable' => {
+    const change = current - previous;
+    if (Math.abs(change) < 0.01) return 'stable';
+    return change > 0 ? 'up' : 'down';
   };
 
   const calculatePerformanceMetrics = () => {

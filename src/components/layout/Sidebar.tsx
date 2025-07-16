@@ -48,6 +48,7 @@ const Sidebar = ({ isOpen, toggleSidebar, user }: SidebarProps) => {
     { path: '/users', label: 'Users', icon: <Users className="h-5 w-5" />, roles: ['super_admin', 'org_admin', 'subscriber'], permission: 'manage_users' },
     { path: '/assessments', label: 'Assessments', icon: <ClipboardList className="h-5 w-5" />, roles: ['super_admin', 'org_admin', 'subscriber'], permission: 'create_assessments' },
     { path: '/templates', label: 'Templates', icon: <Layers className="h-5 w-5" />, roles: ['super_admin'] },
+    { path: '/email-templates', label: 'Email Templates', icon: <Mail className="h-5 w-5" />, roles: ['super_admin'] },
     { path: '/reporting', label: 'Reporting', icon: <BarChart3 className="h-5 w-5" />, roles: ['super_admin', 'org_admin'] },
     { path: '/assessment-assignments', label: 'Assignments', icon: <UserCheck className="h-5 w-5" />, roles: ['org_admin'], permission: 'assign_assessments' },
     { path: '/results', label: 'Analytics', icon: <BarChart4 className="h-5 w-5" />, roles: ['super_admin', 'org_admin'], permission: 'view_results' },

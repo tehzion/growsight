@@ -17,9 +17,11 @@ import Assessments from './pages/admin/Assessments';
 import AssessmentAssignments from './pages/admin/AssessmentAssignments';
 import Results from './pages/admin/Results';
 import AssessmentResults from './pages/admin/AssessmentResults';
+import AdminAssessmentReport from './pages/admin/AdminAssessmentReport';
 import PermissionManager from './pages/admin/PermissionManager';
 import ImportExport from './pages/admin/ImportExport';
 import TemplateManager from './pages/admin/TemplateManager';
+import EmailTemplateManager from './pages/admin/EmailTemplateManager';
 import Reporting from './pages/admin/Reporting';
 import NotFound from './pages/NotFound';
 import ProtectedRoute from './components/auth/ProtectedRoute';
@@ -170,6 +172,12 @@ function App() {
               </ErrorBoundary>
             } />
 
+            <Route path="/admin/assessment-report/:userId/:assessmentId" element={
+              <ErrorBoundary>
+                <AdminAssessmentReport />
+              </ErrorBoundary>
+            } />
+
             <Route path="/assessment-360" element={
               <ErrorBoundary>
                 <RoleProtectedRoute 
@@ -203,6 +211,12 @@ function App() {
             <Route path="/templates" element={
               <ErrorBoundary>
                 <TemplateManager />
+              </ErrorBoundary>
+            } />
+
+            <Route path="/email-templates" element={
+              <ErrorBoundary>
+                <EmailTemplateManager />
               </ErrorBoundary>
             } />
 

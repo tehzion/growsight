@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { X, CheckCircle, AlertTriangle, Info, AlertCircle } from 'lucide-react';
 import { useNotificationStore, Notification } from '../../stores/notificationStore';
 
@@ -36,14 +36,14 @@ const ToastNotification: React.FC<ToastNotificationProps> = ({
     }
     
     return () => clearTimeout(showTimer);
-  }, [autoClose, duration, index]);
+  }, [autoClose, duration, index, handleClose]);
 
-  const handleClose = () => {
+  const handleClose = useCallback(() => {
     setIsClosing(true);
     setTimeout(() => {
       onClose();
     }, 300); // Wait for exit animation
-  };
+  }, [onClose]);
   
   const getIcon = () => {
     switch (notification.type) {

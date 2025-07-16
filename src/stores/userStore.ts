@@ -7,120 +7,12 @@ import { useProfileStore } from './profileStore';
 import { emailService, UserCreationData } from '../services/emailService';
 import { useAssessmentResultsStore } from './assessmentResultsStore';
 
-interface UserProfile {
-  phone?: string;
-  department?: string;
-  jobTitle?: string;
-  location?: string;
-  bio?: string;
-  avatar?: string;
-  timezone?: string;
-  dateFormat?: string;
-  notifications?: {
-    emailAssignments: boolean;
-    emailReminders: boolean;
-    emailResults: boolean;
-  };
-}
 
-interface UserState {
-  users: User[];
-  userProfiles: Record<string, UserProfile>;
-  isLoading: boolean;
-  error: string | null;
-  fetchUsers: (organizationId?: string) => Promise<void>;
-  createUser: (data: Omit<User, 'id' | 'createdAt' | 'updatedAt'>, currentUser?: User) => Promise<void>;
-  updateUser: (id: string, data: Partial<User>) => Promise<void>;
-  deleteUser: (id: string) => Promise<void>;
-  updateUserProfile: (userId: string, profile: Partial<UserProfile>) => Promise<void>;
-  getUserProfile: (userId: string) => UserProfile | null;
-}
-
-// Enhanced mock data - ONLY super_admin and org_admin roles
-const defaultMockUsers: User[] = [
-  {
-    id: '1',
-    email: 'admin@acme.com',
-    firstName: 'Sarah',
-    lastName: 'Johnson',
-    role: 'super_admin',
-    organizationId: 'demo-org-1',
-    createdAt: new Date(Date.now() - 25 * 24 * 60 * 60 * 1000).toISOString(),
-    updatedAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString()
-  },
-  {
-    id: '2',
-    email: 'orgadmin@acme.com',
-    firstName: 'Michael',
-    lastName: 'Chen',
-    role: 'org_admin',
-    organizationId: 'demo-org-1',
-    createdAt: new Date(Date.now() - 22 * 24 * 60 * 60 * 1000).toISOString(),
-    updatedAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString()
-  },
-  {
-    id: '7',
-    email: 'orgadmin@techstart.com',
-    firstName: 'Alex',
-    lastName: 'Rodriguez',
-    role: 'org_admin',
-    organizationId: 'demo-org-2',
-    createdAt: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString(),
-    updatedAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString()
-  }
-];
-
-// Default user profiles
-const defaultUserProfiles: Record<string, UserProfile> = {
-  '1': {
-    phone: '+1 (555) 123-4567',
-    department: 'Administration',
-    jobTitle: 'System Administrator',
-    location: 'San Francisco, CA',
-    bio: 'Experienced system administrator with expertise in enterprise software management.',
-    timezone: 'UTC-8',
-    dateFormat: 'MM/DD/YYYY',
-    notifications: {
-      emailAssignments: true,
-      emailReminders: true,
-      emailResults: true,
-    }
-  },
-  '2': {
-    phone: '+1 (555) 234-5678',
-    department: 'Human Resources',
-    jobTitle: 'HR Director',
-    location: 'New York, NY',
-    bio: 'HR professional focused on employee development and organizational growth.',
-    timezone: 'UTC-5',
-    dateFormat: 'MM/DD/YYYY',
-    notifications: {
-      emailAssignments: true,
-      emailReminders: true,
-      emailResults: false,
-    }
-  },
-  '7': {
-    phone: '+1 (555) 345-6789',
-    department: 'Technology',
-    jobTitle: 'Tech Lead',
-    location: 'Austin, TX',
-    bio: 'Technology leader passionate about innovation and team development.',
-    timezone: 'UTC-6',
-    dateFormat: 'MM/DD/YYYY',
-    notifications: {
-      emailAssignments: true,
-      emailReminders: false,
-      emailResults: true,
-    }
-  }
-};
 
 export const useUserStore = create<UserState>()(
   persist(
     (set, get) => ({
       users: [],
-      userProfiles: {},
       isLoading: false,
       error: null,
       
@@ -129,14 +21,9 @@ export const useUserStore = create<UserState>()(
         try {
           await new Promise(resolve => setTimeout(resolve, 300));
           
-          const { users: persistedUsers, userProfiles: persistedProfiles } = get();
+          const { users: persistedUsers } = get();
           
-          // Merge default users with any custom ones created
-          const customUsers = persistedUsers.filter(user => 
-            !defaultMockUsers.some(defaultUser => defaultUser.id === user.id)
-          );
-          
-          const allUsers = [...defaultMockUsers, ...customUsers];
+          const allUsers = [...persistedUsers];
           
           // Apply organization filtering with access control
           let filteredUsers = allUsers;
@@ -157,12 +44,8 @@ export const useUserStore = create<UserState>()(
             AccessControl.sanitizeUserData(user, currentUser)
           ).filter(user => Object.keys(user).length > 0) as User[];
 
-          // Merge default profiles with persisted ones
-          const allProfiles = { ...defaultUserProfiles, ...persistedProfiles };
-            
           set({ 
             users: sanitizedUsers, 
-            userProfiles: allProfiles,
             isLoading: false, 
             error: null 
           });
@@ -182,7 +65,7 @@ export const useUserStore = create<UserState>()(
 
           // Check for duplicate email
           const { users: persistedUsers } = get();
-          const allUsers = [...defaultMockUsers, ...persistedUsers];
+          const allUsers = [...persistedUsers];
           
           if (allUsers.some(user => user.email.toLowerCase() === data.email.toLowerCase())) {
             throw new Error('A user with this email already exists');
@@ -211,18 +94,8 @@ export const useUserStore = create<UserState>()(
             lastName: data.lastName.trim(),
             organizationId,
             createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString()
-          };
-
-          // Create default profile for new user
-          const defaultProfile: UserProfile = {
-            notifications: {
-              emailAssignments: true,
-              emailReminders: true,
-              emailResults: true,
-            },
-            timezone: 'UTC-8',
-            dateFormat: 'MM/DD/YYYY',
+            updatedAt: new Date().toISOString(),
+            requiresPasswordChange: true
           };
 
           // Automatically create staff assignment for the new user
@@ -263,7 +136,16 @@ export const useUserStore = create<UserState>()(
               assignedBy: currentUser ? `${currentUser.firstName} ${currentUser.lastName}` : 'System Administrator'
             };
 
-            await emailService.sendUserCreationNotification(userCreationData);
+            if (newUser.role === 'org_admin') {
+              await emailNotificationService.sendOrgAdminAccountCreatedNotification({
+                recipientEmail: newUser.email,
+                recipientName: `${newUser.firstName} ${newUser.lastName}`,
+                organizationId: newUser.organizationId,
+                loginUrl: `${config.app.url}/login`
+              });
+            } else {
+              await emailService.sendUserCreationNotification(userCreationData);
+            }
             
             SecureLogger.info('User creation email sent successfully', {
               userId: newUser.id,
@@ -278,7 +160,6 @@ export const useUserStore = create<UserState>()(
           
           set(state => ({ 
             users: [...state.users, newUser],
-            userProfiles: { ...state.userProfiles, [newUser.id]: defaultProfile },
             isLoading: false,
             error: null
           }));
@@ -304,7 +185,7 @@ export const useUserStore = create<UserState>()(
           // Validate input if email is being updated
           if (data.email) {
             const { users: persistedUsers } = get();
-            const allUsers = [...defaultMockUsers, ...persistedUsers];
+            const allUsers = [...persistedUsers];
             
             if (allUsers.some(user => user.id !== id && user.email.toLowerCase() === data.email.toLowerCase())) {
               throw new Error('A user with this email already exists');
@@ -339,21 +220,13 @@ export const useUserStore = create<UserState>()(
       deleteUser: async (id) => {
         set({ isLoading: true, error: null });
         try {
-          // Prevent deletion of system users
-          const isSystemUser = defaultMockUsers.some(user => user.id === id);
-          if (isSystemUser) {
-            throw new Error('System users cannot be deleted');
-          }
-
           await new Promise(resolve => setTimeout(resolve, 300));
           
           set(state => {
             const filteredUsers = state.users.filter(user => user.id !== id);
-            const { [id]: removedProfile, ...remainingProfiles } = state.userProfiles;
               
             return { 
               users: filteredUsers,
-              userProfiles: remainingProfiles,
               isLoading: false,
               error: null
             };
@@ -362,45 +235,11 @@ export const useUserStore = create<UserState>()(
           set({ error: (error as Error).message || 'Failed to delete user', isLoading: false });
         }
       },
-
-      updateUserProfile: async (userId: string, profile: Partial<UserProfile>) => {
-        set({ isLoading: true, error: null });
-        try {
-          await new Promise(resolve => setTimeout(resolve, 300));
-          
-          set(state => ({
-            userProfiles: {
-              ...state.userProfiles,
-              [userId]: {
-                ...state.userProfiles[userId],
-                ...profile
-              }
-            },
-            isLoading: false,
-            error: null
-          }));
-        } catch (error) {
-          set({ error: 'Failed to update profile', isLoading: false });
-        }
-      },
-
-      getUserProfile: (userId: string) => {
-        const { userProfiles } = get();
-        return userProfiles[userId] || null;
-      }
     }),
     {
       name: 'user-storage',
       partialize: (state) => ({
-        // Only persist custom users and profiles, not the default ones
-        users: state.users.filter(user => 
-          !defaultMockUsers.some(defaultUser => defaultUser.id === user.id)
-        ),
-        userProfiles: Object.fromEntries(
-          Object.entries(state.userProfiles).filter(([userId]) => 
-            !defaultUserProfiles.hasOwnProperty(userId)
-          )
-        ),
+        users: state.users,
       }),
     }
   )

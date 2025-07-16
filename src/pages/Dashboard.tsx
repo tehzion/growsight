@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   Users, 
@@ -25,6 +25,27 @@ import { useOrganizationStore } from '../stores/organizationStore';
 import { useUserStore } from '../stores/userStore';
 import { useDashboardStore } from '../stores/dashboardStore';
 import { useResultStore } from '../stores/resultStore';
+import { useAssessmentStore } from '../stores/assessmentStore';
+import { useAccessRequestStore } from '../stores/accessRequestStore';
+import { useSupportStore } from '../stores/supportStore';
+import { useNotificationStore } from '../stores/notificationStore';
+import { useAssessmentStore } from '../stores/assessmentStore';
+import { useAccessRequestStore } from '../stores/accessRequestStore';
+import { useSupportStore } from '../stores/supportStore';
+import { useNotificationStore } from '../stores/notificationStore';
+import { useAssessmentStore } from '../stores/assessmentStore';
+import { useAccessRequestStore } from '../stores/accessRequestStore';
+import { useSupportStore } from '../stores/supportStore';
+import { useNotificationStore } from '../stores/notificationStore';
+import { useAssessmentStore } from '../stores/assessmentStore';
+import { useAccessRequestStore } from '../stores/accessRequestStore';
+import { useSupportStore } from '../stores/supportStore';
+import { useNotificationStore } from '../stores/notificationStore';
+import { useAssessmentStore } from '../stores/assessmentStore';
+import { useAccessRequestStore } from '../stores/accessRequestStore';
+import { useSupportStore } from '../stores/supportStore';
+import { useNotificationStore } from '../stores/notificationStore';
+
 import Button from '../components/ui/Button';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card';
 
@@ -42,41 +63,74 @@ const Dashboard = () => {
   const isSubscriber = user?.role === 'subscriber';
   
   useEffect(() => {
-    // Clear previous analytics when user changes
-    clearAnalytics();
-    
-    if (isSuperAdmin) {
-      fetchAnalytics(); // Fetch aggregated data
-      fetchAllOrganizationAnalytics(); // Fetch individual org data
-    } else if (isSubscriber && user) {
-      // For subscribers, fetch their personal results
-      fetchResults(user.id);
-    } else if (user?.organizationId) {
-      fetchAnalytics(user.organizationId);
-      fetchUsers(user.organizationId);
-    }
-  }, [user, isSuperAdmin, isSubscriber, fetchAnalytics, fetchAllOrganizationAnalytics, fetchUsers, fetchResults, clearAnalytics]);
+    const loadDashboardData = async () => {
+      setRefreshing(true);
+      clearError();
+      try {
+        if (isSuperAdmin) {
+          await Promise.all([
+            fetchOrganizations(),
+            fetchUsers(),
+            fetchAssessments(),
+            fetchAllOrgResults(),
+            fetchRequests(),
+            fetchTickets(),
+            fetchSystemMetrics(),
+            fetchSystemHealth()
+          ]);
 
-  const handleRefresh = async () => {
-    setRefreshing(true);
-    clearError();
-    
-    try {
-      if (isSuperAdmin) {
-        await Promise.all([
-          fetchAnalytics(),
-          fetchAllOrganizationAnalytics()
-        ]);
-      } else if (isSubscriber && user) {
-        await fetchResults(user.id);
-      } else if (user?.organizationId) {
-        await fetchAnalytics(user.organizationId);
+          const totalOrganizations = organizations.length;
+          const totalUsers = users.length;
+          const totalAssessments = assessments.length;
+          const completedAssessments = results.filter(r => r.status === 'completed').length;
+          const pendingAccessRequests = requests.filter(req => req.status === 'pending').length;
+          const openSupportTickets = tickets.filter(ticket => ticket.status === 'open' || ticket.status === 'in_progress').length;
+
+          setDashboardData({
+            systemMetrics: systemMetrics,
+            systemHealth: systemHealth,
+            globalAnalytics: {
+              totalOrganizations,
+              totalUsers,
+              totalAssessments,
+              activeAssessments: assessments.filter(a => a.isPublished).length,
+              systemUptime: 99.9, // Mock data for now
+              averageResponseTime: 120, // Mock data for now
+              storageUsage: 500, // Mock data for now
+              bandwidthUsage: 1000 // Mock data for now
+            },
+            recentActivity: {
+              userRegistrations: users.filter(u => new Date(u.createdAt) > new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)).length,
+              assessmentCompletions: results.filter(r => new Date(r.completedAt) > new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)).length,
+              systemAlerts: systemHealth.filter(s => s.status === 'critical' || s.status === 'warning').length,
+              supportTickets: openSupportTickets
+            },
+            topInsights: [], // To be implemented
+            criticalAlerts: systemHealth.filter(s => s.status === 'critical')
+          });
+        } else if (isSubscriber && user) {
+          fetchResults(user.id);
+        } else if (user?.organizationId) {
+          fetchAnalytics(user.organizationId);
+          fetchUsers(user.organizationId);
+        }
+      } catch (err) {
+        setError((err as Error).message);
+        addNotification({
+          title: 'Error',
+          message: 'Failed to load dashboard data',
+          type: 'error'
+        });
+      } finally {
+        setRefreshing(false);
       }
-    } catch (error) {
-      console.error('Dashboard refresh failed:', error);
-    } finally {
-      setRefreshing(false);
-    }
+    };
+
+    loadDashboardData();
+  }, [user, isSuperAdmin, isSubscriber, fetchAnalytics, fetchAllOrganizationAnalytics, fetchUsers, fetchResults, clearAnalytics, organizations.length, users.length, assessments.length, results.length, requests.length, tickets.length, systemMetrics.length, systemHealth.length]);
+
+  const handleRefresh = () => {
+    loadDashboardData();
   };
   
   const getActivityIcon = (type: string) => {

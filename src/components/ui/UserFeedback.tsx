@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   CheckCircle, 
   AlertTriangle, 
@@ -66,14 +66,14 @@ const UserFeedback: React.FC<UserFeedbackProps> = ({
     }
     
     return () => clearTimeout(showTimer);
-  }, [message.autoDismiss, message.dismissAfter]);
+  }, [message.autoDismiss, message.dismissAfter, handleDismiss]);
 
-  const handleDismiss = () => {
+  const handleDismiss = useCallback(() => {
     setIsDismissing(true);
     setTimeout(() => {
       onDismiss(message.id);
     }, 300);
-  };
+  }, [onDismiss, message.id]);
 
   const getIcon = () => {
     switch (message.type) {

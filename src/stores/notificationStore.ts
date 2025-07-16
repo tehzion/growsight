@@ -317,6 +317,14 @@ export const notificationTemplates = {
     category: 'assessment' as const,
     type: 'success' as const
   }),
+
+  assessmentInvitation: (assessmentName: string, assignedToName: string) => ({
+    title: 'Assessment Invitation',
+    message: `You have been invited to complete the "${assessmentName}" assessment.`, 
+    category: 'assessment' as const,
+    type: 'info' as const,
+    link: '/my-assessments'
+  }),
   
   assessmentAssigned: (assessmentName: string, participantCount: number) => ({
     title: 'Assessment Assigned',
@@ -325,9 +333,9 @@ export const notificationTemplates = {
     type: 'success' as const
   }),
   
-  assessmentCompleted: (assessmentName: string) => ({
+  assessmentCompleted: (assessmentName: string, employeeName: string) => ({
     title: 'Assessment Completed',
-    message: `Assessment "${assessmentName}" has been completed.`,
+    message: `The assessment "${assessmentName}" for ${employeeName} has been completed.`,
     category: 'assessment' as const,
     type: 'success' as const
   }),

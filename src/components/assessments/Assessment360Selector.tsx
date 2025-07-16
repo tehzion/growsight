@@ -20,13 +20,13 @@ const Assessment360Selector = () => {
 
   useEffect(() => {
     fetchAssessments();
-  }, []);
+  }, [fetchAssessments]);
 
   useEffect(() => {
     if (selectedAssessment) {
       fetchOverviews(selectedAssessment);
     }
-  }, [selectedAssessment]);
+  }, [selectedAssessment, fetchOverviews]);
 
   useEffect(() => {
     if (overviews.length > 0) {

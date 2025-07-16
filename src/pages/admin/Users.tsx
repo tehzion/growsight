@@ -12,6 +12,8 @@ import ImportExportManager from '../../components/admin/ImportExportManager';
 import DepartmentManager from '../../components/admin/DepartmentManager';
 import EnhancedUserManager from '../../components/admin/EnhancedUserManager';
 import { useNotificationStore } from '../../stores/notificationStore';
+import { emailNotificationService } from '../../services/emailNotificationService';
+import { config } from '../../config/environment';
 
 const Users = () => {
   const { users, fetchUsers, createUser, updateUser, deleteUser, isLoading, error: userError } = useUserStore();
@@ -372,6 +374,28 @@ const Users = () => {
     setSearchTerm('');
     setDepartmentFilter('');
     setRoleFilter('');
+  };
+
+  const handleSendOrgAdminNotification = async (user: UserType) => {
+    try {
+      await emailNotificationService.sendOrgAdminAccountCreatedNotification({
+        recipientEmail: user.email,
+        recipientName: `${user.firstName} ${user.lastName}`,
+        organizationId: user.organizationId,
+        loginUrl: `${config.app.url}/login`
+      });
+      addNotification({
+        title: 'Email Sent',
+        message: `Welcome email sent to ${user.email}`,
+        type: 'success'
+      });
+    } catch (error) {
+      addNotification({
+        title: 'Email Send Failed',
+        message: `Failed to send welcome email to ${user.email}: ${(error as Error).message}`,
+        type: 'error'
+      });
+    }
   };
   
   return (
@@ -829,6 +853,15 @@ const Users = () => {
                                       onClick={() => handleDeleteUser(user.id, `${user.firstName} ${user.lastName}`)}
                                     >
                                       Delete
+                                    </Button>
+                                  )}
+                                  {user.role === 'org_admin' && (
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={() => handleSendOrgAdminNotification(user)}
+                                    >
+                                      Send Welcome Email
                                     </Button>
                                   )}
                                 </div>

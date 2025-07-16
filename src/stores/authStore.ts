@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { supabase } from '../lib/supabase';
 import { emailService } from '../services/emailService';
-import { config, isDemoMode } from '../config/environment';
+import { config } from '../config/environment';
 import { User, LoginCredentials } from '../types';
 import SecureLogger from '../lib/secureLogger';
 
@@ -37,110 +37,7 @@ export const useAuthStore = create<AuthState>()(
       login: async (credentials: LoginCredentials) => {
         set({ isLoading: true, error: null });
         try {
-          if (isDemoMode) {
-            // Demo mode login
-            await new Promise(resolve => setTimeout(resolve, 1000));
-            
-            const demoCredentials = [
-              
-              { 
-                email: 'admin@acme.com', 
-                password: 'password123', 
-                organizationId: 'demo-org-1',
-                user: {
-                  id: '1',
-                  email: 'admin@acme.com',
-                  firstName: 'Sarah',
-                  lastName: 'Johnson',
-                  role: 'super_admin' as const,
-                  organizationId: 'demo-org-1',
-                  createdAt: new Date(Date.now() - 25 * 24 * 60 * 60 * 1000).toISOString(),
-                  updatedAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString()
-                }
-              },
-              { 
-                email: 'orgadmin@acme.com', 
-                password: 'password123', 
-                organizationId: 'demo-org-1',
-                user: {
-                  id: '2',
-                  email: 'orgadmin@acme.com',
-                  firstName: 'Michael',
-                  lastName: 'Chen',
-                  role: 'org_admin' as const,
-                  organizationId: 'demo-org-1',
-                  departmentId: 'dept-1',
-                  createdAt: new Date(Date.now() - 22 * 24 * 60 * 60 * 1000).toISOString(),
-                  updatedAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString()
-                }
-              },
-              { 
-                email: 'orgadmin@techstart.com', 
-                password: 'password123', 
-                organizationId: 'demo-org-2',
-                user: {
-                  id: '7',
-                  email: 'orgadmin@techstart.com',
-                  firstName: 'Alex',
-                  lastName: 'Rodriguez',
-                  role: 'org_admin' as const,
-                  organizationId: 'demo-org-2',
-                  createdAt: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString(),
-                  updatedAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString()
-                }
-              },
-              { 
-                email: 'orgadmin@global.com', 
-                password: 'password123', 
-                organizationId: 'demo-org-3',
-                user: {
-                  id: '8',
-                  email: 'orgadmin@global.com',
-                  firstName: 'Emma',
-                  lastName: 'Davis',
-                  role: 'org_admin' as const,
-                  organizationId: 'demo-org-3',
-                  createdAt: new Date(Date.now() - 8 * 24 * 60 * 60 * 1000).toISOString(),
-                  updatedAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString()
-                }
-              },
-              { 
-                email: 'subscriber@acme.com', 
-                password: 'password123', 
-                organizationId: 'demo-org-1',
-                user: {
-                  id: '9',
-                  email: 'subscriber@acme.com',
-                  firstName: 'Robert',
-                  lastName: 'Taylor',
-                  role: 'subscriber' as const,
-                  organizationId: 'demo-org-1',
-                  createdAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
-                  updatedAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString()
-                }
-              }
-            ];
-            
-            // Check if organization ID matches
-            const validCredential = demoCredentials.find(
-              cred => cred.email === credentials.email && 
-                     cred.password === credentials.password &&
-                     cred.organizationId === credentials.organizationId
-            );
-            
-            if (validCredential) {
-              set({ user: validCredential.user, isLoading: false });
-            } else {
-              throw new Error('Invalid organization ID, email, or password. Try one of these demo accounts:
-
-• admin@acme.com / password123 / demo-org-1 (Super Admin)
-• orgadmin@acme.com / password123 / demo-org-1 (Organization Admin - Acme)
-• orgadmin@techstart.com / password123 / demo-org-2 (Organization Admin - TechStart)
-• orgadmin@global.com / password123 / demo-org-3 (Organization Admin - Global)
-• subscriber@acme.com / password123 / demo-org-1 (Subscriber - Acme)');
-            }
-          } else {
-            // Production Supabase login with enhanced error handling
+          // Production Supabase login with enhanced error handling
             if (!supabase) {
               throw new Error('Database connection not available. Please check your configuration.');
             }
@@ -246,12 +143,17 @@ export const useAuthStore = create<AuthState>()(
                 organizationId: profile.organization_id,
                 departmentId: profile.department_id,
                 createdAt: profile.created_at,
-                updatedAt: profile.updated_at
+                updatedAt: profile.updated_at,
+                requiresPasswordChange: profile.requires_password_change || false
               };
 
               set({ user, isLoading: false });
+
+              // Redirect to password reset if required
+              if (user.requiresPasswordChange) {
+                throw new Error('PASSWORD_RESET_REQUIRED');
+              }
             }
-          }
         } catch (error) {
           console.error('Login error:', error);
           set({ error: (error as Error).message, isLoading: false });
@@ -262,55 +164,48 @@ export const useAuthStore = create<AuthState>()(
         set({ isLoading: true, error: null });
         try {
           const cleanEmail = email.trim().toLowerCase();
+          if (!supabase) {
+            throw new Error('Database connection not available. Please check your configuration.');
+          }
+
+          // Verify organization ID first
+          const { data: orgData, error: orgError } = await supabase
+            .from('organizations')
+            .select('id')
+            .eq('id', organizationId)
+            .single();
+
+          if (orgError || !orgData) {
+            throw new Error('Invalid organization ID. Please check and try again.');
+          }
+
+          // Verify user belongs to the organization
+          const { data: userData, error: userError } = await supabase
+            .from('users')
+            .select('id, organization_id')
+            .eq('email', cleanEmail)
+            .eq('organization_id', organizationId)
+            .single();
+
+          if (userError || !userData) {
+            throw new Error('No account found with this email in the specified organization.');
+          }
+
+          const { error } = await supabase.auth.signInWithOtp({
+            email: cleanEmail,
+            options: {
+              emailRedirectTo: `${config.app.url}/auth/callback`,
+              shouldCreateUser: false, // Only allow existing users
+            },
+          });
           
-          if (isDemoMode) {
-            // Demo mode OTP
-            await new Promise(resolve => setTimeout(resolve, 1000));
-            SecureLogger.demo('OTP sent for organization', 'otp-send');
-          } else {
-            if (!supabase) {
-              throw new Error('Database connection not available. Please check your configuration.');
-            }
-
-            // Verify organization ID first
-            const { data: orgData, error: orgError } = await supabase
-              .from('organizations')
-              .select('id')
-              .eq('id', organizationId)
-              .single();
-
-            if (orgError || !orgData) {
-              throw new Error('Invalid organization ID. Please check and try again.');
-            }
-
-            // Verify user belongs to the organization
-            const { data: userData, error: userError } = await supabase
-              .from('users')
-              .select('id, organization_id')
-              .eq('email', cleanEmail)
-              .eq('organization_id', organizationId)
-              .single();
-
-            if (userError || !userData) {
-              throw new Error('No account found with this email in the specified organization.');
-            }
-
-            const { error } = await supabase.auth.signInWithOtp({
-              email: cleanEmail,
-              options: {
-                emailRedirectTo: `${config.app.url}/auth/callback`,
-                shouldCreateUser: false, // Only allow existing users
-              },
-            });
-            
-            if (error) {
-              if (error.message.includes('User not found')) {
-                throw new Error('No account found with this email address. Please contact your administrator.');
-              } else if (error.message.includes('Email rate limit exceeded')) {
-                throw new Error('Too many OTP requests. Please wait before requesting another code.');
-              } else {
-                throw new Error(`Failed to send OTP: ${error.message}`);
-              }
+          if (error) {
+            if (error.message.includes('User not found')) {
+              throw new Error('No account found with this email address. Please contact your administrator.');
+            } else if (error.message.includes('Email rate limit exceeded')) {
+              throw new Error('Too many OTP requests. Please wait before requesting another code.');
+            } else {
+              throw new Error(`Failed to send OTP: ${error.message}`);
             }
           }
           set({ isLoading: false });
@@ -325,70 +220,6 @@ export const useAuthStore = create<AuthState>()(
         try {
           const cleanEmail = email.trim().toLowerCase();
           const cleanOTP = otp.trim();
-          
-          if (isDemoMode) {
-            // Demo mode OTP verification
-            await new Promise(resolve => setTimeout(resolve, 1000));
-            
-            // For demo, accept any 6-digit code
-            if (cleanOTP.length === 6 && /^\d+$/.test(cleanOTP)) {
-              // Find demo user by email and organization
-              const demoUsers = [
-                {
-                  email: 'admin@acme.com',
-                  organizationId: 'demo-org-1',
-                  user: {
-                    id: '1',
-                    email: 'admin@acme.com',
-                    firstName: 'Sarah',
-                    lastName: 'Johnson',
-                    role: 'super_admin' as const,
-                    organizationId: 'demo-org-1',
-                    createdAt: new Date(Date.now() - 25 * 24 * 60 * 60 * 1000).toISOString(),
-                    updatedAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString()
-                  }
-                },
-                {
-                  email: 'orgadmin@acme.com',
-                  organizationId: 'demo-org-1',
-                  user: {
-                    id: '2',
-                    email: 'orgadmin@acme.com',
-                    firstName: 'Michael',
-                    lastName: 'Chen',
-                    role: 'org_admin' as const,
-                    organizationId: 'demo-org-1',
-                    departmentId: 'dept-1',
-                    createdAt: new Date(Date.now() - 22 * 24 * 60 * 60 * 1000).toISOString(),
-                    updatedAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString()
-                  }
-                },
-                {
-                  email: 'subscriber@acme.com',
-                  organizationId: 'demo-org-1',
-                  user: {
-                    id: '9',
-                    email: 'subscriber@acme.com',
-                    firstName: 'Robert',
-                    lastName: 'Taylor',
-                    role: 'subscriber' as const,
-                    organizationId: 'demo-org-1',
-                    createdAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
-                    updatedAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString()
-                  }
-                }
-              ];
-              
-              const demoUser = demoUsers.find(u => u.email === cleanEmail && u.organizationId === organizationId);
-              if (demoUser) {
-                set({ user: demoUser.user, isLoading: false });
-              } else {
-                throw new Error('User not found in the specified organization');
-              }
-            } else {
-              throw new Error('Invalid OTP format. Please enter a 6-digit code.');
-            }
-          } else {
             if (!supabase) {
               throw new Error('Database connection not available. Please check your configuration.');
             }
@@ -460,12 +291,17 @@ export const useAuthStore = create<AuthState>()(
                 organizationId: profile.organization_id,
                 departmentId: profile.department_id,
                 createdAt: profile.created_at,
-                updatedAt: profile.updated_at
+                updatedAt: profile.updated_at,
+                requiresPasswordChange: profile.requires_password_change || false
               };
 
               set({ user, isLoading: false });
+
+              // Redirect to password reset if required
+              if (user.requiresPasswordChange) {
+                throw new Error('PASSWORD_RESET_REQUIRED');
+              }
             }
-          }
         } catch (error) {
           console.error('OTP verification error:', error);
           set({ error: (error as Error).message, isLoading: false });
@@ -475,7 +311,7 @@ export const useAuthStore = create<AuthState>()(
       logout: async () => {
         set({ isLoading: true, error: null });
         try {
-          if (!isDemoMode && supabase) {
+          if (supabase) {
             const { error } = await supabase.auth.signOut();
             if (error) {
               SecureLogger.warn('Logout error occurred', { type: 'logout' });
@@ -495,10 +331,6 @@ export const useAuthStore = create<AuthState>()(
         try {
           const cleanEmail = email.trim().toLowerCase();
           
-          if (isDemoMode) {
-            await new Promise(resolve => setTimeout(resolve, 1000));
-            SecureLogger.demo('Password reset email would be sent', 'password-reset');
-          } else {
             if (!supabase) {
               throw new Error('Database connection not available. Please check your configuration.');
             }
@@ -516,7 +348,6 @@ export const useAuthStore = create<AuthState>()(
                 throw new Error(`Password reset failed: ${error.message}`);
               }
             }
-          }
           set({ isLoading: false });
         } catch (error) {
           console.error('Password reset error:', error);
@@ -527,10 +358,6 @@ export const useAuthStore = create<AuthState>()(
       setNewPassword: async (token: string, password: string) => {
         set({ isLoading: true, error: null });
         try {
-          if (isDemoMode) {
-            await new Promise(resolve => setTimeout(resolve, 1000));
-            SecureLogger.demo('Password would be updated', 'password-update');
-          } else {
             if (!supabase) {
               throw new Error('Database connection not available. Please check your configuration.');
             }
@@ -543,7 +370,32 @@ export const useAuthStore = create<AuthState>()(
                 throw new Error(`Password update failed: ${error.message}`);
               }
             }
-          }
+
+            // Update requiresPasswordChange flag in user profile
+            if (get().user) {
+              const { error: updateError } = await supabase
+                .from('users')
+                .update({ requires_password_change: false })
+                .eq('id', get().user.id);
+              
+              if (updateError) {
+                SecureLogger.error('Failed to update requires_password_change flag', updateError);
+              }
+              set(state => ({ user: state.user ? { ...state.user, requiresPasswordChange: false } : null }));
+            }
+
+            // Update requiresPasswordChange flag in user profile
+            if (get().user) {
+              const { error: updateError } = await supabase
+                .from('users')
+                .update({ requires_password_change: false })
+                .eq('id', get().user.id);
+              
+              if (updateError) {
+                SecureLogger.error('Failed to update requires_password_change flag', updateError);
+              }
+              set(state => ({ user: state.user ? { ...state.user, requiresPasswordChange: false } : null }));
+            }
           set({ isLoading: false });
         } catch (error) {
           console.error('Set password error:', error);
@@ -554,10 +406,6 @@ export const useAuthStore = create<AuthState>()(
       updatePassword: async (currentPassword: string, newPassword: string) => {
         set({ isLoading: true, error: null });
         try {
-          if (isDemoMode) {
-            await new Promise(resolve => setTimeout(resolve, 1000));
-            SecureLogger.demo('Password would be updated', 'password-change');
-          } else {
             const { user } = get();
             if (!user) throw new Error('No user logged in');
 
@@ -588,7 +436,6 @@ export const useAuthStore = create<AuthState>()(
                 throw new Error(`Password update failed: ${error.message}`);
               }
             }
-          }
           set({ isLoading: false });
         } catch (error) {
           console.error('Update password error:', error);
@@ -597,7 +444,7 @@ export const useAuthStore = create<AuthState>()(
       },
 
       refreshSession: async () => {
-        if (!isDemoMode && supabase) {
+        if (supabase) {
           try {
             const { data: { session } } = await supabase.auth.getSession();
             if (session?.user) {
@@ -643,24 +490,6 @@ export const useAuthStore = create<AuthState>()(
         
         // For org admins, check specific permissions
         if (user.role === 'org_admin') {
-          // In demo mode, simulate permission checks
-          if (isDemoMode) {
-            // Default permissions for demo org admins
-            const defaultPermissions = [
-              'manage_users',
-              'assign_assessments',
-              'manage_relationships'
-            ];
-            
-            // Special case for Acme Corp (demo-org-1) - they have all permissions
-            if (user.organizationId === 'demo-org-1') {
-              return true;
-            }
-            
-            return defaultPermissions.includes(permission);
-          }
-          
-          // In production, check against the organization's permissions
           const { organizations } = useOrganizationStore.getState();
           const organization = organizations.find(org => org.id === user.organizationId);
           return organization?.orgAdminPermissions?.includes(permission as any) || false;
@@ -686,7 +515,7 @@ export const useAuthStore = create<AuthState>()(
 );
 
 // Auto-refresh session on app start with error handling
-if (!isDemoMode && supabase) {
+if (supabase) {
   supabase.auth.onAuthStateChange((event, session) => {
     try {
       if (event === 'SIGNED_OUT') {

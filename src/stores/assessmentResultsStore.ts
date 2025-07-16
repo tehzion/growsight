@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase';
 import { handleSupabaseError } from '../lib/supabaseError';
 import { emailNotificationService } from '../services/emailNotificationService';
 import { config } from '../config/environment';
+import { useNotificationStore, notificationTemplates } from './notificationStore';
 
 export interface AssessmentResponse {
   id: string;
@@ -291,20 +292,47 @@ export const useAssessmentResultsStore = create<AssessmentResultsState>()(
           // Send email notifications if enabled
           if (config.features.emailNotifications && config.email.provider !== 'demo' && assignmentData) {
             try {
-              await emailNotificationService.sendAssessmentCompletionNotification({
-                assignmentId: assignmentId,
-                employeeEmail: assignmentData.employees?.email || '',
-                reviewerEmail: assignmentData.reviewers?.email || '',
-                employeeName: `${assignmentData.employees?.first_name || ''} ${assignmentData.employees?.last_name || ''}`.trim(),
-                reviewerName: `${assignmentData.reviewers?.first_name || ''} ${assignmentData.reviewers?.last_name || ''}`.trim(),
-                assessmentTitle: assignmentData.assessments?.title || 'Assessment',
-                overallScore: overallScore,
-                relationshipType: assignmentData.relationship_type,
-                organizationName: assignmentData.assessments?.organization_name || 'Your Organization'
-              });
+              // Fetch org admins for the employee's organization
+              const { data: orgAdmins, error: orgAdminError } = await supabase
+                .from('users')
+                .select('email, first_name, last_name')
+                .eq('organization_id', assignmentData.employees?.organization_id)
+                .eq('role', 'org_admin');
+
+              if (orgAdminError) {
+                console.error('Failed to fetch org admins for completion notification:', orgAdminError);
+              } else if (orgAdmins && orgAdmins.length > 0) {
+                for (const admin of orgAdmins) {
+                  await emailNotificationService.sendAssessmentCompletionNotification({
+                    assignmentId: assignmentId,
+                    employeeEmail: assignmentData.employees?.email || '',
+                    reviewerEmail: assignmentData.reviewers?.email || '',
+                    employeeName: `${assignmentData.employees?.first_name || ''} ${assignmentData.employees?.last_name || ''}`.trim(),
+                    reviewerName: `${assignmentData.reviewers?.first_name || ''} ${assignmentData.reviewers?.last_name || ''}`.trim(),
+                    assessmentTitle: assignmentData.assessments?.title || 'Assessment',
+                    overallScore: overallScore,
+                    relationshipType: assignmentData.relationship_type,
+                    organizationName: assignmentData.assessments?.organization_name || 'Your Organization',
+                    recipientEmail: admin.email, // Send to org admin
+                    recipientName: `${admin.first_name || ''} ${admin.last_name || ''}`.trim(),
+                  });
+                }
+              }
             } catch (emailError) {
               console.error('Failed to send assessment completion notification:', emailError);
               // Don't fail the assessment submission if email fails
+            }
+          }
+
+          // Add in-app notification for org admin
+          const { addNotification } = useNotificationStore.getState();
+          if (orgAdmins && orgAdmins.length > 0) {
+            for (const admin of orgAdmins) {
+              addNotification(notificationTemplates.assessmentCompleted(
+                assignmentData.assessments?.title || 'Assessment',
+                `${assignmentData.employees?.first_name || ''} ${assignmentData.employees?.last_name || ''}`.trim(),
+                admin.email
+              ));
             }
           }
 

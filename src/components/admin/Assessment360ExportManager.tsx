@@ -64,7 +64,7 @@ const Assessment360ExportManager: React.FC<Assessment360ExportManagerProps> = ({
     if (assessmentId) {
       fetchOverviews(assessmentId);
     }
-  }, [assessmentId]);
+  }, [assessmentId, fetchOverviews]);
 
   const handleExport = async () => {
     setIsExporting(true);

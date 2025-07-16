@@ -3,51 +3,42 @@ import type { Database } from '../types/supabase';
 import SecureLogger from './secureLogger';
 
 // Use environment variables with fallbacks for demo mode
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://demo.supabase.co';
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'demo-key';
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-// Check if we're in demo mode
-export const isDemoMode = !import.meta.env.VITE_SUPABASE_URL || 
-                         !import.meta.env.VITE_SUPABASE_ANON_KEY || 
-                         supabaseUrl === 'https://demo.supabase.co' || 
-                         supabaseAnonKey === 'demo-key';
-
-// Only create Supabase client if we have valid environment variables and not in demo mode
 let supabase: any = null;
 
-if (!isDemoMode) {
-  try {
-    supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
-      auth: {
-        persistSession: true,
-        autoRefreshToken: true,
-        detectSessionInUrl: true,
-        flowType: 'pkce'
-      },
-      db: {
-        schema: 'public',
-      },
-      global: {
-        headers: {
-          'X-Client-Info': 'growsight'
-        }
-      },
-      realtime: {
-        params: {
-          eventsPerSecond: 10
-        }
+try {
+  supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: true,
+      flowType: 'pkce'
+    },
+    db: {
+      schema: 'public',
+    },
+    global: {
+      headers: {
+        'X-Client-Info': 'growsight'
       }
-    });
+    },
+    realtime: {
+      params: {
+        eventsPerSecond: 10
+      }
+    }
+  });
 
-    // Test connection on initialization
-    supabase.auth.getSession().catch((error: any) => {
-      SecureLogger.warn('Supabase connection test failed, falling back to demo mode', { type: 'connection-error' });
-      supabase = null;
-    });
-  } catch (error) {
-    SecureLogger.warn('Supabase client creation failed, running in demo mode', { type: 'client-error' });
+  // Test connection on initialization
+  supabase.auth.getSession().catch((error: any) => {
+    SecureLogger.warn('Supabase connection test failed', { type: 'connection-error' });
     supabase = null;
-  }
+  });
+} catch (error) {
+  SecureLogger.warn('Supabase client creation failed', { type: 'client-error' });
+  supabase = null;
 }
 
 // Export the client (will be null in demo mode)

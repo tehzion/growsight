@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { AlertTriangle, CheckCircle, Info, Eye, EyeOff } from 'lucide-react';
 import { useAuthStore } from '../../stores/authStore';
 
@@ -101,7 +101,7 @@ export const FormValidation: React.FC<FormValidationProps> = ({
     return null;
   };
 
-  const validateAll = (): ValidationError[] => {
+  const validateAll = useCallback((): ValidationError[] => {
     const newErrors: ValidationError[] = [];
     
     Object.keys(rules).forEach(fieldName => {
@@ -112,7 +112,7 @@ export const FormValidation: React.FC<FormValidationProps> = ({
     });
 
     return newErrors;
-  };
+  }, [rules, data]);
 
   useEffect(() => {
     if (showRealTime) {
@@ -120,7 +120,7 @@ export const FormValidation: React.FC<FormValidationProps> = ({
       setErrors(newErrors);
       onValidationChange?.(newErrors);
     }
-  }, [data, rules, showRealTime]);
+  }, [data, rules, showRealTime, validateAll]);
 
   const markFieldAsTouched = (fieldName: string) => {
     setTouched(prev => new Set([...prev, fieldName]));

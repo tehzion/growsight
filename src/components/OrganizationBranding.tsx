@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/lib/supabase';
-import { Loader2, Image, Eye, EyeOff, Palette, Settings, Info, Mail, FileText } from 'lucide-react';
+
 
 interface WebBrandingSettings {
   id?: string;
@@ -99,11 +99,7 @@ export default function OrganizationBranding() {
   const [previewMode, setPreviewMode] = useState(false);
 
   // Load existing branding settings
-  useEffect(() => {
-    loadBrandingSettings();
-  }, [user?.organization_id]);
-
-  const loadBrandingSettings = async () => {
+  const loadBrandingSettings = useCallback(async () => {
     if (!user?.organization_id) return;
 
     try {
@@ -158,7 +154,11 @@ export default function OrganizationBranding() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [user?.organization_id, toast]);
+
+  useEffect(() => {
+    loadBrandingSettings();
+  }, [loadBrandingSettings]);
 
   // Validation functions
   const validateWebSettings = (): boolean => {

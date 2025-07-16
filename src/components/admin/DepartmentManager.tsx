@@ -141,7 +141,11 @@ const DepartmentManager: React.FC = () => {
   
   // Build department hierarchy
   const buildDepartmentTree = () => {
-    const departmentMap = new Map<string, Department & { children: (Department & { children: any[] })[] }>();
+    interface DepartmentNode extends Department {
+    children: DepartmentNode[];
+  }
+
+  const departmentMap = new Map<string, DepartmentNode>();
     
     // Initialize with empty children arrays
     departments.forEach(dept => {
@@ -162,7 +166,7 @@ const DepartmentManager: React.FC = () => {
     return rootDepartments;
   };
   
-  const renderDepartmentTree = (departments: (Department & { children: any[] })[], level = 0) => {
+  const renderDepartmentTree = (departments: DepartmentNode[], level = 0) => {
     return departments.map(dept => (
       <div key={dept.id} style={{ marginLeft: `${level * 20}px` }}>
         <div className="flex items-center justify-between p-3 hover:bg-gray-50 border-b border-gray-100">

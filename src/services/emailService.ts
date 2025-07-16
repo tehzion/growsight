@@ -554,6 +554,48 @@ export class EmailService {
           header: '🎉 Welcome!',
           footer: 'We\'re here to help you succeed!'
         }
+      },
+      access_request_status: {
+        subject: `Your Access Request Status: ${data.status === 'approved' ? 'Approved' : 'Rejected'} `,
+        body: `
+          <h2>Access Request ${data.status === 'approved' ? 'Approved' : 'Rejected'}</h2>
+          <p>Hello ${data.recipientName},</p>
+          <p>Your request for access to ${config.app.name} has been ${data.status}.</p>
+          ${data.status === 'approved' ? `
+            <p>You can now log in to your account using your email address and the temporary password provided in a separate email.</p>
+            <a href="${data.loginUrl}" class="button">Login to Your Account</a>
+          ` : `
+            <p>Reason for rejection: ${data.rejectionReason || 'No specific reason provided.'}</p>
+            <p>If you believe this is a mistake or have further questions, please contact support.</p>
+          `}
+        `,
+        recipient_email: data.to,
+        recipient_name: data.recipientName,
+        template_data: {
+          header: 'Access Request Update',
+          footer: 'We\'re here to help you succeed!'
+        }
+      },
+      org_admin_account_created: {
+        subject: `Your Organization Admin Account for ${config.app.name}`,
+        body: `
+          <h2>Welcome, Organization Administrator!</h2>
+          <p>Hello ${data.recipientName},</p>
+          <p>Your Organization Administrator account for ${config.app.name} has been successfully created.</p>
+          <div class="highlight">
+            <p><strong>Your Login Email:</strong> ${data.email}</p>
+            <p><strong>Your Organization ID:</strong> ${data.organizationId}</p>
+          </div>
+          <p>You can log in using your email and organization ID. For your first login, you may be prompted to set a new password or use an OTP.</p>
+          <a href="${data.loginUrl}" class="button">Login to Your Account</a>
+          <p>If you have any questions, please contact your Super Admin.</p>
+        `,
+        recipient_email: '',
+        recipient_name: '',
+        template_data: {
+          header: 'Organization Admin Account Created',
+          footer: 'Manage your organization with ease!'
+        }
       }
     };
 
@@ -1242,11 +1284,12 @@ export class EmailService {
   }
 
   async sendAssessmentCompletionNotification(
-    employeeEmail: string,
-    reviewerEmail: string,
+    recipientEmail: string,
+    recipientName: string,
     assessmentTitle: string,
     overallScore: number,
-    relationshipType: string
+    relationshipType: string,
+    employeeName: string // Added employeeName for context
   ): Promise<void> {
     const relationshipTypeLabel = {
       'peer': 'Peer Review',
@@ -1255,18 +1298,18 @@ export class EmailService {
       'client': 'Client Review'
     }[relationshipType] || relationshipType;
 
-    const subject = `Assessment Completed: ${assessmentTitle}`;
+    const subject = `✅ Assessment Completed: ${assessmentTitle} for ${employeeName}`;
     const body = `
       <h2>Assessment Completed</h2>
-      <p>The assessment <strong>${assessmentTitle}</strong> has been completed.</p>
+      <p>Hello ${recipientName},</p>
+      <p>The assessment <strong>${assessmentTitle}</strong> for <strong>${employeeName}</strong> has been completed.</p>
       <p><strong>Relationship Type:</strong> ${relationshipTypeLabel}</p>
       <p><strong>Overall Score:</strong> ${overallScore.toFixed(1)}/7.0</p>
       <p>Log in to view detailed results and analytics.</p>
     `;
 
-    // Send to both parties
-    await this.sendEmail(employeeEmail, subject, body);
-    await this.sendEmail(reviewerEmail, subject, body);
+    // Send to the specified recipient (org admin)
+    await this.sendEmail(recipientEmail, subject, body);
   }
 
   async getEmailTemplates(organizationId: string): Promise<EmailTemplate[]> {

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Trash2, UserPlus, Building2, AlertTriangle, CheckCircle } from 'lucide-react';
-import { Card, CardHeader, CardTitle, CardContent } from '../ui/Card';
+import { Card, CardContent } from '../ui/Card';
 import Button from '../ui/Button';
 import { Role } from '../../types';
 

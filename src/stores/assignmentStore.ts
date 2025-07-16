@@ -3,6 +3,7 @@ import { persist } from 'zustand/middleware';
 import { AssessmentAssignment, AssessmentNotification, RelationshipType } from '../types';
 import { emailService } from '../services/emailService';
 import { config } from '../config/environment';
+import { useNotificationStore, notificationTemplates } from './notificationStore';
 
 interface AssignmentState {
   assignments: AssessmentAssignment[];
@@ -156,6 +157,21 @@ export const useAssignmentStore = create<AssignmentState>()(
               console.error('Failed to send assignment notification emails:', emailError);
               // Don't fail the assignment creation if email fails
             }
+          }
+
+          // Add in-app notifications
+          const { addNotification } = useNotificationStore.getState();
+          if (data.employeeName) {
+            addNotification(notificationTemplates.assessmentInvitation(
+              data.assessmentTitle || 'Assessment',
+              data.employeeName
+            ));
+          }
+          if (data.reviewerName) {
+            addNotification(notificationTemplates.assessmentInvitation(
+              data.assessmentTitle || 'Assessment',
+              data.reviewerName
+            ));
           }
           
         } catch (error) {

@@ -4,6 +4,7 @@ import { useAuthStore } from '../../stores/authStore';
 import { useOrganizationStore } from '../../stores/organizationStore';
 import Sidebar from './Sidebar';
 import Header from './Header';
+import NotificationDisplay from '../ui/NotificationDisplay';
 
 const Layout = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -46,6 +47,9 @@ const Layout = () => {
             <Outlet />
           </div>
         </main>
+
+        {/* Notification Display */}
+        <NotificationDisplay />
       </div>
     </div>
   );

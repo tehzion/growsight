@@ -53,11 +53,8 @@ export interface AppConfig {
   };
 }
 
-// Check if we're in demo mode
-export const isDemoMode = !import.meta.env.VITE_SUPABASE_URL || 
-                         !import.meta.env.VITE_SUPABASE_ANON_KEY || 
-                         import.meta.env.VITE_SUPABASE_URL === 'https://demo.supabase.co' || 
-                         import.meta.env.VITE_SUPABASE_ANON_KEY === 'demo-key';
+
+
 
 const getConfig = (): AppConfig => {
   const isDevelopment = import.meta.env.DEV;
@@ -70,7 +67,7 @@ const getConfig = (): AppConfig => {
       anonKey: import.meta.env.VITE_SUPABASE_ANON_KEY || 'demo-key',
     },
     email: {
-      provider: isDevelopment || isDemoMode ? 'demo' : (import.meta.env.VITE_EMAIL_PROVIDER || 'smtp'),
+      provider: isDevelopment ? 'demo' : (import.meta.env.VITE_EMAIL_PROVIDER || 'smtp'),
       apiKey: import.meta.env.VITE_SENDGRID_API_KEY || import.meta.env.VITE_MAILGUN_API_KEY || '',
       fromEmail: import.meta.env.VITE_EMAIL_FROM_ADDRESS || 'noreply@growsight.com',
       fromName: import.meta.env.VITE_EMAIL_FROM_NAME || 'Growsight',
@@ -126,8 +123,7 @@ export const config = getConfig();
 export const validateEnvironment = (): { isValid: boolean; errors: string[] } => {
   const errors: string[] = [];
   
-  if (!isDemoMode) {
-    if (!config.supabase.url || config.supabase.url === 'https://demo.supabase.co') {
+  if (!config.supabase.url || config.supabase.url === 'https://demo.supabase.co') {
       errors.push('VITE_SUPABASE_URL is required for production');
     }
     
@@ -166,7 +162,6 @@ export const validateEnvironment = (): { isValid: boolean; errors: string[] } =>
         errors.push('Retry delay minutes should be at least 1 minute');
       }
     }
-  }
   
   if (config.security.passwordMinLength < 8) {
     errors.push('Password minimum length should be at least 8 characters');

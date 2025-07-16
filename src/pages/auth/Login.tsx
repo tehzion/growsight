@@ -118,7 +118,11 @@ const Login = () => {
       navigate(from, { replace: true });
     } catch (err) {
       setLoginAttempts(prev => prev + 1);
-      // Error is handled by the store
+      if ((err as Error).message === 'PASSWORD_RESET_REQUIRED') {
+        navigate('/reset-password', { state: { email: data.email, organizationId: data.organizationId } });
+      } else {
+        // Error is handled by the store
+      }
     }
   };
 

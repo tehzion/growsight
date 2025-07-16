@@ -36,6 +36,7 @@ export interface User {
   dateFormat?: string;
   lastLoginAt?: string;
   requiresPasswordChange?: boolean;
+  requiresPasswordChange?: boolean;
 }
 
 export interface Department {
@@ -62,6 +63,10 @@ export interface Organization {
   address?: string;
   industry?: string;
   size?: string;
+  periodStartDate?: string;
+  periodEndDate?: string;
+  autoTransitionEnabled?: boolean;
+  gracePeriodDays?: number;
 }
 
 export interface UserRelationship {
@@ -137,6 +142,11 @@ export interface Assessment {
   category?: string;
   estimatedTimeMinutes?: number;
   version?: string;
+  isGlobal?: boolean;
+  assessmentStartDate?: string;
+  assessmentEndDate?: string;
+  setByOrgAdmin?: boolean;
+  setBySuper?: boolean;
 }
 
 export interface AssessmentProgress {
@@ -519,4 +529,18 @@ export interface RootDashboardData {
   };
   topInsights: TagInsight[];
   criticalAlerts: SystemHealth[];
+}
+
+export interface EmailTemplate {
+  id: string;
+  name: string;
+  subject: string;
+  body: string;
+  variables?: string[];
+  organization_id: string;
+  created_at: string;
+  updated_at: string;
+  template_data?: Record<string, any>;
+  recipient_email?: string;
+  recipient_name?: string;
 }

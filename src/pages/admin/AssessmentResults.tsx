@@ -27,6 +27,9 @@ import {
   MessageSquare,
   ExternalLink
 } from 'lucide-react';
+import html2canvas from 'html2canvas';
+import jsPDF from 'jspdf';
+import ReportGenerator from '../../components/reports/ReportGenerator';
 
 interface AssessmentResultsProps {}
 
@@ -143,37 +146,28 @@ export const AssessmentResults: React.FC<AssessmentResultsProps> = () => {
 
   const handleExportPDF = async () => {
     try {
-      const { exportAssessmentResultsPDF } = await import('../../utils/pdfExport');
-      
-      const options = {
-        title: getRoleBasedTitle(),
-        subtitle: getRoleBasedDescription(),
-        organizationName: user?.role === 'super_admin' 
-          ? (selectedOrgId ? organizations.find(o => o.id === selectedOrgId)?.name : 'All Organizations')
-          : currentOrganization?.name,
-        includeCharts: true,
-        includeTables: true,
-        orientation: 'portrait' as const,
-        format: 'a4' as const
-      };
+      const reportElement = document.getElementById('assessment-report-admin');
+      if (reportElement) {
+        const canvas = await html2canvas(reportElement, { scale: 2 });
+        const imgData = canvas.toDataURL('image/png');
+        const pdf = new jsPDF('p', 'mm', 'a4');
+        const imgWidth = 210; 
+        const pageHeight = 297;  
+        const imgHeight = canvas.height * imgWidth / canvas.width;
+        let heightLeft = imgHeight;
+        let position = 0;
 
-      const data = {
-        analytics,
-        comparisonData,
-        selfAssessments,
-        reviewsAboutMe,
-        reviewsDoneByMe,
-        departmentBreakdown,
-        allOrgResults
-      };
+        pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+        heightLeft -= pageHeight;
 
-      const blob = await exportAssessmentResultsPDF(data, options);
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `assessment_results_${new Date().toISOString().split('T')[0]}.pdf`;
-      a.click();
-      window.URL.revokeObjectURL(url);
+        while (heightLeft >= 0) {
+          position = heightLeft - imgHeight;
+          pdf.addPage();
+          pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+          heightLeft -= pageHeight;
+        }
+        pdf.save(`assessment_results_${selectedUserId || selectedOrgId || 'all'}.pdf`);
+      }
     } catch (error) {
       console.error('Error exporting PDF:', error);
       alert('Failed to export PDF. Please try again.');
@@ -621,10 +615,10 @@ export const AssessmentResults: React.FC<AssessmentResultsProps> = () => {
                             <Button
                               variant="ghost"
                               size="sm"
-                              onClick={() => window.open(`/assessment-results/${result.id}`, '_blank')}
+                              onClick={() => navigate(`/admin/assessment-report/${result.employeeId}/${result.assessmentId}`)}
                               leftIcon={<ExternalLink className="h-4 w-4" />}
                             >
-                              View
+                              View Report
                             </Button>
                           </div>
                         </td>

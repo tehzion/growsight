@@ -2,7 +2,6 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { supabase } from '../lib/supabase';
 import { handleSupabaseError } from '../lib/supabaseError';
-import { isDemoMode } from '../config/environment';
 import SecureLogger from '../lib/secureLogger';
 import AccessControl from '../lib/accessControl';
 import { useAuthStore } from './authStore';
@@ -122,80 +121,7 @@ interface ProfileState {
 }
 
 // Default profile for demo mode
-const defaultProfile: Profile = {
-  id: 'demo-user',
-  user_id: 'demo-user',
-  first_name: 'John',
-  last_name: 'Doe',
-  email: 'john.doe@example.com',
-  phone: '+1 (555) 123-4567',
-  position: 'Software Engineer',
-  department: 'Engineering',
-  bio: 'Experienced software engineer with a passion for building user-friendly applications.',
-  avatar_url: 'https://example.com/john-doe.jpg',
-  date_of_birth: '1990-05-15',
-  hire_date: '2015-06-01',
-  emergency_contact: {
-    name: 'Jane Doe',
-    relationship: 'Spouse',
-    phone: '+1 (555) 555-5555'
-  },
-  skills: ['JavaScript', 'React', 'TypeScript', 'Node.js'],
-  certifications: ['AWS Certified Developer', 'Scrum Master'],
-  education: [
-    { degree: 'Bachelor of Science', institution: 'University of Tech', year: '2010' },
-    { degree: 'Master of Science', institution: 'University of Design', year: '2012' }
-  ],
-  work_experience: [
-    { company: 'Tech Solutions', position: 'Software Engineer', start_date: '2015-06-01', end_date: '2018-05-31', description: 'Developed and maintained web applications' },
-    { company: 'Design Co', position: 'UI/UX Designer', start_date: '2018-06-01', description: 'Designed user interfaces and prototypes' }
-  ],
-  preferences: {
-    theme: 'system',
-    language: 'en',
-    notifications: {
-      email: true,
-      push: true,
-      sms: false
-    }
-  },
-  created_at: new Date().toISOString(),
-  updated_at: new Date().toISOString()
-};
 
-// Default tags for demo mode
-const defaultProfileTags: ProfileTag[] = [
-  {
-    id: 'tag-1',
-    userId: 'demo-user',
-    tagName: 'javascript',
-    tagCategory: 'skill',
-    tagValue: { level: 'advanced', yearsExperience: 5 },
-    createdById: 'demo-user',
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  },
-  {
-    id: 'tag-2',
-    userId: 'demo-user',
-    tagName: 'leadership',
-    tagCategory: 'behavior',
-    tagValue: { style: 'collaborative', strength: 'team-building' },
-    createdById: 'demo-admin',
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  },
-  {
-    id: 'tag-3',
-    userId: 'demo-user',
-    tagName: 'communication',
-    tagCategory: 'behavior',
-    tagValue: { rating: 4.5, feedback: 'excellent presenter' },
-    createdById: 'demo-admin',
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  },
-];
 
 const REQUIRED_FIELDS = [
   'first_name',
@@ -232,14 +158,6 @@ export const useProfileStore = create<ProfileState>()(
       fetchProfile: async (userId: string) => {
         set({ isLoading: true, error: null });
         try {
-          if (isDemoMode) {
-            // In demo mode, return default profile
-            await new Promise(resolve => setTimeout(resolve, 300));
-            set({ 
-              profile: { ...defaultProfile, user_id: userId },
-              isLoading: false 
-            });
-          } else {
             // Validate access
             if (!AccessControl.validateUserAccess({ id: userId } as any, userId, 'fetchProfile', true)) {
               throw new Error('Access denied to user profile');
@@ -257,7 +175,6 @@ export const useProfileStore = create<ProfileState>()(
               profile: data,
               isLoading: false
             });
-          }
         } catch (error) {
           SecureLogger.error('Failed to fetch profile', error);
           set({ 
@@ -275,18 +192,6 @@ export const useProfileStore = create<ProfileState>()(
             throw new Error('No profile to update');
           }
           
-          if (isDemoMode) {
-            // In demo mode, just update the local state
-            await new Promise(resolve => setTimeout(resolve, 500));
-            
-            set(state => ({
-              profile: {
-                ...state.profile!,
-                ...updates
-              },
-              isLoading: false
-            }));
-          } else {
             // Validate access
             if (!AccessControl.validateUserAccess({ id: currentProfile.user_id } as any, currentProfile.user_id, 'updateProfile', false)) {
               throw new Error('Access denied to update profile');
@@ -306,7 +211,6 @@ export const useProfileStore = create<ProfileState>()(
               profile: data,
               isLoading: false
             });
-          }
         } catch (error) {
           SecureLogger.error('Failed to update profile', error);
           set({ 
@@ -318,9 +222,6 @@ export const useProfileStore = create<ProfileState>()(
       
       fetchProfileTags: async (userId: string, currentUserId?: string) => {
         try {
-          if (isDemoMode) {
-            set({ profileTags: defaultProfileTags });
-          } else {
             if (currentUserId && !AccessControl.validateUserAccess({ id: currentUserId } as any, userId, 'fetchProfileTags', true)) {
               throw new Error('Access denied to profile tags');
             }
@@ -345,7 +246,6 @@ export const useProfileStore = create<ProfileState>()(
             }));
 
             set({ profileTags: tags });
-          }
         } catch (error) {
           SecureLogger.error('Failed to fetch profile tags', error);
           set({ error: (error as Error).message || 'Failed to fetch profile tags' });
@@ -354,22 +254,6 @@ export const useProfileStore = create<ProfileState>()(
 
       addProfileTag: async (userId: string, tagName: string, tagCategory = 'behavior', tagValue = {}, currentUserId?: string) => {
         try {
-          if (isDemoMode) {
-            const newTag: ProfileTag = {
-              id: `tag-${Date.now()}`,
-              userId,
-              tagName,
-              tagCategory,
-              tagValue,
-              createdById: currentUserId || 'demo-user',
-              createdAt: new Date().toISOString(),
-              updatedAt: new Date().toISOString(),
-            };
-            
-            set(state => ({
-              profileTags: [...state.profileTags, newTag]
-            }));
-          } else {
             const { data, error } = await supabase
               .rpc('add_profile_tag', {
                 p_user_id: userId,
@@ -383,7 +267,6 @@ export const useProfileStore = create<ProfileState>()(
 
             // Refresh tags
             get().fetchProfileTags(userId, currentUserId);
-          }
         } catch (error) {
           SecureLogger.error('Failed to add profile tag', error);
           set({ error: (error as Error).message || 'Failed to add profile tag' });
@@ -392,15 +275,6 @@ export const useProfileStore = create<ProfileState>()(
 
       updateProfileTag: async (tagId: string, tagName?: string, tagValue?: Record<string, unknown>, currentUserId?: string) => {
         try {
-          if (isDemoMode) {
-            set(state => ({
-              profileTags: state.profileTags.map(tag => 
-                tag.id === tagId 
-                  ? { ...tag, tagName: tagName || tag.tagName, tagValue: tagValue || tag.tagValue, updatedAt: new Date().toISOString() }
-                  : tag
-              )
-            }));
-          } else {
             const updateData: Record<string, unknown> = { updated_at: new Date().toISOString() };
             if (tagName) updateData.tag_name = tagName;
             if (tagValue) updateData.tag_value = tagValue;
@@ -420,7 +294,6 @@ export const useProfileStore = create<ProfileState>()(
                   : tag
               )
             }));
-          }
         } catch (error) {
           SecureLogger.error('Failed to update profile tag', error);
           set({ error: (error as Error).message || 'Failed to update profile tag' });
@@ -429,11 +302,6 @@ export const useProfileStore = create<ProfileState>()(
 
       removeProfileTag: async (tagId: string, currentUserId?: string) => {
         try {
-          if (isDemoMode) {
-            set(state => ({
-              profileTags: state.profileTags.filter(tag => tag.id !== tagId)
-            }));
-          } else {
             const { error } = await supabase
               .from('profile_tags')
               .delete()
@@ -444,7 +312,6 @@ export const useProfileStore = create<ProfileState>()(
             set(state => ({
               profileTags: state.profileTags.filter(tag => tag.id !== tagId)
             }));
-          }
         } catch (error) {
           SecureLogger.error('Failed to remove profile tag', error);
           set({ error: (error as Error).message || 'Failed to remove profile tag' });
@@ -453,31 +320,7 @@ export const useProfileStore = create<ProfileState>()(
       
       fetchUserBehaviors: async (userId: string, currentUserId?: string) => {
         try {
-          if (isDemoMode) {
-            // Mock behavior data for demo
-            const mockBehaviors: UserBehavior[] = [
-              {
-                id: 'behavior-1',
-                userId,
-                behaviorType: 'assessment_completion',
-                behaviorData: { assessmentId: 'preset-assessment-1', completionTime: 25, score: 85 },
-                context: 'Leadership Excellence Assessment',
-                recordedAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
-                organizationId: 'demo-org-1'
-              },
-              {
-                id: 'behavior-2',
-                userId,
-                behaviorType: 'skill_demonstration',
-                behaviorData: { skill: 'communication', rating: 4.5, feedback: 'excellent presentation skills' },
-                context: 'Team meeting presentation',
-                recordedById: 'supervisor-1',
-                recordedAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
-                organizationId: 'demo-org-1'
-              }
-            ];
-            set({ behaviors: mockBehaviors });
-          } else {
+          
             if (currentUserId && !AccessControl.validateUserAccess({ id: currentUserId } as any, userId, 'fetchUserBehaviors', true)) {
               throw new Error('Access denied to user behaviors');
             }
@@ -503,8 +346,7 @@ export const useProfileStore = create<ProfileState>()(
             }));
 
             set({ behaviors });
-          }
-        } catch (error) {
+          } catch (error) {
           SecureLogger.error('Failed to fetch user behaviors', error);
           set({ error: (error as Error).message || 'Failed to fetch user behaviors' });
         }
@@ -512,22 +354,7 @@ export const useProfileStore = create<ProfileState>()(
 
       trackBehavior: async (userId: string, behaviorType: string, behaviorData: Record<string, unknown>, context?: string, currentUserId?: string) => {
         try {
-          if (isDemoMode) {
-            const newBehavior: UserBehavior = {
-              id: `behavior-${Date.now()}`,
-              userId,
-              behaviorType,
-              behaviorData,
-              context,
-              recordedById: currentUserId,
-              recordedAt: new Date().toISOString(),
-              organizationId: 'demo-org-1'
-            };
-            
-            set(state => ({
-              behaviors: [newBehavior, ...state.behaviors]
-            }));
-          } else {
+          
             const { data, error } = await supabase
               .rpc('track_user_behavior', {
                 p_user_id: userId,
@@ -541,7 +368,6 @@ export const useProfileStore = create<ProfileState>()(
 
             // Refresh behaviors
             get().fetchUserBehaviors(userId, currentUserId);
-          }
         } catch (error) {
           SecureLogger.error('Failed to track behavior', error);
           set({ error: (error as Error).message || 'Failed to track behavior' });
@@ -550,25 +376,6 @@ export const useProfileStore = create<ProfileState>()(
 
       fetchStaffAssignments: async (staffId: string, currentUserId?: string) => {
         try {
-          if (isDemoMode) {
-            // Mock assignment data
-            const mockAssignments: StaffAssignment[] = [
-              {
-                id: 'assignment-1',
-                staffId,
-                supervisorId: 'supervisor-1',
-                departmentId: 'dept-1',
-                organizationId: 'demo-org-1',
-                assignmentType: 'permanent',
-                startDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
-                assignmentData: { role: 'Senior Developer', team: 'Frontend' },
-                createdById: 'admin-1',
-                createdAt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
-                updatedAt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
-              }
-            ];
-            set({ staffAssignments: mockAssignments });
-          } else {
             const { data, error } = await supabase
               .from('staff_assignments')
               .select('*')
@@ -593,7 +400,6 @@ export const useProfileStore = create<ProfileState>()(
             }));
 
             set({ staffAssignments: assignments });
-          }
         } catch (error) {
           SecureLogger.error('Failed to fetch staff assignments', error);
           set({ error: (error as Error).message || 'Failed to fetch staff assignments' });
@@ -602,25 +408,6 @@ export const useProfileStore = create<ProfileState>()(
 
       createStaffAssignment: async (assignment: Omit<StaffAssignment, 'id' | 'createdAt' | 'updatedAt'>, currentUserId?: string) => {
         try {
-          if (isDemoMode) {
-            const newAssignment: StaffAssignment = {
-              id: `assignment-${Date.now()}`,
-              staffId: assignment.staffId,
-              supervisorId: assignment.supervisorId,
-              departmentId: assignment.departmentId,
-              organizationId: assignment.organizationId,
-              assignmentType: assignment.assignmentType,
-              startDate: new Date().toISOString(),
-              assignmentData: assignment.assignmentData,
-              createdById: currentUserId || 'admin',
-              createdAt: new Date().toISOString(),
-              updatedAt: new Date().toISOString(),
-            };
-            
-            set(state => ({
-              staffAssignments: [newAssignment, ...state.staffAssignments]
-            }));
-          } else {
             const { data, error } = await supabase
               .rpc('assign_staff_to_organization', {
                 p_staff_id: assignment.staffId,
@@ -634,7 +421,6 @@ export const useProfileStore = create<ProfileState>()(
 
             // Refresh assignments
             get().fetchStaffAssignments(assignment.staffId, currentUserId);
-          }
         } catch (error) {
           SecureLogger.error('Failed to create staff assignment', error);
           set({ error: (error as Error).message || 'Failed to create staff assignment' });

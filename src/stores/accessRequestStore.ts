@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { AccessRequest } from '../types';
+import { emailNotificationService } from '../services/emailNotificationService';
+import { config } from '../config/environment';
 
 interface AccessRequestState {
   requests: AccessRequest[];
@@ -74,6 +76,9 @@ export const useAccessRequestStore = create<AccessRequestState>()(
         set({ isLoading: true, error: null });
         try {
           await new Promise(resolve => setTimeout(resolve, 300));
+          const requestToApprove = get().requests.find(req => req.id === id);
+          if (!requestToApprove) throw new Error('Request not found');
+
           set(state => ({
             requests: state.requests.map(req =>
               req.id === id ? { ...req, status: 'approved', updatedAt: new Date().toISOString() } : req
@@ -81,6 +86,15 @@ export const useAccessRequestStore = create<AccessRequestState>()(
             isLoading: false,
             error: null
           }));
+
+          // Send email notification
+          await emailNotificationService.sendAccessRequestStatusNotification({
+            recipientEmail: requestToApprove.email,
+            recipientName: `${requestToApprove.firstName} ${requestToApprove.lastName}`,
+            status: 'approved',
+            loginUrl: `${config.app.url}/login`
+          });
+
         } catch (error) {
           set({ error: 'Failed to approve access request', isLoading: false });
         }
@@ -90,6 +104,9 @@ export const useAccessRequestStore = create<AccessRequestState>()(
         set({ isLoading: true, error: null });
         try {
           await new Promise(resolve => setTimeout(resolve, 300));
+          const requestToReject = get().requests.find(req => req.id === id);
+          if (!requestToReject) throw new Error('Request not found');
+
           set(state => ({
             requests: state.requests.map(req =>
               req.id === id ? { ...req, status: 'rejected', updatedAt: new Date().toISOString() } : req
@@ -97,6 +114,15 @@ export const useAccessRequestStore = create<AccessRequestState>()(
             isLoading: false,
             error: null
           }));
+
+          // Send email notification
+          await emailNotificationService.sendAccessRequestStatusNotification({
+            recipientEmail: requestToReject.email,
+            recipientName: `${requestToReject.firstName} ${requestToReject.lastName}`,
+            status: 'rejected',
+            rejectionReason: 'Your request did not meet our criteria.', // Example reason
+            loginUrl: `${config.app.url}/login`
+          });
         } catch (error) {
           set({ error: 'Failed to reject access request', isLoading: false });
         }

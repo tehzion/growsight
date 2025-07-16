@@ -10,17 +10,22 @@ import FormInput from '../../components/ui/FormInput';
 import { OrgAdminPermission } from '../../types';
 import ImportExportManager from '../../components/admin/ImportExportManager';
 import { useNotificationStore } from '../../stores/notificationStore';
+import OrganizationUsersDisplay from '../../components/admin/OrganizationUsersDisplay';
 
 const Organizations = () => {
   const navigate = useNavigate();
   const { user } = useAuthStore();
-  const { organizations, fetchOrganizations, createOrganization, updateOrganization, deleteOrganization, updateOrgAdminPermissions, isLoading, error } = useOrganizationStore();
+  const { organizations, fetchOrganizations, createOrganization, updateOrganization, updateOrganizationStatus, setOrganizationPeriod, reactivateOrganization, deleteOrganization, updateOrgAdminPermissions, fetchOrganizationStatusLog, isLoading, error } = useOrganizationStore();
   const { users, fetchUsers } = useUserStore();
   const { addNotification } = useNotificationStore();
   
   const [newOrgName, setNewOrgName] = useState('');
   const [editingOrg, setEditingOrg] = useState<{id: string, name: string} | null>(null);
   const [editingPermissions, setEditingPermissions] = useState<{id: string, permissions: OrgAdminPermission[]} | null>(null);
+  const [editingStatus, setEditingStatus] = useState<{id: string, status: 'active' | 'inactive' | 'suspended', reason?: string} | null>(null);
+  const [editingPeriod, setEditingPeriod] = useState<{id: string, startDate: string, endDate: string, autoTransition: boolean, graceDays: number} | null>(null);
+  const [statusLog, setStatusLog] = useState<any[]>([]);
+  const [showStatusLog, setShowStatusLog] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -30,6 +35,8 @@ const Organizations = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filteredOrganizations, setFilteredOrganizations] = useState(organizations);
   const [activeFilters, setActiveFilters] = useState<string[]>([]);
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'past'>('active'); // New state for status filter
+  const [selectedOrgId, setSelectedOrgId] = useState<string | null>(null); // New state for selected organization
   
   // Check if user is super admin
   const isSuperAdmin = user?.role === 'super_admin';
@@ -37,9 +44,16 @@ const Organizations = () => {
   useEffect(() => {
     if (isSuperAdmin) {
       fetchOrganizations();
-      fetchUsers();
+      fetchUsers(); // Fetch all users initially
     }
   }, [fetchOrganizations, fetchUsers, isSuperAdmin]);
+
+  useEffect(() => {
+    if (selectedOrgId) {
+      // Optionally, refetch users specifically for the selected organization if needed
+      // fetchUsers(selectedOrgId);
+    }
+  }, [selectedOrgId]);
 
   useEffect(() => {
     if (successMessage) {
@@ -56,7 +70,7 @@ const Organizations = () => {
     }
   }, [error]);
   
-  // Filter organizations based on search term
+  // Filter organizations based on search term and status
   useEffect(() => {
     let filtered = organizations;
     let activeFiltersList: string[] = [];
@@ -67,10 +81,18 @@ const Organizations = () => {
       );
       activeFiltersList.push('Name');
     }
+
+    if (statusFilter === 'active') {
+      filtered = filtered.filter(org => org.status === 'active' || !org.status); // Consider null/undefined status as active
+      activeFiltersList.push('Active');
+    } else if (statusFilter === 'past') {
+      filtered = filtered.filter(org => org.status === 'inactive' || org.status === 'suspended');
+      activeFiltersList.push('Past');
+    }
     
     setFilteredOrganizations(filtered);
     setActiveFilters(activeFiltersList);
-  }, [organizations, searchTerm]);
+  }, [organizations, searchTerm, statusFilter]);
 
   const handleRefresh = async () => {
     if (!isSuperAdmin) return;
@@ -233,6 +255,120 @@ const Organizations = () => {
     }
   };
 
+  const handleUpdateStatus = async () => {
+    if (!editingStatus) return;
+
+    if (!isSuperAdmin) {
+      setValidationError('Only Super Admins can update organization status');
+      return;
+    }
+
+    try {
+      await updateOrganizationStatus(editingStatus.id, editingStatus.status, editingStatus.reason);
+      setSuccessMessage(`Organization status updated to ${editingStatus.status} successfully!`);
+      setEditingStatus(null);
+      
+      // Add notification
+      addNotification({
+        title: 'Status Updated',
+        message: `Organization status has been updated to ${editingStatus.status}.`,
+        type: 'success'
+      });
+    } catch (err) {
+      console.error('Failed to update organization status:', err);
+      setValidationError((err as Error).message || 'Failed to update organization status');
+      
+      // Add error notification
+      addNotification({
+        title: 'Error',
+        message: `Failed to update organization status: ${(err as Error).message || 'Unknown error'}`,
+        type: 'error'
+      });
+    }
+  };
+
+  const handleSetPeriod = async () => {
+    if (!editingPeriod) return;
+
+    if (!isSuperAdmin) {
+      setValidationError('Only Super Admins can set organization periods');
+      return;
+    }
+
+    try {
+      await setOrganizationPeriod(
+        editingPeriod.id,
+        editingPeriod.startDate,
+        editingPeriod.endDate,
+        editingPeriod.autoTransition,
+        editingPeriod.graceDays
+      );
+      setSuccessMessage('Organization period set successfully!');
+      setEditingPeriod(null);
+      
+      // Add notification
+      addNotification({
+        title: 'Period Set',
+        message: 'Organization period has been set successfully.',
+        type: 'success'
+      });
+    } catch (err) {
+      console.error('Failed to set organization period:', err);
+      setValidationError((err as Error).message || 'Failed to set organization period');
+      
+      // Add error notification
+      addNotification({
+        title: 'Error',
+        message: `Failed to set organization period: ${(err as Error).message || 'Unknown error'}`,
+        type: 'error'
+      });
+    }
+  };
+
+  const handleReactivate = async (orgId: string) => {
+    if (!isSuperAdmin) {
+      setValidationError('Only Super Admins can reactivate organizations');
+      return;
+    }
+
+    try {
+      await reactivateOrganization(orgId);
+      setSuccessMessage('Organization reactivated successfully!');
+      
+      // Add notification
+      addNotification({
+        title: 'Organization Reactivated',
+        message: 'Organization has been reactivated and is now active.',
+        type: 'success'
+      });
+    } catch (err) {
+      console.error('Failed to reactivate organization:', err);
+      setValidationError((err as Error).message || 'Failed to reactivate organization');
+      
+      // Add error notification
+      addNotification({
+        title: 'Error',
+        message: `Failed to reactivate organization: ${(err as Error).message || 'Unknown error'}`,
+        type: 'error'
+      });
+    }
+  };
+
+  const handleShowStatusLog = async (orgId: string) => {
+    try {
+      const log = await fetchOrganizationStatusLog(orgId);
+      setStatusLog(log);
+      setShowStatusLog(orgId);
+    } catch (error) {
+      console.error('Failed to fetch status log:', error);
+      addNotification({
+        title: 'Error',
+        message: 'Failed to load status history.',
+        type: 'error'
+      });
+    }
+  };
+
   const getOrganizationStats = (orgId: string) => {
     const orgUsers = users.filter(u => u.organizationId === orgId);
     return {
@@ -244,8 +380,8 @@ const Organizations = () => {
     };
   };
 
-  const isSystemOrganization = (orgId: string) => {
-    return ['demo-org-1', 'demo-org-2', 'demo-org-3'].includes(orgId);
+  const isExpiredOrganization = (org: any) => {
+    return org.periodEndDate && new Date(org.periodEndDate) < new Date();
   };
 
   const availablePermissions: { key: OrgAdminPermission; label: string; description: string }[] = [
@@ -384,7 +520,7 @@ const Organizations = () => {
           {/* Search and Filter */}
           <Card>
             <CardContent className="p-4">
-              <div className="flex justify-between items-center">
+              <div className="flex justify-between items-center mb-4">
                 <div className="relative w-64">
                   <input
                     type="text"
@@ -398,25 +534,50 @@ const Organizations = () => {
                   </div>
                 </div>
                 
-                {/* Active Filters Indicator */}
-                {activeFilters.length > 0 && (
-                  <div className="flex items-center">
-                    <Filter className="h-4 w-4 text-gray-500 mr-2" />
-                    <span className="text-sm text-gray-600">
-                      Filters Applied: {activeFilters.join(', ')}
-                    </span>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={handleClearFilters}
-                      leftIcon={<X className="h-4 w-4" />}
-                      className="ml-2"
-                    >
-                      Clear Filters
-                    </Button>
-                  </div>
-                )}
+                {/* Status Filter Tabs */}
+                <div className="flex space-x-2">
+                  <Button
+                    variant={statusFilter === 'all' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setStatusFilter('all')}
+                  >
+                    All
+                  </Button>
+                  <Button
+                    variant={statusFilter === 'active' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setStatusFilter('active')}
+                  >
+                    Active
+                  </Button>
+                  <Button
+                    variant={statusFilter === 'past' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setStatusFilter('past')}
+                  >
+                    Past
+                  </Button>
+                </div>
               </div>
+                
+              {/* Active Filters Indicator */}
+              {activeFilters.length > 0 && (
+                <div className="flex items-center mt-2">
+                  <Filter className="h-4 w-4 text-gray-500 mr-2" />
+                  <span className="text-sm text-gray-600">
+                    Filters Applied: {activeFilters.join(', ')}
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleClearFilters}
+                    leftIcon={<X className="h-4 w-4" />}
+                    className="ml-2"
+                  >
+                    Clear Filters
+                  </Button>
+                </div>
+              )}
             </CardContent>
           </Card>
           
@@ -450,7 +611,11 @@ const Organizations = () => {
                     const isSystemOrg = isSystemOrganization(org.id);
                     
                     return (
-                      <Card key={org.id} className={`hover:shadow-card-hover transition-shadow ${isSystemOrg ? 'border-primary-200 bg-primary-50' : ''}`}>
+                      <Card 
+                        key={org.id} 
+                        className={`hover:shadow-card-hover transition-shadow ${isSystemOrg ? 'border-primary-200 bg-primary-50' : ''} ${selectedOrgId === org.id ? 'border-2 border-primary-500 shadow-lg' : ''}`}
+                        onClick={() => setSelectedOrgId(org.id)}
+                      >
                         <CardContent className="p-6">
                           {isEditing ? (
                             <div className="space-y-4">
@@ -534,6 +699,61 @@ const Organizations = () => {
                                 </Button>
                               </div>
                             </div>
+                          ) : editingStatus && editingStatus.id === org.id ? (
+                            <div className="space-y-4">
+                              <h3 className="font-medium text-gray-900">Update Organization Status</h3>
+                              <p className="text-sm text-gray-600">Change the status of this organization</p>
+                              
+                              <div className="space-y-3">
+                                <div>
+                                  <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+                                  <select
+                                    value={editingStatus.status}
+                                    onChange={(e) => setEditingStatus({
+                                      ...editingStatus,
+                                      status: e.target.value as 'active' | 'inactive' | 'suspended'
+                                    })}
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                                  >
+                                    <option value="active">Active</option>
+                                    <option value="inactive">Inactive</option>
+                                    <option value="suspended">Suspended</option>
+                                  </select>
+                                </div>
+                                
+                                <div>
+                                  <label className="block text-sm font-medium text-gray-700 mb-1">Reason (Optional)</label>
+                                  <textarea
+                                    value={editingStatus.reason || ''}
+                                    onChange={(e) => setEditingStatus({
+                                      ...editingStatus,
+                                      reason: e.target.value
+                                    })}
+                                    placeholder="Enter reason for status change..."
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                                    rows={3}
+                                  />
+                                </div>
+                              </div>
+                              
+                              <div className="flex gap-2">
+                                <Button
+                                  onClick={handleUpdateStatus}
+                                  size="sm"
+                                  isLoading={isLoading}
+                                  disabled={isLoading}
+                                >
+                                  Update Status
+                                </Button>
+                                <Button
+                                  onClick={() => setEditingStatus(null)}
+                                  variant="outline"
+                                  size="sm"
+                                >
+                                  Cancel
+                                </Button>
+                              </div>
+                            </div>
                           ) : (
                             <div>
                               <div className="flex items-start justify-between mb-4">
@@ -546,6 +766,16 @@ const Organizations = () => {
                                         System
                                       </span>
                                     )}
+                                    <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                                      org.status === 'active' || !org.status ? 'bg-green-100 text-green-800' :
+                                      org.status === 'inactive' ? 'bg-gray-100 text-gray-800' :
+                                      'bg-red-100 text-red-800'
+                                    }`}>
+                                      {org.status === 'active' || !org.status ? <CheckCircle className="h-3 w-3 mr-1" /> :
+                                       org.status === 'inactive' ? <Clock className="h-3 w-3 mr-1" /> :
+                                       <AlertTriangle className="h-3 w-3 mr-1" />}
+                                      {org.status ? org.status.charAt(0).toUpperCase() + org.status.slice(1) : 'Active'}
+                                    </span>
                                   </div>
                                   <p className="text-sm text-gray-500">
                                     Created {new Date(org.createdAt).toLocaleDateString()}
@@ -571,6 +801,26 @@ const Organizations = () => {
                                     leftIcon={<Settings className="h-4 w-4" />}
                                   >
                                     Permissions
+                                  </Button>
+                                  <Button
+                                    onClick={() => setEditingStatus({ 
+                                      id: org.id, 
+                                      status: org.status || 'active' 
+                                    })}
+                                    variant="outline"
+                                    size="sm"
+                                    leftIcon={<Activity className="h-4 w-4" />}
+                                    disabled={isSystemOrg}
+                                  >
+                                    Status
+                                  </Button>
+                                  <Button
+                                    onClick={() => handleShowStatusLog(org.id)}
+                                    variant="outline"
+                                    size="sm"
+                                    leftIcon={<Clock className="h-4 w-4" />}
+                                  >
+                                    History
                                   </Button>
                                   <Button
                                     onClick={() => navigate('/users')}
@@ -658,7 +908,82 @@ const Organizations = () => {
               )}
             </CardContent>
           </Card>
+
+          {/* Selected Organization Users and Results */}
+          {selectedOrgId && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center">
+                  <Users className="h-5 w-5 mr-2" />
+                  Users in Selected Organization
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <OrganizationUsersDisplay organizationId={selectedOrgId} />
+              </CardContent>
+            </Card>
+          )}
         </>
+      )}
+
+      {/* Status History Modal */}
+      {showStatusLog && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-2xl w-full max-h-[80vh] overflow-y-auto">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-medium text-gray-900">Status History</h3>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowStatusLog(null)}
+                leftIcon={<X className="h-4 w-4" />}
+              >
+                Close
+              </Button>
+            </div>
+            
+            <div className="space-y-4">
+              {statusLog.length === 0 ? (
+                <p className="text-gray-500 text-center py-8">No status changes recorded.</p>
+              ) : (
+                statusLog.map((log, index) => (
+                  <div key={log.id || index} className="border-l-4 border-primary-200 pl-4 py-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-2">
+                        <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                          log.old_status === 'active' ? 'bg-green-100 text-green-800' :
+                          log.old_status === 'inactive' ? 'bg-gray-100 text-gray-800' :
+                          'bg-red-100 text-red-800'
+                        }`}>
+                          {log.old_status || 'Unknown'}
+                        </span>
+                        <ArrowRight className="h-4 w-4 text-gray-400" />
+                        <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                          log.new_status === 'active' ? 'bg-green-100 text-green-800' :
+                          log.new_status === 'inactive' ? 'bg-gray-100 text-gray-800' :
+                          'bg-red-100 text-red-800'
+                        }`}>
+                          {log.new_status}
+                        </span>
+                      </div>
+                      <span className="text-sm text-gray-500">
+                        {new Date(log.created_at).toLocaleDateString()} {new Date(log.created_at).toLocaleTimeString()}
+                      </span>
+                    </div>
+                    <div className="mt-1 text-sm text-gray-600">
+                      Changed by: {log.changed_by_user ? `${log.changed_by_user.first_name} ${log.changed_by_user.last_name}` : log.changed_by || 'System'}
+                    </div>
+                    {log.reason && (
+                      <div className="mt-1 text-sm text-gray-600">
+                        Reason: {log.reason}
+                      </div>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

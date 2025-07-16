@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase';
 import SecureLogger from '../lib/secureLogger';
 
 export interface EmailNotificationData {
-  type: 'assignment_created' | 'assessment_completed' | 'deadline_reminder' | 'user_created';
+  type: 'assignment_created' | 'assessment_completed' | 'deadline_reminder' | 'user_created' | 'access_request_status';
   recipientEmail: string;
   recipientName: string;
   data: Record<string, any>;
@@ -85,6 +85,8 @@ export class EmailNotificationService {
     overallScore: number;
     relationshipType: string;
     organizationName?: string;
+    recipientEmail: string; // New parameter
+    recipientName: string; // New parameter
   }): Promise<void> {
     if (!config.features.emailNotifications || config.email.provider === 'demo') {
       console.log('Email notifications disabled or in demo mode');
@@ -92,31 +94,24 @@ export class EmailNotificationService {
     }
 
     try {
-      // Send completion notification to employee
+      // Send completion notification to the specified recipient (org admin)
       await emailService.sendAssessmentCompletionNotification(
-        completionData.employeeEmail,
-        completionData.reviewerEmail,
+        completionData.recipientEmail,
+        completionData.recipientName,
         completionData.assessmentTitle,
         completionData.overallScore,
-        completionData.relationshipType
+        completionData.relationshipType,
+        completionData.employeeName // Pass employee name for context
       );
 
-      // Send completion notification to reviewer
-      await emailService.sendAssessmentCompletionNotification(
-        completionData.reviewerEmail,
-        completionData.employeeEmail,
-        completionData.assessmentTitle,
-        completionData.overallScore,
-        completionData.relationshipType
-      );
-
-      SecureLogger.info('Assessment completion notification emails sent successfully', {
+      SecureLogger.info('Assessment completion notification email sent successfully to org admin', {
         assignmentId: completionData.assignmentId,
+        recipientEmail: completionData.recipientEmail,
         employeeEmail: completionData.employeeEmail,
         reviewerEmail: completionData.reviewerEmail
       });
     } catch (error) {
-      SecureLogger.error('Failed to send assessment completion notification emails', error);
+      SecureLogger.error('Failed to send assessment completion notification email to org admin', error);
       throw error;
     }
   }
@@ -240,6 +235,34 @@ export class EmailNotificationService {
   }
 
   /**
+   * Send access request status notification
+   */
+  async sendAccessRequestStatusNotification(data: {
+    recipientEmail: string;
+    recipientName: string;
+    status: 'approved' | 'rejected';
+    rejectionReason?: string;
+    loginUrl: string;
+  }): Promise<void> {
+    if (!config.features.emailNotifications || config.email.provider === 'demo') {
+      console.log('Email notifications disabled or in demo mode');
+      return;
+    }
+
+    try {
+      await emailService.sendAccessRequestStatus(data);
+
+      SecureLogger.info('Access request status email sent successfully', {
+        recipientEmail: data.recipientEmail,
+        status: data.status
+      });
+    } catch (error) {
+      SecureLogger.error('Failed to send access request status email', error);
+      throw error;
+    }
+  }
+
+  /**
    * Process pending email notifications
    */
   async processPendingNotifications(): Promise<void> {
@@ -323,7 +346,9 @@ export class EmailNotificationService {
           assessmentTitle: data.assessmentTitle,
           overallScore: data.overallScore,
           relationshipType: data.relationshipType,
-          organizationName: data.organizationName
+          organizationName: data.organizationName,
+          recipientEmail: recipient_email,
+          recipientName: recipient_name,
         });
         break;
 
@@ -352,6 +377,34 @@ export class EmailNotificationService {
           departmentId: data.departmentId,
           departmentName: data.departmentName,
           assignedBy: data.assignedBy
+        });
+        break;
+
+      case 'access_request_status':
+        await this.sendAccessRequestStatusNotification({
+          recipientEmail: recipient_email,
+          recipientName: recipient_name,
+          status: data.status,
+          rejectionReason: data.rejectionReason,
+          loginUrl: data.loginUrl
+        });
+        break;
+
+      case 'org_admin_account_created':
+        await this.sendOrgAdminAccountCreatedNotification({
+          recipientEmail: recipient_email,
+          recipientName: recipient_name,
+          organizationId: data.organizationId,
+          loginUrl: data.loginUrl
+        });
+        break;
+
+      case 'org_admin_account_created':
+        await this.sendOrgAdminAccountCreatedNotification({
+          recipientEmail: recipient_email,
+          recipientName: recipient_name,
+          organizationId: data.organizationId,
+          loginUrl: data.loginUrl
         });
         break;
 
@@ -405,6 +458,10 @@ export class EmailNotificationService {
         return 'Assessment Deadline Reminder';
       case 'user_created':
         return 'Welcome to Your Organization';
+      case 'access_request_status':
+        return 'Your Access Request Status Update';
+      case 'org_admin_account_created':
+        return 'Your Organization Admin Account Details';
       default:
         return 'Notification';
     }
@@ -423,6 +480,10 @@ export class EmailNotificationService {
         return `Reminder: Your assessment ${data.assessmentTitle} is due in ${data.daysRemaining} days.`;
       case 'user_created':
         return `Welcome ${data.firstName} ${data.lastName}! Your account has been created successfully.`;
+      case 'access_request_status':
+        return `Your access request for ${data.organizationName} has been ${data.status}.`;
+      case 'org_admin_account_created':
+        return `Your Organization Admin account for ${data.organizationName} has been created. Your login email is ${data.email}.`;
       default:
         return 'You have a new notification.';
     }
