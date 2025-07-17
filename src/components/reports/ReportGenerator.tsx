@@ -34,7 +34,12 @@ const ReportGenerator: React.FC<ReportGeneratorProps> = ({ selfAssessment, peerR
     return Array.from(questions.values());
   };
 
-  const allQuestionTexts = getAllQuestionTexts();
+  const selectedQuestions = useState<string>();
+  const [reportType, setReportType] = useState<'summary' | 'detailed' | 'comparison'>('summary');
+  const [isGenerating, setIsGenerating] = useState(false);
+  
+  // Remove unused variable
+  // const allQuestionTexts = questions.map(q => q.text).join(' ');
 
   return (
     <div className="report-container p-8 bg-white shadow-lg rounded-lg">

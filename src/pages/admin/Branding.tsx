@@ -35,14 +35,19 @@ const Branding: React.FC = () => {
   });
 
   const isSuperAdmin = user?.role === 'super_admin';
+  const isOrgAdmin = user?.role === 'org_admin';
+  const canAccessBranding = isSuperAdmin || isOrgAdmin;
   const selectedOrg = organizations.find(org => org.id === selectedOrgId);
 
   useEffect(() => {
-    // Fetch organizations for super admin
+    // Fetch organizations for super admin, or set current org for org admin
     if (isSuperAdmin) {
       fetchOrganizations();
+    } else if (isOrgAdmin && currentOrganization) {
+      // For org admin, set their organization as selected
+      setSelectedOrgId(currentOrganization.id);
     }
-  }, [isSuperAdmin, fetchOrganizations]);
+  }, [isSuperAdmin, isOrgAdmin, currentOrganization, fetchOrganizations]);
 
   useEffect(() => {
     // Initialize web branding with PDF settings for consistency
@@ -55,14 +60,14 @@ const Branding: React.FC = () => {
     }));
   }, [pdfSettings, selectedOrg]);
 
-  // Redirect if not super admin
-  if (!isSuperAdmin) {
+  // Redirect if not authorized
+  if (!canAccessBranding) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
         <div className="text-center">
           <AlertTriangle className="h-12 w-12 text-warning-500 mx-auto mb-4" />
           <h2 className="text-xl font-semibold text-gray-900 mb-2">Access Denied</h2>
-          <p className="text-gray-600">Only super administrators can access branding settings.</p>
+          <p className="text-gray-600">Only super administrators and organization administrators can access branding settings.</p>
         </div>
       </div>
     );
@@ -128,29 +133,44 @@ const Branding: React.FC = () => {
         </div>
         
         {/* Organization Selector for Super Admin */}
-        <div className="mb-4">
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Select Organization
-          </label>
-          <div className="relative">
-            <Building2 className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-            <select
-              value={selectedOrgId}
-              onChange={(e) => setSelectedOrgId(e.target.value)}
-              className="pl-10 w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500"
-            >
-              <option value="">Select an organization...</option>
-              {organizations.map((org) => (
-                <option key={org.id} value={org.id}>
-                  {org.name}
-                </option>
-              ))}
-            </select>
+        {isSuperAdmin && (
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Select Organization
+            </label>
+            <div className="relative">
+              <Building2 className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <select
+                value={selectedOrgId}
+                onChange={(e) => setSelectedOrgId(e.target.value)}
+                className="pl-10 w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+              >
+                <option value="">Select an organization...</option>
+                {organizations.map((org) => (
+                  <option key={org.id} value={org.id}>
+                    {org.name}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
-        </div>
+        )}
+        
+        {/* Organization Info for Org Admin */}
+        {isOrgAdmin && currentOrganization && (
+          <div className="mb-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
+            <div className="flex items-center">
+              <Building2 className="h-5 w-5 text-blue-600 mr-2" />
+              <div>
+                <h3 className="font-medium text-blue-900">Managing Branding for: {currentOrganization.name}</h3>
+                <p className="text-sm text-blue-700 mt-1">You can customize your organization's branding settings below.</p>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
-      {selectedOrgId && (
+      {(selectedOrgId || isOrgAdmin) && (
         <div className="space-y-6">
           <div className="flex justify-between items-center">
             <div className="flex space-x-2">
@@ -665,18 +685,23 @@ const Branding: React.FC = () => {
                 </div>
               </div>
 
-              {/* Organization-specific notice for Super Admin */}
+              {/* Organization-specific notice */}
               <div className="bg-primary-50 p-4 rounded-lg border border-primary-200 mt-6">
                 <div className="flex items-start">
                   <AlertTriangle className="h-5 w-5 text-primary-600 mt-0.5 mr-3" />
                   <div>
                     <h4 className="text-sm font-medium text-primary-800">Organization Branding</h4>
                     <p className="text-sm text-primary-700 mt-1">
-                      These branding settings will apply to <strong>{selectedOrg?.name}</strong> and all its users.
+                      These branding settings will apply to <strong>{selectedOrg?.name || currentOrganization?.name}</strong> and all its users.
                     </p>
                     <p className="text-sm text-primary-700 mt-1">
                       Changes will affect both the web interface and PDF exports for this organization.
                     </p>
+                    {isOrgAdmin && (
+                      <p className="text-sm text-primary-700 mt-1">
+                        <strong>Note:</strong> As an organization administrator, you can only modify your own organization's branding.
+                      </p>
+                    )}
                   </div>
                 </div>
               </div>
@@ -687,7 +712,7 @@ const Branding: React.FC = () => {
         </div>
       )}
 
-      {!selectedOrgId && (
+      {!selectedOrgId && isSuperAdmin && (
         <div className="text-center py-12">
           <Building2 className="h-12 w-12 text-gray-400 mx-auto mb-4" />
           <h3 className="text-lg font-medium text-gray-900 mb-2">Select an Organization</h3>

@@ -63,11 +63,11 @@ const getConfig = (): AppConfig => {
   
   return {
     supabase: {
-      url: import.meta.env.VITE_SUPABASE_URL || 'https://demo.supabase.co',
-      anonKey: import.meta.env.VITE_SUPABASE_ANON_KEY || 'demo-key',
+      url: import.meta.env.VITE_SUPABASE_URL || '',
+      anonKey: import.meta.env.VITE_SUPABASE_ANON_KEY || '',
     },
     email: {
-      provider: isDevelopment ? 'demo' : (import.meta.env.VITE_EMAIL_PROVIDER || 'smtp'),
+      provider: import.meta.env.VITE_EMAIL_PROVIDER || 'smtp',
       apiKey: import.meta.env.VITE_SENDGRID_API_KEY || import.meta.env.VITE_MAILGUN_API_KEY || '',
       fromEmail: import.meta.env.VITE_EMAIL_FROM_ADDRESS || 'noreply@growsight.com',
       fromName: import.meta.env.VITE_EMAIL_FROM_NAME || 'Growsight',
@@ -123,11 +123,11 @@ export const config = getConfig();
 export const validateEnvironment = (): { isValid: boolean; errors: string[] } => {
   const errors: string[] = [];
   
-  if (!config.supabase.url || config.supabase.url === 'https://demo.supabase.co') {
+  if (!config.supabase.url) {
       errors.push('VITE_SUPABASE_URL is required for production');
     }
     
-    if (!config.supabase.anonKey || config.supabase.anonKey === 'demo-key') {
+    if (!config.supabase.anonKey) {
       errors.push('VITE_SUPABASE_ANON_KEY is required for production');
     }
     

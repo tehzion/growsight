@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Send, Paperclip, X, User, AlertTriangle, Star, StarHalf } from 'lucide-react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { Send, Paperclip, X, User, AlertTriangle, Star } from 'lucide-react';
 import { useAuthStore } from '../../stores/authStore';
 import { useSupportStore } from '../../stores/supportStore';
 import { TicketMessage, TicketStatus } from '../../types';
@@ -23,7 +23,7 @@ const TicketChat: React.FC<TicketChatProps> = ({ ticketId, status }) => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
-  const ticketMessages = messages[ticketId] || [];
+  const ticketMessages = useMemo(() => messages[ticketId] || [], [messages, ticketId]);
   const isResolved = status === 'resolved';
   const isClosed = status === 'closed';
   

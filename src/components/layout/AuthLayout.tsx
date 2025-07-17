@@ -1,5 +1,7 @@
 import { Outlet } from 'react-router-dom';
-import { CheckCircle2 } from 'lucide-react';
+import { Shield, Lock, User } from 'lucide-react';
+import { useAuthStore } from '../../stores/authStore';
+import { useNavigate } from 'react-router-dom';
 
 const AuthLayout = () => {
   return (

@@ -1,5 +1,5 @@
 import React from 'react';
-import { CheckCircle, User, Building2, Settings, FileText, Info } from 'lucide-react';
+import { CheckCircle, User, Building2, FileText } from 'lucide-react';
 import { Card, CardContent } from '../ui/Card';
 import { useAuthStore } from '../../stores/authStore';
 import { useOrganizationStore } from '../../stores/organizationStore';

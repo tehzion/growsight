@@ -78,13 +78,13 @@ export const BulkOperationsManager: React.FC = () => {
 
   const [operations, setOperations] = useState<BulkOperation[]>([]);
   const [templates, setTemplates] = useState<BulkTemplate[]>([]);
-  const [selectedOperation] = useState<BulkOperation | null>(null);
+  const [_selectedOperation] = useState<BulkOperation | null>(null);
   const [activeTab, setActiveTab] = useState<'operations' | 'templates' | 'create'>('operations');
   const [operationType, setOperationType] = useState<string>('user_import');
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [previewData, setPreviewData] = useState<Record<string, unknown>[]>([]);
   const [validationResults, setValidationResults] = useState<ValidationError[]>([]);
-  const [showApprovalDialog] = useState(false);
+  const [_showApprovalDialog] = useState(false);
 
   // Check permissions
   const canCreateBulkOps = rbac.hasPermission(user, 'users.create.bulk');

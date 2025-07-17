@@ -47,6 +47,7 @@ const EnhancedUserManager: React.FC<EnhancedUserManagerProps> = ({
   const { users, fetchUsers, createUser, updateUser, deleteUser, isLoading } = useUserStore();
   const { departments, fetchDepartments } = useDepartmentStore();
   const { addNotification: _addNotification } = useNotificationStore();
+  // Using _addNotification prefix to indicate intentionally unused variable
 
   // State management
   const [showAddForm, setShowAddForm] = useState(false);

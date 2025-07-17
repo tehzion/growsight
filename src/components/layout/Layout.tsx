@@ -11,7 +11,6 @@ const Layout = () => {
   const { user, logout } = useAuthStore();
   const { fetchOrganizations, currentOrganization } = useOrganizationStore();
   const navigate = useNavigate();
-  const location = useLocation();
   
   useEffect(() => {
     if (user?.role === 'super_admin') {

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Users, Plus, Trash2, Edit3, UserCheck } from 'lucide-react';
+import { Users, Plus, Trash2, UserCheck } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '../ui/Card';
 import Button from '../ui/Button';
 import { useRelationshipStore } from '../../stores/relationshipStore';

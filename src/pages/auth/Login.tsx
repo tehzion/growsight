@@ -64,11 +64,6 @@ const Login = () => {
   const from = locationState.from?.pathname || '/dashboard';
   const message = locationState.message;
   
-  const demoCredentials = {
-    organizationId: 'demo-org-1',
-    email: 'admin@acme.com',
-    password: 'password123',
-  };
   const formRef = useRef<HTMLFormElement>(null);
   
   useEffect(() => {
@@ -256,24 +251,6 @@ const Login = () => {
             leftIcon={<LogIn className="h-4 w-4" />}
           >
             Sign in
-          </Button>
-          {/* Demo Login Button */}
-          <Button
-            type="button"
-            variant="outline"
-            size="lg"
-            fullWidth
-            className="mt-2"
-            onClick={() => {
-              // Set demo credentials in the form fields
-              (document.querySelector('input[name="organizationId"]') as HTMLInputElement).value = demoCredentials.organizationId;
-              (document.querySelector('input[name="email"]') as HTMLInputElement).value = demoCredentials.email;
-              (document.querySelector('input[name="password"]') as HTMLInputElement).value = demoCredentials.password;
-              // Optionally, trigger form submit
-              formRef.current?.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
-            }}
-          >
-            Demo Login
           </Button>
         </form>
       )}

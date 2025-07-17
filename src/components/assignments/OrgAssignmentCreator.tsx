@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Building2, Users, UserCheck, Calendar, Mail, Plus, X, Search, Filter } from 'lucide-react';
-import { Card, CardHeader, CardTitle, CardContent } from '../ui/Card';
+import { X, Search, Calendar } from 'lucide-react';
+import { Card, CardContent } from '../ui/Card';
 import Button from '../ui/Button';
 import FormInput from '../ui/FormInput';
 import { useUserStore } from '../../stores/userStore';
@@ -91,11 +91,6 @@ const OrgAssignmentCreator: React.FC<OrgAssignmentCreatorProps> = ({ onClose, on
   const getAssessmentTitle = (assessmentId: string) => {
     const assessment = assessments.find(a => a.id === assessmentId);
     return assessment?.title || 'Unknown Assessment';
-  };
-
-  const getUserName = (userId: string) => {
-    const user = users.find(u => u.id === userId);
-    return user ? `${user.firstName} ${user.lastName}` : 'Unknown User';
   };
 
   const getUserDetails = (userId: string) => {
