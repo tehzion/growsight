@@ -3,7 +3,7 @@ import { persist } from 'zustand/middleware';
 import { supabase } from '../lib/supabase';
 import { emailService } from '../services/emailService';
 import { config } from '../config/environment';
-import { User, LoginCredentials } from '../types';
+import { User, LoginCredentials, AdminLoginCredentials } from '../types';
 import SecureLogger from '../lib/secureLogger';
 import SessionSecurity from '../lib/security/sessionSecurity';
 import SecureStorage from '../lib/security/secureStorage';
@@ -15,6 +15,7 @@ interface AuthState {
   sessionId: string | null;
   lastActivity: number;
   login: (credentials: LoginCredentials) => Promise<void>;
+  loginAsAdmin: (credentials: AdminLoginCredentials) => Promise<void>;
   logout: () => void;
   sendOTP: (email: string, organizationId: string) => Promise<void>;
   verifyOTP: (email: string, otp: string, organizationId: string) => Promise<void>;
@@ -206,6 +207,154 @@ export const useAuthStore = create<AuthState>()(
             }
         } catch (error) {
           console.error('Login error:', error);
+          set({ error: (error as Error).message, isLoading: false });
+        }
+      },
+
+      loginAsAdmin: async (credentials: AdminLoginCredentials) => {
+        set({ isLoading: true, error: null });
+        try {
+          if (!supabase) {
+            throw new Error('Database connection not available. Please check your configuration.');
+          }
+
+          const { data, error } = await supabase.auth.signInWithPassword({
+            email: credentials.email.trim().toLowerCase(),
+            password: credentials.password,
+          });
+
+          if (error) {
+            // Enhanced error messages for admin login
+            if (error.message.includes('Invalid login credentials')) {
+              throw new Error('Invalid administrator credentials. Please check your email and password.');
+            } else if (error.message.includes('Email not confirmed')) {
+              throw new Error('Administrator account not confirmed. Please contact system support.');
+            } else if (error.message.includes('Too many requests')) {
+              throw new Error('Too many login attempts. Please wait a few minutes before trying again.');
+            } else {
+              throw new Error(`Admin login failed: ${error.message}`);
+            }
+          }
+
+          if (data.user) {
+            // Cancel any previous request
+            const currentController = get()._abortController;
+            if (currentController) {
+              currentController.abort();
+            }
+            
+            // Create new abort controller for this request
+            const abortController = new AbortController();
+            set({ _abortController: abortController });
+
+            // Fetch user profile from database with race condition protection
+            let retries = 3;
+            let profile = null;
+            
+            while (retries > 0 && !profile && !abortController.signal.aborted) {
+              try {
+                const { data: profileData, error: profileError } = await supabase
+                  .from('users')
+                  .select('*')
+                  .eq('id', data.user.id)
+                  .abortSignal(abortController.signal)
+                  .single();
+
+                if (profileError) {
+                  if (profileError.code === 'PGRST116') {
+                    throw new Error('Administrator profile not found. Please contact system support.');
+                  }
+                  throw profileError;
+                }
+
+                profile = profileData;
+              } catch (err: any) {
+                if (err.name === 'AbortError') {
+                  return;
+                }
+                retries--;
+                if (retries === 0) throw err;
+                
+                await new Promise((resolve, reject) => {
+                  const timeoutId = setTimeout(resolve, 1000);
+                  abortController.signal.addEventListener('abort', () => {
+                    clearTimeout(timeoutId);
+                    reject(new Error('AbortError'));
+                  });
+                });
+              }
+            }
+            
+            // Clear abort controller after successful completion
+            set({ _abortController: null });
+
+            if (!profile) {
+              throw new Error('Unable to load administrator profile. Please try again.');
+            }
+
+            // Verify that the user is a super admin
+            if (profile.role !== 'super_admin') {
+              throw new Error('Access denied. Only system administrators can access this portal.');
+            }
+
+            const user: User = {
+              id: profile.id,
+              email: profile.email,
+              firstName: profile.first_name,
+              lastName: profile.last_name,
+              role: profile.role,
+              organizationId: profile.organization_id,
+              departmentId: profile.department_id,
+              createdAt: profile.created_at,
+              updatedAt: profile.updated_at,
+              requiresPasswordChange: profile.requires_password_change || false
+            };
+
+            // Initialize session security
+            const state = get();
+            if (!state._sessionSecurity) {
+              state._sessionSecurity = SessionSecurity.getInstance({
+                idleTimeout: config.security.sessionTimeout,
+                maxSessionAge: config.security.sessionTimeout * 2,
+                secureStorage: true,
+                crossTabSync: true,
+                sessionFingerprinting: true
+              });
+            }
+            
+            if (!state._secureStorage) {
+              state._secureStorage = SecureStorage.createSecureLocal();
+            }
+
+            // Create secure session
+            const sessionId = state._sessionSecurity.createSession(user.id);
+            
+            // Store user data securely
+            state._secureStorage.setItem('user_profile', user, config.security.sessionTimeout);
+
+            set({ 
+              user, 
+              sessionId, 
+              lastActivity: Date.now(), 
+              isLoading: false,
+              _sessionSecurity: state._sessionSecurity,
+              _secureStorage: state._secureStorage
+            });
+
+            // Redirect to password reset if required
+            if (user.requiresPasswordChange) {
+              throw new Error('PASSWORD_RESET_REQUIRED');
+            }
+
+            SecureLogger.info('Administrator logged in successfully', {
+              type: 'auth',
+              context: 'admin_login_success',
+              userId: user.id,
+              sessionId
+            });
+          }
+        } catch (error) {
+          console.error('Admin login error:', error);
           set({ error: (error as Error).message, isLoading: false });
         }
       },

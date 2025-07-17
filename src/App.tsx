@@ -6,6 +6,7 @@ import Layout from './components/layout/Layout';
 import AuthLayout from './components/layout/AuthLayout';
 import Dashboard from './pages/Dashboard';
 import Login from './pages/auth/Login';
+import RootLogin from './pages/auth/RootLogin';
 import RequestAccess from './pages/auth/RequestAccess';
 import ForgotPassword from './pages/auth/ForgotPassword';
 import ResetPassword from './pages/auth/ResetPassword';
@@ -120,6 +121,13 @@ function App() {
     <ErrorBoundary>
       <ToastContainer position="top-right" />
       <Routes>
+        {/* Root Admin Login - Standalone route */}
+        <Route path="/root" element={
+          <ErrorBoundary fallback={<div className="p-4 text-center">Error loading admin login page. Please refresh.</div>}>
+            <RootLogin />
+          </ErrorBoundary>
+        } />
+        
         {/* Auth Routes - Always accessible */}
         <Route element={<AuthLayout />}>
           <Route path="/login" element={
