@@ -24,9 +24,17 @@ const ResetPassword = () => {
   const location = useLocation();
   const { email, organizationId } = (location.state || {}) as { email?: string; organizationId?: string };
   
-  // In a real app, get token from URL query parameters
+  // Get token from URL query parameters with validation
   const query = new URLSearchParams(location.search);
-  const token = query.get('token') || '';
+  const rawToken = query.get('token') || '';
+  
+  // Validate token format (should be base64-like string with minimum length)
+  const token = rawToken && /^[a-zA-Z0-9+/=]{20,}$/.test(rawToken) ? rawToken : '';
+  
+  // Log potential security issue if invalid token detected
+  if (rawToken && !token) {
+    console.warn('Invalid password reset token format detected', { timestamp: new Date().toISOString() });
+  }
   
   const {
     register,

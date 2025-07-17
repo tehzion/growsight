@@ -9,6 +9,7 @@ import { EmailTemplate } from '../../types';
 import ReactQuill from 'react-quill';
 import 'react-quill/dist/quill.snow.css';
 import { useNotificationStore } from '../../stores/notificationStore';
+import { XSSProtection } from '../../lib/security/xssProtection';
 
 const EmailTemplateManager: React.FC = () => {
   const { user } = useAuthStore();
@@ -57,7 +58,9 @@ const EmailTemplateManager: React.FC = () => {
   };
 
   const handleBodyChange = (value: string) => {
-    setFormData(prev => ({ ...prev, body: value }));
+    // Sanitize rich text content to prevent XSS
+    const sanitizedValue = XSSProtection.sanitizeRichText(value);
+    setFormData(prev => ({ ...prev, body: sanitizedValue }));
   };
 
   const handleSaveTemplate = async () => {

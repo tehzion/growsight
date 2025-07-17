@@ -295,7 +295,7 @@ const mockOrganizationResults: Record<string, AssessmentResult[]> = {
   ]
 };
 
-export const useResultStore = create<ResultState>((set, get) => ({
+export const useResultStore = create<ResultState>((set) => ({
   results: {},
   isLoading: false,
   error: null,
@@ -320,7 +320,7 @@ export const useResultStore = create<ResultState>((set, get) => ({
     }
   },
   
-  fetchOrganizationResults: async (organizationId: string, anonymized: boolean = true) => {
+  fetchOrganizationResults: async (organizationId: string, _anonymized: boolean = true) => {
     set({ isLoading: true, error: null });
     try {
       // Simulate API call

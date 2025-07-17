@@ -12,13 +12,41 @@ export interface PDFExportOptions {
 }
 
 export interface AssessmentData {
-  analytics?: any;
-  comparisonData?: any[];
-  selfAssessments?: any[];
-  reviewsAboutMe?: any[];
-  reviewsDoneByMe?: any[];
-  departmentBreakdown?: any;
-  allOrgResults?: any[];
+  analytics?: {
+    totalAssessments: number;
+    completedAssessments: number;
+    averageScore?: number;
+    completionRate?: number;
+    relationshipTypeBreakdown?: Record<string, number>;
+    topStrengths?: string[];
+    areasForImprovement?: string[];
+  };
+  comparisonData?: Record<string, unknown>[];
+  selfAssessments?: {
+    assessment_title?: string;
+    completed_at: string;
+    average_score?: number;
+    status: string;
+  }[];
+  reviewsAboutMe?: {
+    assessment_title?: string;
+    reviewer_name?: string;
+    relationship_type?: string;
+    average_score?: number;
+    status: string;
+  }[];
+  reviewsDoneByMe?: Record<string, unknown>[];
+  departmentBreakdown?: Record<string, {
+    total_assessments?: number;
+    completed_assessments?: number;
+    average_score?: number;
+  }>;
+  allOrgResults?: {
+    organization_name?: string;
+    total_assessments?: number;
+    completed_assessments?: number;
+    average_score?: number;
+  }[];
 }
 
 export class PDFExporter {
@@ -300,7 +328,7 @@ export const exportAssessmentResultsPDF = async (
 };
 
 export const exportAnalyticsPDF = async (
-  analytics: any,
+  analytics: AssessmentData['analytics'],
   options: PDFExportOptions
 ): Promise<Blob> => {
   const exporter = new PDFExporter(options);
@@ -308,7 +336,7 @@ export const exportAnalyticsPDF = async (
 };
 
 export const exportUserResultsPDF = async (
-  userData: any,
+  userData: Pick<AssessmentData, 'selfAssessments' | 'reviewsAboutMe' | 'reviewsDoneByMe'>,
   options: PDFExportOptions
 ): Promise<Blob> => {
   const exporter = new PDFExporter(options);

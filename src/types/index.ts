@@ -294,7 +294,7 @@ export interface UserActivity {
   ipAddress?: string;
   userAgent?: string;
   createdAt: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 export interface UserPreferences {
@@ -495,7 +495,7 @@ export interface SystemMetrics {
   metricUnit?: string;
   category: 'performance' | 'security' | 'usage' | 'health' | 'business';
   timestamp: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 export interface SystemHealth {
@@ -540,7 +540,7 @@ export interface EmailTemplate {
   organization_id: string;
   created_at: string;
   updated_at: string;
-  template_data?: Record<string, any>;
+  template_data?: Record<string, unknown>;
   recipient_email?: string;
   recipient_name?: string;
 }

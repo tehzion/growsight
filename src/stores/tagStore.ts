@@ -19,12 +19,12 @@ interface TagState {
   removeUserTag: (userTagId: string) => Promise<void>;
   removeOrganizationTag: (orgTagId: string) => Promise<void>;
   generateInsights: (userId?: string, organizationId?: string) => Promise<TagInsight[]>;
-  analyzeUserForTags: (userId: string, assessmentData?: any) => Promise<UserTag[]>;
-  analyzeOrganizationForTags: (organizationId: string, metricsData?: any) => Promise<OrganizationTag[]>;
+  analyzeUserForTags: (userId: string, assessmentData?: Record<string, unknown>) => Promise<UserTag[]>;
+  analyzeOrganizationForTags: (organizationId: string, metricsData?: Record<string, unknown>) => Promise<OrganizationTag[]>;
   clearError: () => void;
 }
 
-const useTagStore = create<TagState>((set, get) => ({
+const useTagStore = create<TagState>((set) => ({
   tags: [],
   userTags: [],
   organizationTags: [],

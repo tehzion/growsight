@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/lib/supabase';
+import { XSSProtection } from '@/lib/security/xssProtection';
 
 
 interface WebBrandingSettings {
@@ -471,25 +472,42 @@ export default function OrganizationBranding() {
 
   // Preview email template
   const previewEmailTemplate = () => {
+    // Sanitize all user inputs to prevent XSS
+    const sanitizedSenderName = XSSProtection.sanitizeText(emailSettings.sender_name || '');
+    const sanitizedPrimaryColor = XSSProtection.sanitizeText(emailSettings.primary_color || '#007bff');
+    const sanitizedSecondaryColor = XSSProtection.sanitizeText(emailSettings.secondary_color || '#6c757d');
+    const sanitizedLogoUrl = XSSProtection.sanitizeUrl(emailSettings.logo_url || '');
+    const sanitizedEmailHeader = XSSProtection.sanitizeText(emailSettings.email_header || 'Welcome to Our Platform');
+    const sanitizedEmailFooter = XSSProtection.sanitizeText(emailSettings.email_footer || '© 2024 Your Organization. All rights reserved.');
+
+    // Validate color values (must be valid CSS colors)
+    const isValidColor = (color: string): boolean => {
+      const colorRegex = /^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$|^rgb\(\s*\d+\s*,\s*\d+\s*,\s*\d+\s*\)$|^rgba\(\s*\d+\s*,\s*\d+\s*,\s*\d+\s*,\s*[\d.]+\s*\)$/;
+      return colorRegex.test(color) || CSS.supports('color', color);
+    };
+
+    const primaryColor = isValidColor(sanitizedPrimaryColor) ? sanitizedPrimaryColor : '#007bff';
+    const secondaryColor = isValidColor(sanitizedSecondaryColor) ? sanitizedSecondaryColor : '#6c757d';
+
     const template = `
       <!DOCTYPE html>
       <html>
       <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>${emailSettings.sender_name}</title>
+        <title>${sanitizedSenderName}</title>
         <style>
           body { font-family: Arial, sans-serif; margin: 0; padding: 20px; }
-          .header { background-color: ${emailSettings.primary_color}; color: white; padding: 20px; text-align: center; }
+          .header { background-color: ${primaryColor}; color: white; padding: 20px; text-align: center; }
           .content { padding: 20px; }
-          .footer { background-color: ${emailSettings.secondary_color}; color: white; padding: 20px; text-align: center; }
+          .footer { background-color: ${secondaryColor}; color: white; padding: 20px; text-align: center; }
           .logo { max-width: 200px; height: auto; }
         </style>
       </head>
       <body>
         <div class="header">
-          ${emailSettings.logo_url ? `<img src="${emailSettings.logo_url}" alt="Logo" class="logo">` : ''}
-          <h1>${emailSettings.email_header || 'Welcome to Our Platform'}</h1>
+          ${sanitizedLogoUrl ? `<img src="${sanitizedLogoUrl}" alt="Logo" class="logo">` : ''}
+          <h1>${sanitizedEmailHeader}</h1>
         </div>
         <div class="content">
           <h2>Sample Email Content</h2>
@@ -497,7 +515,7 @@ export default function OrganizationBranding() {
           <p>You can customize the header text, footer text, and colors to match your brand identity.</p>
         </div>
         <div class="footer">
-          <p>${emailSettings.email_footer || '© 2024 Your Organization. All rights reserved.'}</p>
+          <p>${sanitizedEmailFooter}</p>
         </div>
       </body>
       </html>

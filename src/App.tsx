@@ -47,9 +47,10 @@ import SubscriberAssessments from './pages/subscriber/SubscriberAssessments';
 import RoleProtectedRoute from './components/auth/RoleProtectedRoute';
 import Assessment360Reporting from './pages/admin/Assessment360Reporting';
 import Assessment360Selector from './components/assessments/Assessment360Selector';
+import SessionMonitor from './components/security/SessionMonitor';
 
 function App() {
-  const { user, refreshSession } = useAuthStore();
+  const { user, refreshSession, logout, updateActivity, validateSession } = useAuthStore();
   const { fetchProfile } = useProfileStore();
   
   // Validate environment on app start
@@ -78,6 +79,42 @@ function App() {
       fetchProfile(user.id);
     }
   }, [user, fetchProfile]);
+
+  // Set up session security event listeners
+  useEffect(() => {
+    const handleSessionExpired = (event: CustomEvent) => {
+      console.warn('Session expired:', event.detail.reason);
+      logout();
+    };
+
+    const handleUserActivity = () => {
+      if (user) {
+        updateActivity();
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && user) {
+        // Validate session when tab becomes visible
+        if (!validateSession()) {
+          logout();
+        }
+      }
+    };
+
+    // Listen for session expiration events
+    window.addEventListener('sessionExpired', handleSessionExpired as EventListener);
+    
+    // Monitor user activity
+    window.addEventListener('focus', handleUserActivity);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener('sessionExpired', handleSessionExpired as EventListener);
+      window.removeEventListener('focus', handleUserActivity);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [user, logout, updateActivity, validateSession]);
   
   return (
     <ErrorBoundary>
@@ -303,6 +340,9 @@ function App() {
         {/* 404 Route */}
         <Route path="*" element={<NotFound />} />
       </Routes>
+      
+      {/* Session Monitor - only show for authenticated users */}
+      {user && <SessionMonitor />}
     </ErrorBoundary>
   );
 }

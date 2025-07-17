@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import ReactQuill from 'react-quill';
 import 'react-quill/dist/quill.snow.css';
+import { XSSProtection } from '@/lib/security/xssProtection';
 import { 
   User, 
   Mail, 
@@ -204,11 +205,14 @@ const UserProfile: React.FC = () => {
   const onProfileSubmit = async (data: ProfileFormData) => {
     setProfileUpdateStatus('saving');
     try {
+      // Sanitize bio content before saving to prevent XSS
+      const sanitizedBio = XSSProtection.sanitizeRichText(bioContent);
+      
       await updateProfile({
         phone: data.phone,
         jobTitle: data.jobTitle,
         location: data.location,
-        bio: bioContent,
+        bio: sanitizedBio,
         skills: data.skills,
         interests: data.interests,
         certifications: data.certifications,

@@ -399,15 +399,6 @@ export class EmailNotificationService {
         });
         break;
 
-      case 'org_admin_account_created':
-        await this.sendOrgAdminAccountCreatedNotification({
-          recipientEmail: recipient_email,
-          recipientName: recipient_name,
-          organizationId: data.organizationId,
-          loginUrl: data.loginUrl
-        });
-        break;
-
       default:
         throw new Error(`Unknown notification type: ${type}`);
     }

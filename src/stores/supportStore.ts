@@ -1,9 +1,9 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { SupportTicket, TicketMessage, TicketAttachment, TicketStatus, PriorityLevel, TicketCategory, Role } from '../types';
+import { SupportTicket, TicketMessage, TicketAttachment, TicketStatus, PriorityLevel, TicketCategory } from '../types';
 import { supportService, SupportTicketResponse, SupportTicketAttachment, ContactOption, CreateTicketData } from '../services/supportService';
 
-interface SupportState {
+export interface SupportState {
   tickets: SupportTicket[];
   messages: Record<string, TicketMessage[]>; // ticketId -> messages
   isLoading: boolean;
@@ -231,7 +231,7 @@ export const useSupportStore = create<SupportStore>()(
           const { tickets: currentTickets } = get();
           
           // If we already have tickets, use those, otherwise use mock data
-          let allTickets = currentTickets.length > 0 ? currentTickets : mockTickets;
+          const allTickets = currentTickets.length > 0 ? currentTickets : mockTickets;
           
           // Filter tickets based on user role and organization
           let filteredTickets: SupportTicket[];

@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { UserRelationship, RelationshipType, User } from '../types';
+import { UserRelationship, RelationshipType } from '../types';
 
 interface RelationshipState {
   relationships: UserRelationship[];
@@ -77,7 +77,7 @@ export const useRelationshipStore = create<RelationshipState>()(
             : allRelationships;
           
           set({ relationships: filteredRelationships, isLoading: false });
-        } catch (error) {
+        } catch {
           set({ error: 'Failed to fetch relationships', isLoading: false });
         }
       },
@@ -99,7 +99,7 @@ export const useRelationshipStore = create<RelationshipState>()(
             relationships: [...state.relationships, newRelationship],
             isLoading: false,
           }));
-        } catch (error) {
+        } catch {
           set({ error: 'Failed to create relationship', isLoading: false });
         }
       },
@@ -115,7 +115,7 @@ export const useRelationshipStore = create<RelationshipState>()(
             ),
             isLoading: false,
           }));
-        } catch (error) {
+        } catch {
           set({ error: 'Failed to update relationship', isLoading: false });
         }
       },
@@ -129,7 +129,7 @@ export const useRelationshipStore = create<RelationshipState>()(
             relationships: state.relationships.filter(rel => rel.id !== id),
             isLoading: false,
           }));
-        } catch (error) {
+        } catch {
           set({ error: 'Failed to delete relationship', isLoading: false });
         }
       },

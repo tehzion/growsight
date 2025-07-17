@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { User, Role } from '../types';
+import { User } from '../types';
 import AccessControl from '../lib/accessControl';
 import SecureLogger from '../lib/secureLogger';
 import { useProfileStore } from './profileStore';

@@ -5,11 +5,15 @@ import { emailService } from '../services/emailService';
 import { config } from '../config/environment';
 import { User, LoginCredentials } from '../types';
 import SecureLogger from '../lib/secureLogger';
+import SessionSecurity from '../lib/security/sessionSecurity';
+import SecureStorage from '../lib/security/secureStorage';
 
 interface AuthState {
   user: User | null;
   isLoading: boolean;
   error: string | null;
+  sessionId: string | null;
+  lastActivity: number;
   login: (credentials: LoginCredentials) => Promise<void>;
   logout: () => void;
   sendOTP: (email: string, organizationId: string) => Promise<void>;
@@ -18,10 +22,15 @@ interface AuthState {
   setNewPassword: (token: string, password: string) => Promise<void>;
   updatePassword: (currentPassword: string, newPassword: string) => Promise<void>;
   refreshSession: () => Promise<void>;
+  validateSession: () => boolean;
+  updateActivity: () => void;
+  logoutAllSessions: () => Promise<void>;
   clearError: () => void;
   hasPermission: (permission: string) => boolean;
   // Add abort controller to cancel requests
   _abortController: AbortController | null;
+  _sessionSecurity: SessionSecurity | null;
+  _secureStorage: SecureStorage | null;
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -30,7 +39,11 @@ export const useAuthStore = create<AuthState>()(
       user: null,
       isLoading: false,
       error: null,
+      sessionId: null,
+      lastActivity: Date.now(),
       _abortController: null,
+      _sessionSecurity: null,
+      _secureStorage: null,
       
       clearError: () => set({ error: null }),
       
@@ -147,12 +160,49 @@ export const useAuthStore = create<AuthState>()(
                 requiresPasswordChange: profile.requires_password_change || false
               };
 
-              set({ user, isLoading: false });
+              // Initialize session security
+              const state = get();
+              if (!state._sessionSecurity) {
+                state._sessionSecurity = SessionSecurity.getInstance({
+                  idleTimeout: config.security.sessionTimeout,
+                  maxSessionAge: config.security.sessionTimeout * 2,
+                  secureStorage: true,
+                  crossTabSync: true,
+                  sessionFingerprinting: true
+                });
+              }
+              
+              if (!state._secureStorage) {
+                state._secureStorage = SecureStorage.createSecureLocal();
+              }
+
+              // Create secure session
+              const sessionId = state._sessionSecurity.createSession(user.id);
+              
+              // Store user data securely
+              state._secureStorage.setItem('user_profile', user, config.security.sessionTimeout);
+
+              set({ 
+                user, 
+                sessionId, 
+                lastActivity: Date.now(), 
+                isLoading: false,
+                _sessionSecurity: state._sessionSecurity,
+                _secureStorage: state._secureStorage
+              });
 
               // Redirect to password reset if required
               if (user.requiresPasswordChange) {
                 throw new Error('PASSWORD_RESET_REQUIRED');
               }
+
+              SecureLogger.info('User logged in successfully', {
+                type: 'auth',
+                context: 'login_success',
+                userId: user.id,
+                organizationId: user.organizationId,
+                sessionId
+              });
             }
         } catch (error) {
           console.error('Login error:', error);
@@ -310,19 +360,64 @@ export const useAuthStore = create<AuthState>()(
       
       logout: async () => {
         set({ isLoading: true, error: null });
+        const state = get();
+        
         try {
+          // Destroy session security
+          if (state._sessionSecurity && state.sessionId) {
+            state._sessionSecurity.destroySession(state.sessionId, 'manual_logout');
+          }
+          
+          // Clear secure storage
+          if (state._secureStorage) {
+            state._secureStorage.clear();
+          }
+          
+          // Supabase logout
           if (supabase) {
             const { error } = await supabase.auth.signOut();
             if (error) {
-              SecureLogger.warn('Logout error occurred', { type: 'logout' });
-              // Don't throw error for logout, just log it
+              SecureLogger.warn('Supabase logout error', { 
+                type: 'logout',
+                error: error.message 
+              });
             }
           }
-          set({ user: null, error: null, isLoading: false });
+          
+          SecureLogger.info('User logged out successfully', {
+            type: 'auth',
+            context: 'logout_success',
+            userId: state.user?.id,
+            sessionId: state.sessionId
+          });
+          
+          set({ 
+            user: null, 
+            sessionId: null, 
+            lastActivity: 0,
+            error: null, 
+            isLoading: false,
+            _sessionSecurity: null,
+            _secureStorage: null
+          });
         } catch (error) {
           console.error('Logout error:', error);
+          SecureLogger.error('Logout failed', {
+            type: 'auth',
+            context: 'logout_error',
+            error: error instanceof Error ? error.message : 'Unknown error'
+          });
+          
           // Force logout even if there's an error
-          set({ user: null, error: null, isLoading: false });
+          set({ 
+            user: null, 
+            sessionId: null, 
+            lastActivity: 0,
+            error: null, 
+            isLoading: false,
+            _sessionSecurity: null,
+            _secureStorage: null
+          });
         }
       },
       
@@ -477,6 +572,39 @@ export const useAuthStore = create<AuthState>()(
         }
       },
 
+      validateSession: () => {
+        const state = get();
+        if (!state.sessionId || !state._sessionSecurity) {
+          return false;
+        }
+        
+        return state._sessionSecurity.validateSession(state.sessionId);
+      },
+
+      updateActivity: () => {
+        const state = get();
+        if (state._sessionSecurity && state.sessionId) {
+          state._sessionSecurity.updateActivity(state.sessionId);
+          set({ lastActivity: Date.now() });
+        }
+      },
+
+      logoutAllSessions: async () => {
+        const state = get();
+        if (state._sessionSecurity && state.user) {
+          state._sessionSecurity.logoutAllSessions(state.user.id);
+          
+          // Log out current session
+          await get().logout();
+          
+          SecureLogger.info('All sessions logged out', {
+            type: 'auth',
+            context: 'logout_all_sessions',
+            userId: state.user.id
+          });
+        }
+      },
+
       hasPermission: (permission: string) => {
         const { user } = get();
         
@@ -508,8 +636,46 @@ export const useAuthStore = create<AuthState>()(
     {
       name: 'auth-storage',
       partialize: (state) => ({
-        user: state.user,
+        // Only persist minimal session info, not sensitive user data
+        sessionId: state.sessionId,
+        lastActivity: state.lastActivity
       }),
+      // Custom storage implementation for enhanced security
+      storage: {
+        getItem: (name: string) => {
+          try {
+            // Use sessionStorage for auth data to prevent persistence across browser sessions
+            const item = sessionStorage.getItem(name);
+            return item ? JSON.parse(item) : null;
+          } catch (error) {
+            SecureLogger.warn('Failed to retrieve auth storage', {
+              type: 'storage',
+              error: error instanceof Error ? error.message : 'Unknown error'
+            });
+            return null;
+          }
+        },
+        setItem: (name: string, value: any) => {
+          try {
+            sessionStorage.setItem(name, JSON.stringify(value));
+          } catch (error) {
+            SecureLogger.warn('Failed to store auth data', {
+              type: 'storage',
+              error: error instanceof Error ? error.message : 'Unknown error'
+            });
+          }
+        },
+        removeItem: (name: string) => {
+          try {
+            sessionStorage.removeItem(name);
+          } catch (error) {
+            SecureLogger.warn('Failed to remove auth storage', {
+              type: 'storage',
+              error: error instanceof Error ? error.message : 'Unknown error'
+            });
+          }
+        }
+      }
     }
   )
 );

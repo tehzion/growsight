@@ -187,7 +187,7 @@ export const useReportingStore = create<ReportingState>((set, get) => ({
       const { dateRange } = get();
       const startDate = new Date(dateRange.start);
       const endDate = new Date(dateRange.end);
-      const days = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
+      const _days = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
 
       let trends: TrendData[] = [];
 
@@ -208,20 +208,20 @@ export const useReportingStore = create<ReportingState>((set, get) => ({
           if (usersError) throw usersError;
 
           // Group by date
-          const userGroups = users?.reduce((acc, user) => {
-            const date = new Date(user.created_at).toISOString().split('T')[0];
+          const userGroups = users?.reduce((acc: Record<string, number>, u: { created_at: string }) => {
+            const date = new Date(u.created_at).toISOString().split('T')[0];
             acc[date] = (acc[date] || 0) + 1;
             return acc;
           }, {} as Record<string, number>) || {};
 
           trends = Object.entries(userGroups).map(([date, count]) => ({
             date,
-            value: count,
+            value: Number(count),
             label: `New Users: ${count}`
           }));
           break;
 
-        case 'assessments':
+        case 'assessments': {
           // Get assessment creation trends
           let assessmentQuery = supabase
             .from('assessments')
@@ -236,20 +236,21 @@ export const useReportingStore = create<ReportingState>((set, get) => ({
           const { data: assessments, error: assessmentsError } = await assessmentQuery;
           if (assessmentsError) throw assessmentsError;
 
-          const assessmentGroups = assessments?.reduce((acc, assessment) => {
-            const date = new Date(assessment.created_at).toISOString().split('T')[0];
+          const assessmentGroups = assessments?.reduce((acc: Record<string, number>, a: { created_at: string }) => {
+            const date = new Date(a.created_at).toISOString().split('T')[0];
             acc[date] = (acc[date] || 0) + 1;
             return acc;
           }, {} as Record<string, number>) || {};
 
           trends = Object.entries(assessmentGroups).map(([date, count]) => ({
             date,
-            value: count,
+            value: Number(count),
             label: `New Assessments: ${count}`
           }));
           break;
+        }
 
-        case 'organizations':
+        case 'organizations': {
           if (user.role === 'super_admin') {
             const { data: organizations, error: orgError } = await supabase
               .from('organizations')
@@ -257,19 +258,20 @@ export const useReportingStore = create<ReportingState>((set, get) => ({
 
             if (orgError) throw orgError;
 
-            const orgGroups = organizations?.reduce((acc, org) => {
-              const date = new Date(org.created_at).toISOString().split('T')[0];
+            const orgGroups = organizations?.reduce((acc: Record<string, number>, o: { created_at: string }) => {
+              const date = new Date(o.created_at).toISOString().split('T')[0];
               acc[date] = (acc[date] || 0) + 1;
               return acc;
             }, {} as Record<string, number>) || {};
 
             trends = Object.entries(orgGroups).map(([date, count]) => ({
               date,
-              value: count,
+              value: Number(count),
               label: `New Organizations: ${count}`
             }));
           }
           break;
+        }
       }
 
       // Sort by date
@@ -322,11 +324,11 @@ export const useReportingStore = create<ReportingState>((set, get) => ({
         if (resultsError) continue;
 
         const totalAssigned = results?.length || 0;
-        const totalCompleted = results?.filter(r => r.is_completed).length || 0;
+        const totalCompleted = results?.filter((r: { is_completed: boolean }) => r.is_completed).length || 0;
         const completionRate = totalAssigned > 0 ? (totalCompleted / totalAssigned) * 100 : 0;
         const averageScore = totalCompleted > 0 
-          ? results?.filter(r => r.is_completed)
-              .reduce((sum, r) => sum + (r.total_score || 0), 0) / totalCompleted
+          ? results?.filter((r: { is_completed: boolean; total_score?: number }) => r.is_completed)
+              .reduce((sum: number, r: { total_score?: number }) => sum + (r.total_score || 0), 0) / totalCompleted
           : 0;
 
         assessmentStats.push({
@@ -388,10 +390,10 @@ export const useReportingStore = create<ReportingState>((set, get) => ({
         if (resultsError) continue;
 
         const totalAssessments = results?.length || 0;
-        const completedAssessments = results?.filter(r => r.is_completed).length || 0;
+        const completedAssessments = results?.filter((r: { is_completed: boolean }) => r.is_completed).length || 0;
         const averageScore = completedAssessments > 0
-          ? results?.filter(r => r.is_completed)
-              .reduce((sum, r) => sum + (r.total_score || 0), 0) / completedAssessments
+          ? results?.filter((r: { is_completed: boolean; total_score?: number }) => r.is_completed)
+              .reduce((sum: number, r: { total_score?: number }) => sum + (r.total_score || 0), 0) / completedAssessments
           : 0;
 
         userActivity.push({
@@ -459,11 +461,11 @@ export const useReportingStore = create<ReportingState>((set, get) => ({
         const totalUsers = users?.length || 0;
         const totalAssessments = assessments?.length || 0;
         const totalResults = results?.length || 0;
-        const completedResults = results?.filter(r => r.is_completed).length || 0;
+        const completedResults = results?.filter((r: { is_completed: boolean }) => r.is_completed).length || 0;
         const averageCompletionRate = totalResults > 0 ? (completedResults / totalResults) * 100 : 0;
         const averageScore = completedResults > 0
-          ? results?.filter(r => r.is_completed)
-              .reduce((sum, r) => sum + (r.total_score || 0), 0) / completedResults
+          ? results?.filter((r: { is_completed: boolean; total_score?: number }) => r.is_completed)
+              .reduce((sum: number, r: { total_score?: number }) => sum + (r.total_score || 0), 0) / completedResults
           : 0;
         const activeUsers = users?.filter(u => 
           u.last_login && new Date(u.last_login) > new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)

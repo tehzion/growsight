@@ -77,7 +77,7 @@ const Users = () => {
   // Filter users based on search term and filters
   useEffect(() => {
     let filtered = users;
-    let activeFiltersList: string[] = [];
+    const activeFiltersList: string[] = [];
     
     // Hide root users from non-root users
     if (currentUser?.role !== 'root') {

@@ -73,7 +73,7 @@ const Organizations = () => {
   // Filter organizations based on search term and status
   useEffect(() => {
     let filtered = organizations;
-    let activeFiltersList: string[] = [];
+    const activeFiltersList: string[] = [];
     
     if (searchTerm) {
       filtered = filtered.filter(org => 

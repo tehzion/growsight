@@ -5,28 +5,18 @@ import {
   Trash2, 
   Edit3, 
   Download, 
-  Upload, 
   Filter, 
   Search, 
-  CheckSquare, 
-  Square, 
-  MoreVertical,
   UserPlus,
   Building2,
-  Mail,
-  Phone,
-  Calendar,
-  Settings,
   RefreshCw,
-  Eye,
-  EyeOff,
   SortAsc,
   SortDesc
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '../ui/Card';
 import Button from '../ui/Button';
 import FormInput from '../ui/FormInput';
-import { User, Role, Department } from '../../types';
+import { User } from '../../types';
 import { useUserStore } from '../../stores/userStore';
 import { useDepartmentStore } from '../../stores/departmentStore';
 import { useAuthStore } from '../../stores/authStore';
@@ -41,7 +31,7 @@ interface EnhancedUserManagerProps {
 interface BulkOperation {
   type: 'delete' | 'role_update' | 'department_update' | 'status_update';
   selectedUsers: string[];
-  data?: any;
+  data?: Record<string, unknown>;
 }
 
 interface SortConfig {
@@ -56,7 +46,7 @@ const EnhancedUserManager: React.FC<EnhancedUserManagerProps> = ({
   const { user: currentUser } = useAuthStore();
   const { users, fetchUsers, createUser, updateUser, deleteUser, isLoading } = useUserStore();
   const { departments, fetchDepartments } = useDepartmentStore();
-  const { addNotification } = useNotificationStore();
+  const { addNotification: _addNotification } = useNotificationStore();
 
   // State management
   const [showAddForm, setShowAddForm] = useState(false);
@@ -129,8 +119,8 @@ const EnhancedUserManager: React.FC<EnhancedUserManagerProps> = ({
 
     // Apply sorting
     filtered.sort((a, b) => {
-      let aValue: any = a[sortConfig.key];
-      let bValue: any = b[sortConfig.key];
+      let aValue: unknown = a[sortConfig.key as keyof User];
+      let bValue: unknown = b[sortConfig.key as keyof User];
 
       // Handle department sorting
       if (sortConfig.key === 'department') {
