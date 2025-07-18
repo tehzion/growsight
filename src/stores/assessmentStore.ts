@@ -28,104 +28,7 @@ interface AssessmentState {
   assignOrganizations: (assessmentId: string, organizationIds: string[]) => Promise<void>;
 }
 
-// Enhanced mock data with preset assessments using 1-7 scale
-const defaultMockAssessments: Assessment[] = [
-  {
-    id: 'preset-assessment-1',
-    title: 'Leadership Excellence Assessment',
-    description: 'Comprehensive evaluation of leadership capabilities and management skills',
-    organizationId: 'demo-org-1',
-    createdById: '1',
-    createdAt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
-    updatedAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
-    assessmentType: 'preset',
-    isDeletable: false,
-    sections: [
-      {
-        id: 'preset-section-1',
-        title: 'Communication & Interpersonal Skills',
-        description: 'Evaluate communication effectiveness and relationship building',
-        order: 1,
-        questions: [
-          {
-            id: 'preset-question-1',
-            text: 'How effectively does this person communicate complex ideas to team members?',
-            order: 1,
-            questionType: 'rating',
-            scaleMax: 7,
-            isRequired: true,
-            options: []
-          },
-          {
-            id: 'preset-question-2',
-            text: 'Rate their ability to provide constructive feedback',
-            order: 2,
-            questionType: 'rating',
-            scaleMax: 7,
-            isRequired: true,
-            options: []
-          }
-        ]
-      },
-      {
-        id: 'preset-section-2',
-        title: 'Decision Making & Problem Solving',
-        description: 'Assess analytical thinking and decision-making capabilities',
-        order: 2,
-        questions: [
-          {
-            id: 'preset-question-3',
-            text: 'How well does this person analyze complex problems?',
-            order: 1,
-            questionType: 'rating',
-            scaleMax: 7,
-            isRequired: true,
-            options: []
-          }
-        ]
-      }
-    ],
-    assignedOrganizations: [
-      { id: 'demo-org-1', name: 'Acme Corporation', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
-      { id: 'demo-org-2', name: 'TechStart Solutions', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
-      { id: 'demo-org-3', name: 'Global Enterprises', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }
-    ]
-  },
-  {
-    id: 'preset-assessment-2',
-    title: 'Team Collaboration Assessment',
-    description: 'Evaluate teamwork, collaboration, and interpersonal effectiveness',
-    organizationId: 'demo-org-1',
-    createdById: '1',
-    createdAt: new Date(Date.now() - 25 * 24 * 60 * 60 * 1000).toISOString(),
-    updatedAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
-    assessmentType: 'preset',
-    isDeletable: false,
-    sections: [
-      {
-        id: 'preset-section-3',
-        title: 'Teamwork & Collaboration',
-        description: 'Assess ability to work effectively with others',
-        order: 1,
-        questions: [
-          {
-            id: 'preset-question-4',
-            text: 'How well does this person collaborate with cross-functional teams?',
-            order: 1,
-            questionType: 'rating',
-            scaleMax: 7,
-            isRequired: true,
-            options: []
-          }
-        ]
-      }
-    ],
-    assignedOrganizations: [
-      { id: 'demo-org-1', name: 'Acme Corporation', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
-      { id: 'demo-org-2', name: 'TechStart Solutions', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }
-    ]
-  }
-];
+// Preset assessments are loaded from database
 
 export const useAssessmentStore = create<AssessmentState>()(
   persist(
@@ -161,72 +64,56 @@ export const useAssessmentStore = create<AssessmentState>()(
           const { data: dbAssessments, error } = await query.order('created_at', { ascending: false });
 
           if (error) {
-            console.warn('Failed to fetch from database, using mock data:', error);
-            // Fallback to mock data
-            await new Promise(resolve => setTimeout(resolve, 500));
-            
-            const { assessments: currentAssessments } = get();
-            
-            // Merge preset assessments with custom assessments
-            const presetAssessments = defaultMockAssessments;
-            const customAssessments = currentAssessments.filter(a => a.assessmentType !== 'preset');
-            const allAssessments = [...presetAssessments, ...customAssessments];
-            
-            const filteredAssessments = organizationId 
-              ? allAssessments.filter(a => 
-                  a.organizationId === organizationId || 
-                  (a.assessmentType === 'preset' && a.assignedOrganizations?.some(org => org.id === organizationId))
-                )
-              : allAssessments;
-            
-            set({ assessments: filteredAssessments, isLoading: false, error: null });
-          } else {
-            // Transform database assessments to match our interface
-            const transformedAssessments = dbAssessments.map(dbAssessment => {
-              // Group questions by section
-              const questionsBySection = dbAssessment.assessment_questions.reduce((acc: any, question: any) => {
-                const section = question.section || 'General';
-                if (!acc[section]) {
-                  acc[section] = [];
-                }
-                acc[section].push({
-                  id: question.id,
-                  text: question.question_text,
-                  order: question.order_index,
-                  questionType: question.question_type,
-                  scaleMax: question.scale_max || 7,
-                  isRequired: question.is_required,
-                  options: question.question_options || []
-                });
-                return acc;
-              }, {});
-
-              // Create sections from grouped questions
-              const sections = Object.entries(questionsBySection).map(([sectionName, questions]: [string, any], index) => ({
-                id: `section-${index}`,
-                title: sectionName,
-                description: `${sectionName} assessment questions`,
-                order: index + 1,
-                questions: questions.sort((a: any, b: any) => a.order - b.order)
-              }));
-
-              return {
-                id: dbAssessment.id,
-                title: dbAssessment.title,
-                description: dbAssessment.description,
-                organizationId: dbAssessment.organization_id,
-                createdById: dbAssessment.created_by_id,
-                createdAt: dbAssessment.created_at,
-                updatedAt: dbAssessment.updated_at,
-                assessmentType: dbAssessment.assessment_type || 'custom',
-                isDeletable: dbAssessment.is_deletable !== false,
-                sections,
-                assignedOrganizations: dbAssessment.assigned_organizations || []
-              };
-            });
-
-            set({ assessments: transformedAssessments, isLoading: false, error: null });
+            console.error('Failed to fetch assessments from database:', error);
+            set({ assessments: [], isLoading: false, error: 'Failed to fetch assessments' });
+            return;
           }
+
+          // Transform database assessments to match our interface
+          const transformedAssessments = dbAssessments.map((dbAssessment: any) => {
+            // Group questions by section
+            const questionsBySection = dbAssessment.assessment_questions.reduce((acc: any, question: any) => {
+              const section = question.section || 'General';
+              if (!acc[section]) {
+                acc[section] = [];
+              }
+              acc[section].push({
+                id: question.id,
+                text: question.question_text,
+                order: question.order_index,
+                questionType: question.question_type,
+                scaleMax: question.scale_max || 7,
+                isRequired: question.is_required,
+                options: question.question_options || []
+              });
+              return acc;
+            }, {});
+
+            // Create sections from grouped questions
+            const sections = Object.entries(questionsBySection).map(([sectionName, questions]: [string, any], index) => ({
+              id: `section-${index}`,
+              title: sectionName,
+              description: `${sectionName} assessment questions`,
+              order: index + 1,
+              questions: questions.sort((a: any, b: any) => a.order - b.order)
+            }));
+
+            return {
+              id: dbAssessment.id,
+              title: dbAssessment.title,
+              description: dbAssessment.description,
+              organizationId: dbAssessment.organization_id,
+              createdById: dbAssessment.created_by_id,
+              createdAt: dbAssessment.created_at,
+              updatedAt: dbAssessment.updated_at,
+              assessmentType: dbAssessment.assessment_type || 'custom',
+              isDeletable: dbAssessment.is_deletable !== false,
+              sections,
+              assignedOrganizations: dbAssessment.assigned_organizations || []
+            };
+          });
+
+          set({ assessments: transformedAssessments, isLoading: false, error: null });
         } catch (error) {
           set({ error: 'Failed to fetch assessments', isLoading: false });
         }
@@ -251,62 +138,52 @@ export const useAssessmentStore = create<AssessmentState>()(
             .single();
 
           if (error) {
-            console.warn('Failed to fetch from database, using mock data:', error);
-            // Fallback to mock data
-            await new Promise(resolve => setTimeout(resolve, 500));
-            
-            const { assessments } = get();
-            const allAssessments = [...defaultMockAssessments, ...assessments];
-            const assessment = allAssessments.find(a => a.id === id);
-            
-            if (assessment) {
-              set({ currentAssessment: assessment, isLoading: false, error: null });
-            } else {
-              set({ error: 'Assessment not found', isLoading: false });
-            }
-          } else {
-            // Transform database assessment
-            const questionsBySection = dbAssessment.assessment_questions.reduce((acc: any, question: any) => {
-              const section = question.section || 'General';
-              if (!acc[section]) {
-                acc[section] = [];
-              }
-              acc[section].push({
-                id: question.id,
-                text: question.question_text,
-                order: question.order_index,
-                questionType: question.question_type,
-                scaleMax: question.scale_max || 7,
-                isRequired: question.is_required,
-                options: question.question_options || []
-              });
-              return acc;
-            }, {});
-
-            const sections = Object.entries(questionsBySection).map(([sectionName, questions]: [string, any], index) => ({
-              id: `section-${index}`,
-              title: sectionName,
-              description: `${sectionName} assessment questions`,
-              order: index + 1,
-              questions: questions.sort((a: any, b: any) => a.order - b.order)
-            }));
-
-            const assessment = {
-              id: dbAssessment.id,
-              title: dbAssessment.title,
-              description: dbAssessment.description,
-              organizationId: dbAssessment.organization_id,
-              createdById: dbAssessment.created_by_id,
-              createdAt: dbAssessment.created_at,
-              updatedAt: dbAssessment.updated_at,
-              assessmentType: dbAssessment.assessment_type || 'custom',
-              isDeletable: dbAssessment.is_deletable !== false,
-              sections,
-              assignedOrganizations: dbAssessment.assigned_organizations || []
-            };
-
-            set({ currentAssessment: assessment, isLoading: false, error: null });
+            console.error('Failed to fetch assessment from database:', error);
+            set({ error: 'Assessment not found', isLoading: false });
+            return;
           }
+
+          // Transform database assessment
+          const questionsBySection = dbAssessment.assessment_questions.reduce((acc: any, question: any) => {
+            const section = question.section || 'General';
+            if (!acc[section]) {
+              acc[section] = [];
+            }
+            acc[section].push({
+              id: question.id,
+              text: question.question_text,
+              order: question.order_index,
+              questionType: question.question_type,
+              scaleMax: question.scale_max || 7,
+              isRequired: question.is_required,
+              options: question.question_options || []
+            });
+            return acc;
+          }, {});
+
+          const sections = Object.entries(questionsBySection).map(([sectionName, questions]: [string, any], index) => ({
+            id: `section-${index}`,
+            title: sectionName,
+            description: `${sectionName} assessment questions`,
+            order: index + 1,
+            questions: questions.sort((a: any, b: any) => a.order - b.order)
+          }));
+
+          const assessment = {
+            id: dbAssessment.id,
+            title: dbAssessment.title,
+            description: dbAssessment.description,
+            organizationId: dbAssessment.organization_id,
+            createdById: dbAssessment.created_by_id,
+            createdAt: dbAssessment.created_at,
+            updatedAt: dbAssessment.updated_at,
+            assessmentType: dbAssessment.assessment_type || 'custom',
+            isDeletable: dbAssessment.is_deletable !== false,
+            sections,
+            assignedOrganizations: dbAssessment.assigned_organizations || []
+          };
+
+          set({ currentAssessment: assessment, isLoading: false, error: null });
         } catch (error) {
           set({ error: 'Failed to fetch assessment', isLoading: false });
         }
@@ -327,41 +204,31 @@ export const useAssessmentStore = create<AssessmentState>()(
             .order('created_at', { ascending: false });
 
           if (error) {
-            console.warn('Failed to fetch from database, using mock data:', error);
-            // Fallback to mock data
-            await new Promise(resolve => setTimeout(resolve, 300));
-            
-            // Include both preset and published custom assessments
-            const { publishedAssessments } = get();
-            const allPublishedAssessments = [...defaultMockAssessments, ...publishedAssessments];
-            
-            set({ 
-              userAssessments: allPublishedAssessments, 
-              isLoading: false, 
-              error: null 
-            });
-          } else {
-            // Transform database assessments
-            const transformedAssessments = dbAssessments.map(dbAssessment => ({
-              id: dbAssessment.id,
-              title: dbAssessment.title,
-              description: dbAssessment.description,
-              organizationId: dbAssessment.organization_id,
-              createdById: dbAssessment.created_by_id,
-              createdAt: dbAssessment.created_at,
-              updatedAt: dbAssessment.updated_at,
-              assessmentType: dbAssessment.assessment_type || 'custom',
-              isDeletable: dbAssessment.is_deletable !== false,
-              sections: [], // Simplified for user view
-              assignedOrganizations: dbAssessment.assigned_organizations || []
-            }));
-
-            set({ 
-              userAssessments: transformedAssessments, 
-              isLoading: false, 
-              error: null 
-            });
+            console.error('Failed to fetch user assessments from database:', error);
+            set({ userAssessments: [], isLoading: false, error: 'Failed to fetch user assessments' });
+            return;
           }
+
+          // Transform database assessments
+          const transformedAssessments = dbAssessments.map((dbAssessment: any) => ({
+            id: dbAssessment.id,
+            title: dbAssessment.title,
+            description: dbAssessment.description,
+            organizationId: dbAssessment.organization_id,
+            createdById: dbAssessment.created_by_id,
+            createdAt: dbAssessment.created_at,
+            updatedAt: dbAssessment.updated_at,
+            assessmentType: dbAssessment.assessment_type || 'custom',
+            isDeletable: dbAssessment.is_deletable !== false,
+            sections: [], // Simplified for user view
+            assignedOrganizations: dbAssessment.assigned_organizations || []
+          }));
+
+          set({ 
+            userAssessments: transformedAssessments, 
+            isLoading: false, 
+            error: null 
+          });
         } catch (error) {
           set({ error: 'Failed to fetch user assessments', isLoading: false });
         }

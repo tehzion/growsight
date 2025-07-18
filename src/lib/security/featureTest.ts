@@ -56,7 +56,7 @@ const testFormValidation = async (): Promise<FeatureTestResult> => {
     // Test form validation schemas
     const forms = document.querySelectorAll('form');
     let validForms = 0;
-    let totalForms = forms.length;
+    const totalForms = forms.length;
     
     forms.forEach(form => {
       const inputs = form.querySelectorAll('input[required], select[required], textarea[required]');
@@ -84,7 +84,7 @@ const testSaveButtons = async (): Promise<FeatureTestResult> => {
   try {
     const saveButtons = document.querySelectorAll('button[type="submit"], button:contains("Save"), button:contains("Submit")');
     let functionalButtons = 0;
-    let totalButtons = saveButtons.length;
+    const totalButtons = saveButtons.length;
     
     saveButtons.forEach(button => {
       const hasOnClick = button.hasAttribute('onclick') || 
@@ -113,7 +113,7 @@ const testFormSubmissions = async (): Promise<FeatureTestResult> => {
   try {
     const forms = document.querySelectorAll('form');
     let submittedForms = 0;
-    let totalForms = forms.length;
+    const totalForms = forms.length;
     
     // Check for form submission handlers
     forms.forEach(form => {

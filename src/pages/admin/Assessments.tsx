@@ -53,8 +53,9 @@ const Assessments = () => {
       return;
     }
 
-    const organizationId = isOrgAdmin ? user?.organizationId || 'demo-org-1' : currentOrganization?.id || 'demo-org-1';
-    const createdById = user?.id || 'demo-user-1';
+    // Remove demo fallback org/user IDs
+    const organizationId = isOrgAdmin ? user?.organizationId : currentOrganization?.id;
+    const createdById = user?.id;
 
     try {
       setError(null);

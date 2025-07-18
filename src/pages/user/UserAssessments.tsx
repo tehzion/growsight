@@ -7,6 +7,7 @@ import { useAssessmentStore } from '../../stores/assessmentStore';
 import { useAuthStore } from '../../stores/authStore';
 import { useAssessmentResultsStore } from '../../stores/assessmentResultsStore';
 import { useReminderStore } from '../../stores/reminderStore';
+import { supabase } from '../../lib/supabase';
 import ReminderSetup from '../../components/assessments/ReminderSetup';
 
 interface AssessmentFilter {
@@ -18,7 +19,7 @@ interface AssessmentFilter {
 const UserAssessments = () => {
   const navigate = useNavigate();
   const { user } = useAuthStore();
-  const { userAssessments, fetchUserAssessments, isLoading } = useAssessmentStore();
+  const { userAssessments: storeUserAssessments, fetchUserAssessments, isLoading: storeLoading } = useAssessmentStore();
   const { fetchUserResults } = useAssessmentResultsStore();
   const { fetchUserReminders, reminders } = useReminderStore();
   
@@ -42,79 +43,90 @@ const UserAssessments = () => {
     }
   }, [user, fetchUserAssessments, fetchUserResults, fetchUserReminders]);
 
-  // Mock assessment data for the user with different statuses
-  const mockUserAssessments = [
-    {
-      id: 'demo-assessment-1',
-      title: 'Leadership Skills Assessment',
-      description: 'Comprehensive evaluation of leadership capabilities',
-      status: 'pending',
-      dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-      completedAt: null,
-      progress: 0,
-      isPublished: true,
-      category: 'Leadership',
-      estimatedTime: '30 minutes',
-      attempts: 0,
-      lastAttempt: null,
-      feedback: null,
-    },
-    {
-      id: 'demo-assessment-2',
-      title: 'Communication Skills',
-      description: 'Evaluate your communication effectiveness',
-      status: 'in_progress',
-      dueDate: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(),
-      completedAt: null,
-      progress: 40,
-      isPublished: true,
-      category: 'Communication',
-      estimatedTime: '25 minutes',
-      attempts: 1,
-      lastAttempt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
-      feedback: 'Good start! Focus on active listening in the next section.',
-    },
-    {
-      id: 'demo-assessment-3',
-      title: 'Team Collaboration',
-      description: 'Assessment of teamwork and collaboration skills',
-      status: 'completed',
-      dueDate: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
-      completedAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
-      progress: 100,
-      isPublished: true,
-      category: 'Teamwork',
-      estimatedTime: '20 minutes',
-      attempts: 1,
-      lastAttempt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
-      feedback: 'Excellent teamwork skills demonstrated. Strong collaboration abilities.',
-      score: 85,
-      maxScore: 100,
-    },
-    // Add any newly published assessments from the store that are assigned to user's organization
-    ...userAssessments
-      .filter(assessment => 
-        assessment.assignedOrganizations?.some(org => org.id === user?.organizationId)
-      )
-      .map(assessment => ({
-        id: assessment.id,
-        title: assessment.title,
-        description: assessment.description || 'No description provided',
-        status: 'pending' as const,
-        dueDate: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
-        completedAt: null,
-        progress: 0,
-        isPublished: true,
-        category: 'General',
-        estimatedTime: '30 minutes',
-        attempts: 0,
-        lastAttempt: null,
-        feedback: null,
-      }))
-  ];
+  // Load real user assessments from Supabase
+  const [userAssessments, setUserAssessments] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    loadUserAssessments();
+  }, [user?.id]);
+
+  const loadUserAssessments = async () => {
+    if (!user?.id) return;
+    
+    try {
+      setIsLoading(true);
+      const { data, error } = await supabase
+        .from('assessment_assignments')
+        .select(`
+          *,
+          assessments (
+            id,
+            title,
+            description,
+            assessment_type,
+            is_published,
+            category,
+            estimated_time_minutes
+          )
+        `)
+        .eq('employee_id', user.id)
+        .eq('is_active', true);
+
+      if (error) throw error;
+
+      const transformedAssessments = data.map((assignment: any) => ({
+        id: assignment.id,
+        title: assignment.assessments?.title || 'Untitled Assessment',
+        description: assignment.assessments?.description || '',
+        status: assignment.status,
+        dueDate: assignment.due_date,
+        completedAt: assignment.completed_at,
+        progress: assignment.progress || 0,
+        isPublished: assignment.assessments?.is_published || false,
+        category: assignment.assessments?.category || 'General',
+        estimatedTime: `${assignment.assessments?.estimated_time_minutes || 30} minutes`,
+        attempts: assignment.attempts || 0,
+        lastAttempt: assignment.last_attempt,
+        feedback: assignment.feedback,
+        score: assignment.score,
+        maxScore: assignment.max_score
+      }));
+
+      setUserAssessments(transformedAssessments);
+    } catch (error) {
+      console.error('Failed to load user assessments:', error);
+      setUserAssessments([]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+    // Combine real user assessments with store assessments
+    const allAssessments = [
+      ...userAssessments,
+      ...storeUserAssessments
+        .filter(assessment => 
+          assessment.assignedOrganizations?.some(org => org.id === user?.organizationId)
+        )
+        .map(assessment => ({
+          id: assessment.id,
+          title: assessment.title,
+          description: assessment.description || 'No description provided',
+          status: 'pending' as const,
+          dueDate: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
+          completedAt: null,
+          progress: 0,
+          isPublished: true,
+          category: 'General',
+          estimatedTime: '30 minutes',
+          attempts: 0,
+          lastAttempt: null,
+          feedback: null,
+        }))
+    ];
 
   // Filter assessments based on current filters
-  const filteredAssessments = mockUserAssessments.filter(assessment => {
+  const filteredAssessments = allAssessments.filter((assessment: any) => {
     // Status filter
     if (filters.status !== 'all' && assessment.status !== filters.status) {
       return false;
@@ -197,9 +209,9 @@ const UserAssessments = () => {
 
   const getAnalyticsData = () => {
     const completed = completedAssessments.length;
-    const total = mockUserAssessments.length;
+    const total = allAssessments.length;
     const averageScore = completedAssessments.reduce((sum, a) => sum + (a.score || 0), 0) / completed || 0;
-    const overdueCount = mockUserAssessments.filter(a => getDueDateStatus(a.dueDate).status === 'overdue').length;
+    const overdueCount = allAssessments.filter(a => getDueDateStatus(a.dueDate).status === 'overdue').length;
     const activeReminders = reminders.filter(r => r.status === 'pending').length;
 
     return { completed, total, averageScore, overdueCount, activeReminders };

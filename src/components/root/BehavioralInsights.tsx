@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Brain, 
   TrendingUp, 
@@ -56,117 +56,27 @@ interface BehavioralInsightsProps {
 
 const BehavioralInsights: React.FC<BehavioralInsightsProps> = ({ privacyLevel }) => {
   const [activeView, setActiveView] = useState<'patterns' | 'insights' | 'metrics' | 'trends'>('patterns');
+  const [behavioralPatterns, setBehavioralPatterns] = useState<BehavioralPattern[]>([]);
+  const [crossOrganizationInsights, setCrossOrganizationInsights] = useState<CrossOrganizationInsight[]>([]);
+  const [behavioralMetrics, setBehavioralMetrics] = useState<BehavioralMetrics>({
+    averageCompletionRate: 0,
+    averageResponseTime: 0,
+    participationTrend: '0%',
+    qualityScore: 0,
+    engagementLevel: 'low',
+    innovationIndex: 0
+  });
 
-  // Mock behavioral data - replace with actual API calls
-  const behavioralPatterns: BehavioralPattern[] = [
-    {
-      id: '1',
-      organizationType: 'Technology',
-      behaviorPattern: 'High Innovation Focus',
-      confidence: 92,
-      evidence: [
-        'High assessment completion rates (94%)',
-        'Strong competency in technical skills',
-        'Active participation in development programs',
-        'Quick adoption of new assessment features'
-      ],
-      trend: 'improving',
-      impact: 'high',
-      affectedCount: 15
-    },
-    {
-      id: '2',
-      organizationType: 'Healthcare',
-      behaviorPattern: 'Patient-Centric Approach',
-      confidence: 88,
-      evidence: [
-        'Strong communication skills ratings',
-        'High empathy and care competency scores',
-        'Focus on quality and safety metrics',
-        'Consistent patient satisfaction correlation'
-      ],
-      trend: 'stable',
-      impact: 'high',
-      affectedCount: 12
-    },
-    {
-      id: '3',
-      organizationType: 'Finance',
-      behaviorPattern: 'Risk-Averse Decision Making',
-      confidence: 85,
-      evidence: [
-        'Conservative assessment response patterns',
-        'High focus on compliance and regulation',
-        'Detailed analysis and documentation',
-        'Cautious approach to new initiatives'
-      ],
-      trend: 'stable',
-      impact: 'medium',
-      affectedCount: 18
-    },
-    {
-      id: '4',
-      organizationType: 'Education',
-      behaviorPattern: 'Collaborative Learning Culture',
-      confidence: 78,
-      evidence: [
-        'High peer feedback participation',
-        'Strong team collaboration scores',
-        'Continuous learning mindset',
-        'Knowledge sharing behaviors'
-      ],
-      trend: 'improving',
-      impact: 'medium',
-      affectedCount: 8
-    }
-  ];
+  useEffect(() => {
+    loadBehavioralData();
+  }, []);
 
-  const crossOrganizationInsights: CrossOrganizationInsight[] = [
-    {
-      id: '1',
-      insight: 'Leadership Development Gap',
-      description: 'Organizations across sectors show consistent gaps in strategic leadership competencies, particularly in digital transformation and change management.',
-      affectedOrganizations: 15,
-      severity: 'high',
-      recommendation: 'Implement targeted leadership development programs focusing on digital skills and change management',
-      confidence: 89
-    },
-    {
-      id: '2',
-      insight: 'Digital Transformation Readiness',
-      description: 'Technology adoption patterns vary significantly across organization sizes, with smaller organizations showing higher agility but lower resources.',
-      affectedOrganizations: 23,
-      severity: 'medium',
-      recommendation: 'Provide digital transformation support and resources for smaller organizations',
-      confidence: 76
-    },
-    {
-      id: '3',
-      insight: 'Employee Engagement Correlation',
-      description: 'Organizations with high assessment participation show 40% better retention rates and 25% higher productivity scores.',
-      affectedOrganizations: 8,
-      severity: 'medium',
-      recommendation: 'Encourage assessment participation through engagement initiatives and recognition programs',
-      confidence: 82
-    },
-    {
-      id: '4',
-      insight: 'Remote Work Adaptation',
-      description: 'Organizations that quickly adapted to remote work show stronger digital collaboration and communication patterns.',
-      affectedOrganizations: 19,
-      severity: 'low',
-      recommendation: 'Share best practices for remote work adaptation and digital collaboration',
-      confidence: 71
-    }
-  ];
-
-  const behavioralMetrics: BehavioralMetrics = {
-    averageCompletionRate: 78.5,
-    averageResponseTime: 2.3,
-    participationTrend: '+12%',
-    qualityScore: 4.2,
-    engagementLevel: 'high',
-    innovationIndex: 3.8
+  const loadBehavioralData = async () => {
+    // TODO: Load real behavioral patterns, insights, and metrics from Supabase or API
+    // Example:
+    // const { data: patterns, error: patternsError } = await supabase.from('behavioral_patterns').select('*');
+    // setBehavioralPatterns(patterns || []);
+    // ... repeat for insights and metrics ...
   };
 
   const getTrendIcon = (trend: string) => {

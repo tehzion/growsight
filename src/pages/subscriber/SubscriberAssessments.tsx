@@ -29,6 +29,7 @@ import { useAuthStore } from '../../stores/authStore';
 import { useAssessmentStore } from '../../stores/assessmentStore';
 import { useOrganizationStore } from '../../stores/organizationStore';
 import { useNotificationStore } from '../../stores/notificationStore';
+import { supabase } from '../../lib/supabase';
 import { exportUserResultsPDF } from '../../utils/pdfExport';
 
 interface SubscriberAssessment {
@@ -50,7 +51,7 @@ interface SubscriberAssessment {
 const SubscriberAssessments = () => {
   const navigate = useNavigate();
   const { user } = useAuthStore();
-  const { userAssessments, fetchUserAssessments, isLoading } = useAssessmentStore();
+  const { userAssessments, fetchUserAssessments, isLoading: assessmentLoading } = useAssessmentStore();
   const { currentOrganization } = useOrganizationStore();
   const { notifications, unreadCount, markAsRead, markAllAsRead } = useNotificationStore();
   
@@ -66,58 +67,68 @@ const SubscriberAssessments = () => {
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [isExporting, setIsExporting] = useState(false);
 
-  // Mock data for subscriber assessments assigned by org admins
-  const mockSubscriberAssessments: SubscriberAssessment[] = [
-    {
-      id: 'sub-1',
-      title: 'Leadership Effectiveness Assessment',
-      description: 'Comprehensive evaluation of leadership skills and effectiveness in team management',
-      status: 'pending',
-      dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-      completedAt: null,
-      progress: 0,
-      assignedBy: 'Sarah Johnson',
-      organizationName: currentOrganization?.name || 'Demo Organization',
-      assessmentType: 'custom',
-      sections: 4,
-      totalQuestions: 25,
-      priority: 'high'
-    },
-    {
-      id: 'sub-2',
-      title: 'Communication Skills Review',
-      description: 'Assessment of verbal and written communication effectiveness',
-      status: 'in_progress',
-      dueDate: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(),
-      completedAt: null,
-      progress: 45,
-      assignedBy: 'Mike Chen',
-      organizationName: currentOrganization?.name || 'Demo Organization',
-      assessmentType: 'preset',
-      sections: 3,
-      totalQuestions: 18,
-      priority: 'medium'
-    },
-    {
-      id: 'sub-3',
-      title: 'Team Collaboration Assessment',
-      description: 'Evaluation of teamwork and collaboration skills',
-      status: 'completed',
-      dueDate: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
-      completedAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
-      progress: 100,
-      assignedBy: 'Lisa Rodriguez',
-      organizationName: currentOrganization?.name || 'Demo Organization',
-      assessmentType: 'custom',
-      sections: 2,
-      totalQuestions: 12,
-      priority: 'low'
+  // Load real subscriber assessments from Supabase
+  const [subscriberAssessments, setSubscriberAssessments] = useState<SubscriberAssessment[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    loadSubscriberAssessments();
+  }, [user?.id]);
+
+  const loadSubscriberAssessments = async () => {
+    if (!user?.id) return;
+    
+    try {
+      setIsLoading(true);
+      const { data, error } = await supabase
+        .from('assessment_assignments')
+        .select(`
+          *,
+          assessments (
+            id,
+            title,
+            description,
+            assessment_type,
+            sections
+          ),
+          users!assessment_assignments_assigned_by_id_fkey (
+            first_name,
+            last_name
+          )
+        `)
+        .eq('employee_id', user.id)
+        .eq('is_active', true);
+
+      if (error) throw error;
+
+      const transformedAssessments: SubscriberAssessment[] = data.map((assignment: any) => ({
+        id: assignment.id,
+        title: assignment.assessments?.title || 'Untitled Assessment',
+        description: assignment.assessments?.description || '',
+        status: assignment.status,
+        dueDate: assignment.due_date,
+        completedAt: assignment.completed_at,
+        progress: assignment.progress || 0,
+        assignedBy: `${assignment.users?.first_name || ''} ${assignment.users?.last_name || ''}`.trim() || 'Unknown',
+        organizationName: currentOrganization?.name || 'Unknown Organization',
+        assessmentType: assignment.assessments?.assessment_type || 'custom',
+        sections: assignment.assessments?.sections?.length || 0,
+        totalQuestions: assignment.assessments?.sections?.reduce((total: number, section: any) => total + (section.questions?.length || 0), 0) || 0,
+        priority: assignment.priority || 'normal'
+      }));
+
+      setSubscriberAssessments(transformedAssessments);
+    } catch (error) {
+      console.error('Failed to load subscriber assessments:', error);
+      setSubscriberAssessments([]);
+    } finally {
+      setIsLoading(false);
     }
-  ];
+  };
 
   // Add real assessments from the store
   const allAssessments: SubscriberAssessment[] = [
-    ...mockSubscriberAssessments,
+    ...subscriberAssessments,
     ...userAssessments
       .filter(assessment => 
         assessment.assignedOrganizations?.some(org => org.id === user?.organizationId)
@@ -131,7 +142,7 @@ const SubscriberAssessments = () => {
         completedAt: null,
         progress: 0,
         assignedBy: 'Organization Admin',
-        organizationName: currentOrganization?.name || 'Demo Organization',
+        organizationName: currentOrganization?.name || 'Organization',
         assessmentType: assessment.assessmentType || 'custom',
         sections: assessment.sections?.length || 0,
         totalQuestions: assessment.sections?.reduce((acc, section) => acc + (section.questions?.length || 0), 0) || 0,
@@ -141,7 +152,7 @@ const SubscriberAssessments = () => {
 
   useEffect(() => {
     if (user) {
-      fetchUserAssessments();
+      fetchUserAssessments(user.id);
     }
   }, [user, fetchUserAssessments]);
 
@@ -243,7 +254,7 @@ const SubscriberAssessments = () => {
         selfAssessments: completedAssessments.map(a => ({
           assessment_title: a.title,
           completed_at: a.completedAt || '',
-          average_score: 4.2, // Mock score
+          average_score: 0, // Will be calculated from real data
           status: a.status
         })),
         reviewsAboutMe: [],

@@ -130,117 +130,12 @@ export const DevelopmentCenter: React.FC = () => {
     loadDevelopmentData();
   }, []);
 
-  const loadDevelopmentData = () => {
-    // Mock data - in real implementation, load from API
-    const mockGoals: DevelopmentGoal[] = [
-      {
-        id: '1',
-        title: 'Master React Advanced Patterns',
-        description: 'Learn advanced React patterns including render props, HOCs, and compound components',
-        category: 'technical',
-        targetDate: new Date('2024-12-31'),
-        status: 'in_progress',
-        progress: 65,
-        milestones: [
-          {
-            id: 'm1',
-            title: 'Complete React Patterns Course',
-            description: 'Finish the advanced React patterns online course',
-            dueDate: new Date('2024-08-31'),
-            completed: true,
-            completedAt: new Date('2024-08-15')
-          },
-          {
-            id: 'm2',
-            title: 'Build Practice Project',
-            description: 'Create a project demonstrating learned patterns',
-            dueDate: new Date('2024-10-31'),
-            completed: false
-          }
-        ],
-        resources: [
-          {
-            id: 'r1',
-            title: 'Advanced React Patterns',
-            type: 'course',
-            url: 'https://example.com/react-course',
-            description: 'Comprehensive course on React patterns',
-            estimatedHours: 20,
-            completed: true
-          }
-        ],
-        createdAt: new Date('2024-06-01')
-      },
-      {
-        id: '2',
-        title: 'Develop Leadership Skills',
-        description: 'Improve leadership and team management capabilities',
-        category: 'leadership',
-        targetDate: new Date('2025-03-31'),
-        status: 'in_progress',
-        progress: 30,
-        milestones: [
-          {
-            id: 'm3',
-            title: 'Complete Leadership Assessment',
-            description: 'Take comprehensive leadership skills assessment',
-            dueDate: new Date('2024-09-30'),
-            completed: false
-          }
-        ],
-        resources: [],
-        mentorId: 'mentor1',
-        createdAt: new Date('2024-07-01')
-      }
-    ];
-
-    const mockSkills: SkillAssessment[] = [
-      {
-        skillId: 'react',
-        skillName: 'React Development',
-        currentLevel: 4,
-        targetLevel: 5,
-        lastAssessed: new Date('2024-07-01'),
-        category: 'Technical',
-        trend: 'improving'
-      },
-      {
-        skillId: 'leadership',
-        skillName: 'Team Leadership',
-        currentLevel: 2,
-        targetLevel: 4,
-        lastAssessed: new Date('2024-06-15'),
-        category: 'Leadership',
-        trend: 'stable'
-      },
-      {
-        skillId: 'communication',
-        skillName: 'Communication',
-        currentLevel: 3,
-        targetLevel: 4,
-        lastAssessed: new Date('2024-06-01'),
-        category: 'Soft Skills',
-        trend: 'improving'
-      }
-    ];
-
-    const mockFeedback: PeerFeedback[] = [
-      {
-        id: 'f1',
-        fromUserId: 'user2',
-        fromUserName: 'John Smith',
-        toUserId: user?.id || '',
-        feedback: 'Great collaboration on the recent project. Your technical skills and problem-solving approach were excellent.',
-        rating: 5,
-        skills: ['React Development', 'Problem Solving', 'Teamwork'],
-        anonymous: false,
-        createdAt: new Date('2024-07-10')
-      }
-    ];
-
-    setGoals(mockGoals);
-    setSkills(mockSkills);
-    setFeedback(mockFeedback);
+  const loadDevelopmentData = async () => {
+    // TODO: Load real development goals, skills, and feedback from Supabase or API
+    // Example:
+    // const { data: goals, error: goalsError } = await supabase.from('development_goals').select('*').eq('user_id', user?.id);
+    // setGoals(goals || []);
+    // ... repeat for skills and feedback ...
   };
 
   const OverviewTab = () => (

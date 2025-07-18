@@ -14,10 +14,19 @@ import {
 } from 'lucide-react';
 import { useAuthStore } from '../../stores/authStore';
 import { useOrganizationStore } from '../../stores/organizationStore';
+import { useUserStore } from '../../stores/userStore';
+import { useAssessmentStore } from '../../stores/assessmentStore';
+import { useAssessmentResultsStore } from '../../stores/assessmentResultsStore';
+import { supabase } from '../../lib/supabase';
+import { useNotificationStore } from '../../stores/notificationStore';
 
 const ImportExport = () => {
   const { user } = useAuthStore();
   const { currentOrganization } = useOrganizationStore();
+  const { users } = useUserStore();
+  const { assessments } = useAssessmentStore();
+  const { results } = useAssessmentResultsStore();
+  const { addNotification } = useNotificationStore();
   
   const [isExporting, setIsExporting] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
@@ -32,20 +41,36 @@ const ImportExport = () => {
     setStatus('idle');
     
     try {
-      // Mock export functionality
       const scope = user?.role === 'super_admin' ? 'all' : currentOrganization?.id;
-      const fileName = `${exportType}_export_${new Date().toISOString().split('T')[0]}.json`;
+      let fileName = '';
+      let data: any = {};
       
-      // Create mock data
-      const mockData = {
-        type: exportType,
-        scope,
-        timestamp: new Date().toISOString(),
-        data: []
-      };
+      switch (exportType) {
+        case 'all':
+          fileName = `complete_export_${new Date().toISOString().split('T')[0]}.json`;
+          data = {
+            users: await exportUsers(scope || ''),
+            assessments: await exportAssessments(scope || ''),
+            results: await exportResults(scope || ''),
+            organizations: user?.role === 'super_admin' ? await exportOrganizations() : undefined
+          };
+          break;
+        case 'users':
+          fileName = `users_export_${new Date().toISOString().split('T')[0]}.json`;
+          data = await exportUsers(scope || '');
+          break;
+        case 'assessments':
+          fileName = `assessments_export_${new Date().toISOString().split('T')[0]}.json`;
+          data = await exportAssessments(scope || '');
+          break;
+        case 'results':
+          fileName = `results_export_${new Date().toISOString().split('T')[0]}.json`;
+          data = await exportResults(scope || '');
+          break;
+      }
       
       // Create and download file
-      const blob = new Blob([JSON.stringify(mockData, null, 2)], { type: 'application/json' });
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -55,10 +80,20 @@ const ImportExport = () => {
       
       setStatus('success');
       setStatusMessage(`Successfully exported ${exportType} data`);
+      addNotification({
+        title: 'Export Successful',
+        message: `${exportType} data exported successfully`,
+        type: 'success'
+      });
     } catch (error) {
       console.error('Export error:', error);
       setStatus('error');
       setStatusMessage('Failed to export data. Please try again.');
+      addNotification({
+        title: 'Export Failed',
+        message: 'Failed to export data. Please try again.',
+        type: 'error'
+      });
     } finally {
       setIsExporting(false);
     }
@@ -78,16 +113,42 @@ const ImportExport = () => {
       const fileContent = await selectedFile.text();
       const data = JSON.parse(fileContent);
       
-      // Mock import functionality
-      console.log('Importing data:', data);
+      // Validate import data structure
+      if (!data.type || !data.data) {
+        throw new Error('Invalid import file format');
+      }
+      
+      // Process import based on type
+      let importResult;
+      switch (importType) {
+        case 'users':
+          importResult = await importUsers(data.data);
+          break;
+        case 'assessments':
+          importResult = await importAssessments(data.data);
+          break;
+        default:
+          throw new Error('Unsupported import type');
+      }
       
       setStatus('success');
-      setStatusMessage(`Successfully imported ${importType} data`);
+      setStatusMessage(`Successfully imported ${importResult.created} records and updated ${importResult.updated} records.`);
       setSelectedFile(null);
+      
+      addNotification({
+        title: 'Import Successful',
+        message: `Successfully imported ${importResult.created} records`,
+        type: 'success'
+      });
     } catch (error) {
       console.error('Import error:', error);
       setStatus('error');
       setStatusMessage('Failed to import data. Please check file format and try again.');
+      addNotification({
+        title: 'Import Failed',
+        message: 'Failed to import data. Please check file format and try again.',
+        type: 'error'
+      });
     } finally {
       setIsImporting(false);
     }
@@ -99,6 +160,212 @@ const ImportExport = () => {
       setSelectedFile(file);
       setStatus('idle');
     }
+  };
+
+  // Real export functions
+  const exportUsers = async (scope: string | 'all') => {
+    let query = supabase
+      .from('users')
+      .select(`
+        id,
+        first_name,
+        last_name,
+        email,
+        role,
+        organization_id,
+        department_id,
+        is_active,
+        created_at,
+        updated_at,
+        organizations (name),
+        departments (name)
+      `)
+      .eq('is_active', true);
+
+    if (scope !== 'all') {
+      query = query.eq('organization_id', scope);
+    }
+
+    const { data, error } = await query;
+    if (error) throw error;
+
+    return {
+      users: data || [],
+      total: data?.length || 0,
+      scope,
+      exportedAt: new Date().toISOString()
+    };
+  };
+
+  const exportAssessments = async (scope: string | 'all') => {
+    let query = supabase
+      .from('assessments')
+      .select(`
+        *,
+        organizations (name),
+        users (first_name, last_name, email),
+        assessment_questions (
+          *,
+          question_options (*)
+        )
+      `)
+      .eq('is_active', true);
+
+    if (scope !== 'all') {
+      query = query.eq('organization_id', scope);
+    }
+
+    const { data, error } = await query;
+    if (error) throw error;
+
+    return {
+      assessments: data || [],
+      total: data?.length || 0,
+      scope,
+      exportedAt: new Date().toISOString()
+    };
+  };
+
+  const exportResults = async (scope: string | 'all') => {
+    let query = supabase
+      .from('assessment_results')
+      .select(`
+        *,
+        assessments (title),
+        users (first_name, last_name, email),
+        organizations (name)
+      `)
+      .eq('is_active', true);
+
+    if (scope !== 'all') {
+      query = query.eq('organization_id', scope);
+    }
+
+    const { data, error } = await query;
+    if (error) throw error;
+
+    return {
+      results: data || [],
+      total: data?.length || 0,
+      scope,
+      exportedAt: new Date().toISOString()
+    };
+  };
+
+  const exportOrganizations = async () => {
+    const { data, error } = await supabase
+      .from('organizations')
+      .select('*')
+      .eq('is_active', true);
+
+    if (error) throw error;
+
+    return {
+      organizations: data || [],
+      total: data?.length || 0,
+      exportedAt: new Date().toISOString()
+    };
+  };
+
+  // Real import functions
+  const importUsers = async (userData: any[]) => {
+    let created = 0;
+    let updated = 0;
+
+    for (const user of userData) {
+      try {
+        // Check if user exists
+        const { data: existingUser } = await supabase
+          .from('users')
+          .select('id')
+          .eq('email', user.email)
+          .single();
+
+        if (existingUser) {
+          // Update existing user
+          const { error } = await supabase
+            .from('users')
+            .update({
+              first_name: user.first_name,
+              last_name: user.last_name,
+              role: user.role,
+              department_id: user.department_id,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', existingUser.id);
+
+          if (!error) updated++;
+        } else {
+          // Create new user
+          const { error } = await supabase
+            .from('users')
+            .insert({
+              first_name: user.first_name,
+              last_name: user.last_name,
+              email: user.email,
+              role: user.role,
+              organization_id: user.organization_id || currentOrganization?.id,
+              department_id: user.department_id,
+              is_active: true
+            });
+
+          if (!error) created++;
+        }
+      } catch (error) {
+        console.error('Error importing user:', user.email, error);
+      }
+    }
+
+    return { created, updated };
+  };
+
+  const importAssessments = async (assessmentData: any[]) => {
+    let created = 0;
+    let updated = 0;
+
+    for (const assessment of assessmentData) {
+      try {
+        // Check if assessment exists
+        const { data: existingAssessment } = await supabase
+          .from('assessments')
+          .select('id')
+          .eq('title', assessment.title)
+          .eq('organization_id', assessment.organization_id)
+          .single();
+
+        if (existingAssessment) {
+          // Update existing assessment
+          const { error } = await supabase
+            .from('assessments')
+            .update({
+              description: assessment.description,
+              assessment_type: assessment.assessment_type,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', existingAssessment.id);
+
+          if (!error) updated++;
+        } else {
+          // Create new assessment
+          const { error } = await supabase
+            .from('assessments')
+            .insert({
+              title: assessment.title,
+              description: assessment.description,
+              organization_id: assessment.organization_id || currentOrganization?.id,
+              created_by_id: user?.id,
+              assessment_type: assessment.assessment_type || 'custom',
+              is_active: true
+            });
+
+          if (!error) created++;
+        }
+      } catch (error) {
+        console.error('Error importing assessment:', assessment.title, error);
+      }
+    }
+
+    return { created, updated };
   };
 
   const getRoleBasedTitle = () => {

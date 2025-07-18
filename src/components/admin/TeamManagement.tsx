@@ -22,9 +22,10 @@ import {
   Download,
   Eye
 } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
-import { Button } from '../ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
+import Button from '../ui/Button';
 import { useAuthStore } from '../../stores/authStore';
+import { supabase } from '../../lib/supabase';
 import { useUserStore } from '../../stores/userStore';
 import EnhancedRBAC from '../../lib/rbac/enhancedPermissions';
 
@@ -98,72 +99,56 @@ export const TeamManagement: React.FC = () => {
   }, []);
 
   const loadTeams = async () => {
-    // Mock data - in real implementation, load from API
-    const mockTeams: Team[] = [
-      {
-        id: '1',
-        name: 'Product Development',
-        description: 'Core product development team focusing on new features',
-        leadId: 'user1',
-        memberIds: ['user1', 'user2', 'user3', 'user4'],
-        departmentId: 'tech',
-        goals: [
-          {
-            id: 'goal1',
-            title: 'Q4 Feature Delivery',
-            description: 'Complete 5 major features for Q4 release',
-            targetValue: 5,
-            currentValue: 3,
-            unit: 'features',
-            dueDate: new Date('2024-12-31'),
-            status: 'in_progress',
-            assignedTo: ['user1', 'user2']
-          }
-        ],
-        createdAt: new Date('2024-01-15'),
-        updatedAt: new Date('2024-07-15'),
-        status: 'active',
+    try {
+      // Load teams from Supabase
+      const { data: teamsData, error } = await supabase
+        .from('teams')
+        .select(`
+          *,
+          team_members (user_id),
+          team_goals (*),
+          departments (name)
+        `)
+        .eq('organization_id', user?.organizationId)
+        .eq('is_active', true);
+
+      if (error) throw error;
+
+      const transformedTeams: Team[] = teamsData.map((team: any) => ({
+        id: team.id,
+        name: team.name,
+        description: team.description,
+        leadId: team.lead_id,
+        memberIds: team.team_members?.map((tm: any) => tm.user_id) || [],
+        departmentId: team.department_id,
+        goals: team.team_goals?.map((goal: any) => ({
+          id: goal.id,
+          title: goal.title,
+          description: goal.description,
+          targetValue: goal.target_value,
+          currentValue: goal.current_value,
+          unit: goal.unit,
+          dueDate: new Date(goal.due_date),
+          status: goal.status,
+          assignedTo: goal.assigned_to || []
+        })) || [],
+        createdAt: new Date(team.created_at),
+        updatedAt: new Date(team.updated_at),
+        status: team.status,
         metrics: {
-          assessmentCompletion: 85,
-          averageScore: 4.2,
-          goalCompletion: 60,
-          memberSatisfaction: 4.5,
-          collaborationScore: 88
+          assessmentCompletion: team.assessment_completion || 0,
+          averageScore: team.average_score || 0,
+          goalCompletion: team.goal_completion || 0,
+          memberSatisfaction: team.member_satisfaction || 0,
+          collaborationScore: team.collaboration_score || 0
         }
-      },
-      {
-        id: '2',
-        name: 'Marketing Team',
-        description: 'Digital marketing and brand management',
-        leadId: 'user5',
-        memberIds: ['user5', 'user6', 'user7'],
-        departmentId: 'marketing',
-        goals: [
-          {
-            id: 'goal2',
-            title: 'Brand Awareness Campaign',
-            description: 'Increase brand awareness by 30%',
-            targetValue: 30,
-            currentValue: 18,
-            unit: '%',
-            dueDate: new Date('2024-09-30'),
-            status: 'in_progress',
-            assignedTo: ['user5', 'user6']
-          }
-        ],
-        createdAt: new Date('2024-02-01'),
-        updatedAt: new Date('2024-07-10'),
-        status: 'active',
-        metrics: {
-          assessmentCompletion: 92,
-          averageScore: 4.0,
-          goalCompletion: 75,
-          memberSatisfaction: 4.3,
-          collaborationScore: 91
-        }
-      }
-    ];
-    setTeams(mockTeams);
+      }));
+
+      setTeams(transformedTeams);
+    } catch (error) {
+      console.error('Failed to load teams:', error);
+      setTeams([]);
+    }
   };
 
   const filteredTeams = teams.filter(team => {
@@ -183,7 +168,8 @@ export const TeamManagement: React.FC = () => {
   };
 
   const TeamCard: React.FC<{ team: Team }> = ({ team }) => (
-    <Card className="hover:shadow-md transition-shadow cursor-pointer" onClick={() => setSelectedTeam(team)}>
+    <div className="hover:shadow-md transition-shadow cursor-pointer" onClick={() => setSelectedTeam(team)}>
+      <Card>
       <CardHeader className="pb-3">
         <div className="flex items-start justify-between">
           <div>
@@ -247,7 +233,8 @@ export const TeamManagement: React.FC = () => {
           </div>
         </div>
       </CardContent>
-    </Card>
+      </Card>
+    </div>
   );
 
   const TeamDetailView: React.FC<{ team: Team }> = ({ team }) => (

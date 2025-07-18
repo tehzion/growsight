@@ -1,7 +1,6 @@
-import React from 'react';
-
-import React from 'react';
-import { AssessmentResult, User } from '../../types';
+import React, { useState } from 'react';
+import { User } from '../../types';
+import { AssessmentResult } from '../../stores/assessmentResultsStore';
 
 interface ReportGeneratorProps {
   selfAssessment: AssessmentResult | null;
@@ -58,7 +57,7 @@ const ReportGenerator: React.FC<ReportGeneratorProps> = ({ selfAssessment, peerR
       <div className="section mb-8">
         <h2 className="text-2xl font-bold text-primary-700 mb-4">Introduction</h2>
         <p className="text-gray-700 leading-relaxed">
-          Congratulations on completing The Maxwell Leadership Assessment powered by RightPath.
+          Congratulations on completing Leadership 360 Assessment.
           This report is designed to provide valuable feedback that can have a positive impact on your
           leadership development, personal growth, and journey to become a highly effective
           360-degree leader. The objective data in this report is related to how others are experiencing

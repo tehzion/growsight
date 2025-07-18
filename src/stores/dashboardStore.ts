@@ -62,41 +62,41 @@ interface DashboardState {
 export const useDashboardStore = create<DashboardState>()(
   persist(
     (set, get) => ({
-      analytics: null,
-      organizationAnalytics: [],
+  analytics: null,
+  organizationAnalytics: [],
       systemMetrics: null,
       systemHealth: [],
-      isLoading: false,
-      error: null,
+  isLoading: false,
+  error: null,
 
-      fetchAnalytics: async (organizationId?: string) => {
-        set({ isLoading: true, error: null });
-        try {
-          if (organizationId) {
-            // Fetch specific organization analytics
+  fetchAnalytics: async (organizationId?: string) => {
+    set({ isLoading: true, error: null });
+    try {
+      if (organizationId) {
+        // Fetch specific organization analytics
             const analytics = await fetchOrganizationAnalytics(organizationId);
             set({ analytics, isLoading: false });
-          } else {
+        } else {
             // Fetch aggregated analytics for all accessible organizations
             const aggregated = await fetchAggregatedAnalytics();
-            set({ analytics: aggregated, isLoading: false });
-          }
-        } catch (error) {
-          console.error('Analytics fetch error:', error);
-          set({ error: (error as Error).message || 'Failed to load analytics', isLoading: false });
-        }
-      },
+        set({ analytics: aggregated, isLoading: false });
+      }
+    } catch (error) {
+      console.error('Analytics fetch error:', error);
+      set({ error: (error as Error).message || 'Failed to load analytics', isLoading: false });
+    }
+  },
 
-      fetchAllOrganizationAnalytics: async () => {
-        set({ isLoading: true, error: null });
-        try {
+  fetchAllOrganizationAnalytics: async () => {
+    set({ isLoading: true, error: null });
+    try {
           const analytics = await fetchAllOrganizationAnalytics();
           set({ organizationAnalytics: analytics, isLoading: false });
-        } catch (error) {
-          console.error('Organization analytics fetch error:', error);
-          set({ error: (error as Error).message || 'Failed to load organization analytics', isLoading: false });
-        }
-      },
+    } catch (error) {
+      console.error('Organization analytics fetch error:', error);
+      set({ error: (error as Error).message || 'Failed to load organization analytics', isLoading: false });
+    }
+  },
 
       fetchSystemMetrics: async () => {
         set({ isLoading: true, error: null });
@@ -120,9 +120,9 @@ export const useDashboardStore = create<DashboardState>()(
         }
       },
 
-      clearAnalytics: () => {
-        set({ analytics: null, organizationAnalytics: [], error: null });
-      }
+  clearAnalytics: () => {
+    set({ analytics: null, organizationAnalytics: [], error: null });
+  }
     }),
     {
       name: 'dashboard-storage',
@@ -246,7 +246,7 @@ async function fetchAggregatedAnalytics(): Promise<DashboardAnalytics> {
     let inProgressAssessments = 0;
     let totalResponses = 0;
     let totalRating = 0;
-    let allCompetencyAnalytics: DashboardAnalytics['competencyAnalytics'] = [];
+    const allCompetencyAnalytics: DashboardAnalytics['competencyAnalytics'] = [];
 
     for (const org of orgs || []) {
       try {

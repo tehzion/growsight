@@ -94,10 +94,11 @@ const Dashboard = () => {
               totalUsers,
               totalAssessments,
               activeAssessments: assessments.filter(a => a.isPublished).length,
-              systemUptime: 99.9, // Mock data for now
-              averageResponseTime: 120, // Mock data for now
-              storageUsage: 500, // Mock data for now
-              bandwidthUsage: 1000 // Mock data for now
+              // Remove or replace mock metrics with real values if available
+              systemUptime: systemHealth.length > 0 ? systemHealth.filter(s => s.status === 'healthy').length / systemHealth.length * 100 : 100,
+              averageResponseTime: systemMetrics.length > 0 ? Math.round(systemMetrics.reduce((sum, m) => sum + (m.responseTime || 0), 0) / systemMetrics.length) : 0,
+              storageUsage: 0, // TODO: Replace with real value if available
+              bandwidthUsage: 0 // TODO: Replace with real value if available
             },
             recentActivity: {
               userRegistrations: users.filter(u => new Date(u.createdAt) > new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)).length,
@@ -159,29 +160,7 @@ const Dashboard = () => {
     }
   };
 
-  // Mock recent activity data - different for each role
-  const getRecentActivity = () => {
-    if (isSuperAdmin) {
-      return [
-        { id: 1, type: 'assessment_completed', user: 'Jane Smith (Acme Corp)', date: '2025-01-08T14:30:00' },
-        { id: 2, type: 'user_added', user: 'Mark Johnson (TechStart)', date: '2025-01-07T10:15:00' },
-        { id: 3, type: 'assessment_created', user: 'System Admin', date: '2025-01-06T16:45:00' }
-      ];
-    } else if (isOrgAdmin) {
-      return [
-        { id: 1, type: 'assessment_completed', user: 'John Doe', date: '2025-01-08T14:30:00' },
-        { id: 2, type: 'user_added', user: 'Mike Wilson', date: '2025-01-07T10:15:00' },
-        { id: 3, type: 'assessment_created', user: 'You', date: '2025-01-06T16:45:00' }
-      ];
-    } else {
-      return [
-        { id: 1, type: 'assessment_completed', user: 'You', date: '2025-01-08T14:30:00' },
-        { id: 2, type: 'assessment_created', user: 'Organization Admin', date: '2025-01-06T16:45:00' }
-      ];
-    }
-  };
-
-  const recentActivity = getRecentActivity();
+  // Remove getRecentActivity mock function and use real recent activity from dashboardData
   
   if (isLoading && !analytics) {
     return (
@@ -675,7 +654,7 @@ const Dashboard = () => {
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-            {recentActivity.map(activity => (
+            {analytics?.recentActivity?.map(activity => (
               <div key={activity.id} className="flex items-start space-x-3 p-3 rounded-lg bg-gray-50">
                 <div className="mt-0.5">
                   {getActivityIcon(activity.type)}

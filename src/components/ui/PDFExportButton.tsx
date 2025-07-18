@@ -80,40 +80,15 @@ const PDFExportButton: React.FC<PDFExportButtonProps> = ({
           break;
       }
       
-      // Create a mock download since this is a demo
-      const timestamp = new Date().toISOString().split('T')[0];
-      const filename = `${exportType}-export-${timestamp}.${format}`;
-      
-      // Create a blob with sample data
-      let content = '';
-      if (format === 'csv') {
-        content = `Sample ${exportType.toUpperCase()} Export\nGenerated on: ${new Date().toLocaleString()}\n\nThis is a demo export file.\nIn a real application, this would contain actual data.`;
-        if (shouldAnonymize) {
-          content += '\n\nNOTE: This export has been anonymized to protect individual privacy.';
-        }
-      } else {
-        content = `Sample ${exportType.toUpperCase()} PDF Export - Generated on ${new Date().toLocaleString()}`;
-        content += `\n\nBranding Settings Applied:`;
-        content += `\n- Company: ${pdfSettings.companyName}`;
-        content += `\n- Primary Color: ${pdfSettings.primaryColor}`;
-        content += `\n- Secondary Color: ${pdfSettings.secondaryColor}`;
-        content += `\n- Template: ${pdfSettings.defaultTemplate}`;
-        if (shouldAnonymize) {
-          content += '\n\nNOTE: This export has been anonymized to protect individual privacy.';
-        }
+      // Handle the actual download URL
+      if (downloadUrl) {
+        const link = document.createElement('a');
+        link.href = downloadUrl;
+        link.download = `${exportType}-export-${new Date().toISOString().split('T')[0]}.${format}`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
       }
-      
-      const blob = new Blob([content], { type: format === 'csv' ? 'text/csv' : 'application/pdf' });
-      const url = window.URL.createObjectURL(blob);
-      
-      // Trigger download
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = filename;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
       
       // Show success message
       setSuccess(true);

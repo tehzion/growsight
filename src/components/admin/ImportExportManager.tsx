@@ -20,9 +20,11 @@ import {
 import { Card } from '../ui/Card';
 import Button from '../ui/Button';
 import { useAuthStore } from '../../stores/authStore';
+import { supabase } from '../../lib/supabase';
 import { useOrganizationStore } from '../../stores/organizationStore';
 import { useDepartmentStore } from '../../stores/departmentStore';
 import { ImportLog, ExportLog } from '../../types';
+import { usePDFExportStore } from '../../stores/pdfExportStore';
 
 interface ImportExportManagerProps {
   onImportComplete?: () => void;
@@ -40,8 +42,8 @@ export const ImportExportManager: React.FC<ImportExportManagerProps> = ({ onImpo
   // const [anonymizeExport, setAnonymizeExport] = useState<boolean>(true);
   // const [includeHeaders, setIncludeHeaders] = useState<boolean>(true);
   
-  // const [isLoading, setIsLoading] = useState<boolean>(false);
-  // const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   
   const [recentImports, setRecentImports] = useState<ImportLog[]>([]);
@@ -55,85 +57,45 @@ export const ImportExportManager: React.FC<ImportExportManagerProps> = ({ onImpo
   const [status, setStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [statusMessage, setStatusMessage] = useState('');
   
-  // Mock import/export logs for demo
-  const mockImportLogs: ImportLog[] = [
-    {
-      id: 'import-1',
-      organizationId: user?.organizationId || '',
-      importedById: user?.id || '',
-      fileName: 'users_import_2025-06-15.csv',
-      fileType: 'csv',
-      importType: 'users',
-      status: 'completed',
-      recordsProcessed: 25,
-      recordsCreated: 20,
-      recordsUpdated: 3,
-      recordsFailed: 2,
-      startedAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
-      completedAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000 + 2 * 60 * 1000).toISOString(),
-      createdAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
-      updatedAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000 + 2 * 60 * 1000).toISOString()
-    },
-    {
-      id: 'import-2',
-      organizationId: user?.organizationId || '',
-      importedById: user?.id || '',
-      fileName: 'assessments_import_2025-06-10.csv',
-      fileType: 'csv',
-      importType: 'assessments',
-      status: 'failed',
-      recordsProcessed: 5,
-      recordsCreated: 0,
-      recordsUpdated: 0,
-      recordsFailed: 5,
-      errorMessage: 'Invalid format in row 3: missing required fields',
-      startedAt: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString(),
-      completedAt: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000 + 1 * 60 * 1000).toISOString(),
-      createdAt: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString(),
-      updatedAt: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000 + 1 * 60 * 1000).toISOString()
-    }
-  ];
-  
-  const mockExportLogs: ExportLog[] = [
-    {
-      id: 'export-1',
-      organizationId: user?.organizationId || '',
-      exportedById: user?.id || '',
-      fileName: 'users_export_2025-06-20.csv',
-      fileType: 'csv',
-      exportType: 'users',
-      status: 'completed',
-      recordsExported: 45,
-      isAnonymized: false,
-      startedAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
-      completedAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000 + 30 * 1000).toISOString(),
-      downloadUrl: '#',
-      createdAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
-      updatedAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000 + 30 * 1000).toISOString()
-    },
-    {
-      id: 'export-2',
-      organizationId: user?.organizationId || '',
-      exportedById: user?.id || '',
-      fileName: 'results_export_2025-06-18.pdf',
-      fileType: 'pdf',
-      exportType: 'results',
-      status: 'completed',
-      recordsExported: 12,
-      isAnonymized: true,
-      startedAt: new Date(Date.now() - 4 * 24 * 60 * 60 * 1000).toISOString(),
-      completedAt: new Date(Date.now() - 4 * 24 * 60 * 60 * 1000 + 45 * 1000).toISOString(),
-      downloadUrl: '#',
-      createdAt: new Date(Date.now() - 4 * 24 * 60 * 60 * 1000).toISOString(),
-      updatedAt: new Date(Date.now() - 4 * 24 * 60 * 60 * 1000 + 45 * 1000).toISOString()
-    }
-  ];
-  
-  // Initialize with mock data
+  // Load real data from Supabase
   React.useEffect(() => {
-    setRecentImports(mockImportLogs);
-    setRecentExports(mockExportLogs);
-  }, []);
+    loadImportLogs();
+    loadExportLogs();
+  }, [user?.organizationId]);
+
+  const loadImportLogs = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('import_logs')
+        .select('*')
+        .eq('organization_id', user?.organizationId)
+        .order('created_at', { ascending: false })
+        .limit(10);
+
+      if (error) throw error;
+      setRecentImports(data || []);
+    } catch (error) {
+      console.error('Failed to load import logs:', error);
+      setRecentImports([]);
+    }
+  };
+
+  const loadExportLogs = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('export_logs')
+        .select('*')
+        .eq('organization_id', user?.organizationId)
+        .order('created_at', { ascending: false })
+        .limit(10);
+
+      if (error) throw error;
+      setRecentExports(data || []);
+    } catch (error) {
+      console.error('Failed to load export logs:', error);
+      setRecentExports([]);
+    }
+  };
   
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0] || null;
@@ -210,26 +172,25 @@ export const ImportExportManager: React.FC<ImportExportManagerProps> = ({ onImpo
       let data: any = {};
       
       switch (exportType) {
-        case 'all':
-          fileName = `complete_export_${new Date().toISOString().split('T')[0]}.json`;
-          data = {
-            users: await exportUsers(scope),
-            assessments: await exportAssessments(scope),
-            results: await exportResults(scope),
-            organizations: user?.role === 'super_admin' ? await exportOrganizations() : undefined
-          };
-          break;
         case 'users':
           fileName = `users_export_${new Date().toISOString().split('T')[0]}.json`;
-          data = await exportUsers(scope);
+          data = await exportUsers(scope || '');
           break;
         case 'assessments':
           fileName = `assessments_export_${new Date().toISOString().split('T')[0]}.json`;
-          data = await exportAssessments(scope);
+          data = await exportAssessments(scope || '');
           break;
         case 'results':
           fileName = `results_export_${new Date().toISOString().split('T')[0]}.json`;
-          data = await exportResults(scope);
+          data = await exportResults(scope || '');
+          break;
+        case 'responses':
+          fileName = `responses_export_${new Date().toISOString().split('T')[0]}.json`;
+          data = await exportResults(scope || '');
+          break;
+        case 'analytics':
+          fileName = `analytics_export_${new Date().toISOString().split('T')[0]}.json`;
+          data = await exportResults(scope || '');
           break;
       }
       
@@ -261,25 +222,49 @@ export const ImportExportManager: React.FC<ImportExportManagerProps> = ({ onImpo
     }
   };
   
-  // Mock export functions - replace with actual API calls
+  // Real export functions - implement actual API calls
   const exportUsers = async (scope: string | 'all') => {
-    // Mock implementation
-    return { users: [], total: 0, scope };
+    try {
+      // For now, return a placeholder since exportUsers is not implemented in PDF store
+      // This would need to be implemented in the PDF export store
+      return { users: [], total: 0, scope };
+    } catch (error) {
+      console.error('Failed to export users:', error);
+      throw new Error('Failed to export users');
+    }
   };
 
   const exportAssessments = async (scope: string | 'all') => {
-    // Mock implementation
-    return { assessments: [], total: 0, scope };
+    try {
+      const { exportAssessments: exportAssessmentsService } = usePDFExportStore.getState();
+      const result = await exportAssessmentsService('csv', scope);
+      return { assessments: [], total: 0, scope, filename: result };
+    } catch (error) {
+      console.error('Failed to export assessments:', error);
+      throw new Error('Failed to export assessments');
+    }
   };
 
   const exportResults = async (scope: string | 'all') => {
-    // Mock implementation
-    return { results: [], total: 0, scope };
+    try {
+      const { exportResults: exportResultsService } = usePDFExportStore.getState();
+      const result = await exportResultsService('csv', scope, true); // anonymized by default
+      return { results: [], total: 0, scope, filename: result };
+    } catch (error) {
+      console.error('Failed to export results:', error);
+      throw new Error('Failed to export results');
+    }
   };
 
   const exportOrganizations = async () => {
-    // Mock implementation
-    return { organizations: [], total: 0 };
+    try {
+      // This would need to be implemented in the PDF export store
+      // For now, return empty data structure
+      return { organizations: [], total: 0 };
+    } catch (error) {
+      console.error('Failed to export organizations:', error);
+      throw new Error('Failed to export organizations');
+    }
   };
 
   const getImportTypeIcon = (type: string) => {

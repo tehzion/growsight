@@ -23,6 +23,7 @@ import FormInput from '../../components/ui/FormInput';
 import { useAuthStore } from '../../stores/authStore';
 import { useUserStore } from '../../stores/userStore';
 import { useOrganizationStore } from '../../stores/organizationStore';
+import { useDepartmentStore } from '../../stores/departmentStore';
 import { SupportTicket, TicketMessage, PriorityLevel, TicketCategory, TicketStatus } from '../../types';
 import { useSupportStore } from '../../stores/supportStore';
 import TicketForm from '../../components/support/TicketForm';
@@ -32,6 +33,7 @@ const SupportHub: React.FC = () => {
   const { user } = useAuthStore();
   const { users, fetchUsers } = useUserStore();
   const { currentOrganization } = useOrganizationStore();
+  const { departments, fetchDepartments } = useDepartmentStore();
   const { 
     tickets, 
     fetchTickets, 
@@ -61,9 +63,10 @@ const SupportHub: React.FC = () => {
       
       if (isSuperAdmin || isOrgAdmin) {
         fetchUsers(user.organizationId);
+        fetchDepartments(user.organizationId);
       }
     }
-  }, [user, fetchTickets, fetchUsers, isSuperAdmin, isOrgAdmin]);
+  }, [user, fetchTickets, fetchUsers, fetchDepartments, isSuperAdmin, isOrgAdmin]);
   
   useEffect(() => {
     // Apply filters
@@ -190,15 +193,9 @@ const SupportHub: React.FC = () => {
     const user = users.find(u => u.id === userId);
     if (!user) return 'Unknown';
     
-    // Mock department data based on user ID
-    const departmentMap: Record<string, string> = {
-      '3': 'Engineering',
-      '4': 'Marketing',
-      '5': 'Sales',
-      '2': 'Human Resources',
-      '7': 'Technology'
-    };
-    return departmentMap[userId] || 'General';
+    // Get department from user's department_id
+    const department = departments.find(d => d.id === user.departmentId);
+    return department?.name || 'General';
   };
 
   const getUserJobTitle = (userId?: string) => {
@@ -206,15 +203,8 @@ const SupportHub: React.FC = () => {
     const user = users.find(u => u.id === userId);
     if (!user) return 'Unknown';
     
-    // Mock job title data based on user ID
-    const jobTitleMap: Record<string, string> = {
-      '3': 'Software Engineer',
-      '4': 'Marketing Manager',
-      '5': 'Sales Representative',
-      '2': 'HR Director',
-      '7': 'Tech Lead'
-    };
-    return jobTitleMap[userId] || 'Staff Member';
+    // Get job title from user profile or role
+    return user.jobTitle || user.role || 'Staff Member';
   };
 
   const getUserLocation = (userId?: string) => {
@@ -222,15 +212,8 @@ const SupportHub: React.FC = () => {
     const user = users.find(u => u.id === userId);
     if (!user) return 'Unknown';
     
-    // Mock location data based on user ID
-    const locationMap: Record<string, string> = {
-      '3': 'San Francisco, CA',
-      '4': 'New York, NY',
-      '5': 'Chicago, IL',
-      '2': 'New York, NY',
-      '7': 'Austin, TX'
-    };
-    return locationMap[userId] || 'Remote';
+    // Get location from user profile
+    return user.location || 'Not specified';
   };
   
   const getTicketAge = (createdAt: string) => {

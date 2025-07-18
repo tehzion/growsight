@@ -15,8 +15,9 @@ import {
   Play,
   Save
 } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
-import { Button } from '../ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
+import Button from '../ui/Button';
+import { supabase } from '../../lib/supabase';
 import { useAuthStore } from '../../stores/authStore';
 import EnhancedRBAC from '../../lib/rbac/enhancedPermissions';
 
@@ -94,73 +95,56 @@ export const BulkOperationsManager: React.FC = () => {
   useEffect(() => {
     loadOperations();
     loadTemplates();
-  }, [loadOperations, loadTemplates]);
-
-  const loadOperations = React.useCallback(() => {
-    // Mock data - in real implementation, load from API
-    const mockOperations: BulkOperation[] = [
-      {
-        id: '1',
-        type: 'user_import',
-        title: 'Q4 New Hires Import',
-        description: 'Import 25 new employees for Q4 onboarding',
-        createdBy: user?.id || '',
-        createdAt: new Date('2024-07-15'),
-        status: 'completed',
-        approvedBy: 'admin1',
-        approvedAt: new Date('2024-07-16'),
-        executedAt: new Date('2024-07-17'),
-        totalItems: 25,
-        processedItems: 25,
-        successfulItems: 23,
-        failedItems: 2,
-        data: [],
-        validationErrors: [],
-        approvalRequired: true
-      },
-      {
-        id: '2',
-        type: 'assessment_assign',
-        title: 'Leadership Assessment Assignment',
-        description: 'Assign leadership assessment to all managers',
-        createdBy: user?.id || '',
-        createdAt: new Date('2024-07-20'),
-        status: 'pending_approval',
-        totalItems: 15,
-        processedItems: 0,
-        successfulItems: 0,
-        failedItems: 0,
-        data: [],
-        validationErrors: [],
-        approvalRequired: true
-      }
-    ];
-    setOperations(mockOperations);
   }, []);
 
-  const loadTemplates = React.useCallback(() => {
-    const mockTemplates: BulkTemplate[] = [
-      {
-        id: 'user_import_template',
-        name: 'User Import Template',
-        type: 'user_import',
-        description: 'Standard template for importing new users',
-        fields: [
-          { name: 'firstName', type: 'text', required: true },
-          { name: 'lastName', type: 'text', required: true },
-          { name: 'email', type: 'email', required: true },
-          { name: 'role', type: 'select', required: true, options: ['employee', 'reviewer', 'org_admin'] },
-          { name: 'department', type: 'text', required: false }
-        ],
-        validationRules: [
-          { field: 'email', rule: 'email', message: 'Invalid email format' },
-          { field: 'email', rule: 'unique', message: 'Email already exists' },
-          { field: 'firstName', rule: 'min_length', value: 2, message: 'First name too short' }
-        ]
-      }
-    ];
-    setTemplates(mockTemplates);
-  }, []);
+  const loadOperations = React.useCallback(async () => {
+    try {
+      // Load operations from Supabase
+      const { data: operationsData, error } = await supabase
+        .from('bulk_operations')
+        .select(`
+          *,
+          users (first_name, last_name, email)
+        `)
+        .eq('organization_id', user?.organizationId)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+
+      const transformedOperations: BulkOperation[] = operationsData.map((op: any) => ({
+        id: op.id,
+        type: op.operation_type,
+        title: op.title,
+        description: op.description,
+        createdBy: op.created_by,
+        createdAt: new Date(op.created_at),
+        status: op.status,
+        approvedBy: op.approved_by,
+        approvedAt: op.approved_at ? new Date(op.approved_at) : undefined,
+        executedAt: op.executed_at ? new Date(op.executed_at) : undefined,
+        totalItems: op.total_items,
+        processedItems: op.processed_items,
+        successfulItems: op.successful_items,
+        failedItems: op.failed_items,
+        data: op.data || [],
+        validationErrors: op.validation_errors || [],
+        approvalRequired: op.approval_required
+      }));
+
+      setOperations(transformedOperations);
+    } catch (error) {
+      console.error('Failed to load operations:', error);
+      setOperations([]);
+    }
+  }, [user?.organizationId]);
+
+  const loadTemplates = React.useCallback(async () => {
+    // TODO: Load real bulk operation templates from Supabase or API
+    // Example:
+    // const { data: templates, error } = await supabase.from('bulk_templates').select('*').eq('organization_id', user?.organizationId);
+    // setTemplates(templates || []);
+    setTemplates([]);
+  }, [user?.organizationId]);
 
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
