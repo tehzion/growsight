@@ -47,7 +47,7 @@ const RootLogin = () => {
   
   // Safely extract location state with type checking
   const locationState = isValidLocationState(location.state) ? location.state : {};
-  const from = locationState.from?.pathname || '/root-dashboard';
+  const from = locationState.from?.pathname || '/root/dashboard';
   const message = locationState.message;
 
   useEffect(() => {
@@ -172,7 +172,16 @@ const RootLogin = () => {
           </div>
         </div>
 
-        <div className="text-center">
+        <div className="text-center space-y-2">
+          <p className="text-sm text-gray-300">
+            Need root access?{' '}
+            <button
+              onClick={() => navigate('/root/register')}
+              className="font-medium text-green-400 hover:text-green-300"
+            >
+              Request administrator access
+            </button>
+          </p>
           <p className="text-sm text-gray-300">
             Regular user login?{' '}
             <button

@@ -7,6 +7,7 @@ import AuthLayout from './components/layout/AuthLayout';
 import Dashboard from './pages/Dashboard';
 import Login from './pages/auth/Login';
 import RootLogin from './pages/auth/RootLogin';
+import RootRegistration from './pages/auth/RootRegistration';
 import RequestAccess from './pages/auth/RequestAccess';
 import ForgotPassword from './pages/auth/ForgotPassword';
 import ResetPassword from './pages/auth/ResetPassword';
@@ -121,10 +122,20 @@ function App() {
     <ErrorBoundary>
       <ToastContainer position="top-right" />
       <Routes>
-        {/* Root Admin Login - Standalone route */}
+        {/* Root Admin Routes - Completely isolated and standalone */}
         <Route path="/root" element={
           <ErrorBoundary fallback={<div className="p-4 text-center">Error loading admin login page. Please refresh.</div>}>
             <RootLogin />
+          </ErrorBoundary>
+        } />
+        <Route path="/root/register" element={
+          <ErrorBoundary fallback={<div className="p-4 text-center">Error loading registration page. Please refresh.</div>}>
+            <RootRegistration />
+          </ErrorBoundary>
+        } />
+        <Route path="/root/dashboard" element={
+          <ErrorBoundary fallback={<div className="p-4 text-center">Error loading root dashboard. Please refresh.</div>}>
+            <RootDashboard />
           </ErrorBoundary>
         } />
         
@@ -169,11 +180,6 @@ function App() {
             <Route path="/dashboard" element={
               <ErrorBoundary>
                 <Dashboard />
-              </ErrorBoundary>
-            } />
-            <Route path="/root-dashboard" element={
-              <ErrorBoundary>
-                <RootDashboard />
               </ErrorBoundary>
             } />
             <Route path="/organizations" element={
