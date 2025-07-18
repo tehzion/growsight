@@ -64,6 +64,7 @@ export interface UserCreationData {
   departmentId?: string;
   departmentName?: string;
   assignedBy: string;
+  temporaryPassword?: string;
 }
 
 export class EmailService {

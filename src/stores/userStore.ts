@@ -6,8 +6,29 @@ import SecureLogger from '../lib/secureLogger';
 import { useProfileStore } from './profileStore';
 import { emailService, UserCreationData } from '../services/emailService';
 import { useAssessmentResultsStore } from './assessmentResultsStore';
+import { supabase, handleSupabaseError } from '../lib/supabase';
+import { config } from '../config/environment';
+import { emailNotificationService } from '../services/emailNotificationService';
 
 
+interface UserState {
+  users: User[];
+  isLoading: boolean;
+  error: string | null;
+  fetchUsers: (organizationId?: string, currentUser?: User | null) => Promise<void>;
+  createUser: (data: {
+    email: string;
+    firstName: string;
+    lastName: string;
+    role: string;
+    organizationId: string;
+    departmentId?: string;
+    organizationName?: string;
+    departmentName?: string;
+  }, currentUser?: User) => Promise<void>;
+  updateUser: (id: string, data: Partial<User>) => Promise<void>;
+  deleteUser: (id: string) => Promise<void>;
+}
 
 export const useUserStore = create<UserState>()(
   persist(
@@ -16,7 +37,7 @@ export const useUserStore = create<UserState>()(
       isLoading: false,
       error: null,
       
-      fetchUsers: async (organizationId?: string, currentUser?: User | null) => {
+      fetchUsers: async (organizationId?: string, currentUser?: User | null | undefined) => {
         set({ isLoading: true, error: null });
         try {
           await new Promise(resolve => setTimeout(resolve, 300));
@@ -41,7 +62,7 @@ export const useUserStore = create<UserState>()(
 
           // Sanitize user data based on requesting user's permissions
           const sanitizedUsers = filteredUsers.map(user => 
-            AccessControl.sanitizeUserData(user, currentUser)
+            AccessControl.sanitizeUserData(user, currentUser || null)
           ).filter(user => Object.keys(user).length > 0) as User[];
 
           set({ 
@@ -63,64 +84,89 @@ export const useUserStore = create<UserState>()(
             throw new Error('All fields are required');
           }
 
-          // Check for duplicate email
-          const { users: persistedUsers } = get();
-          const allUsers = [...persistedUsers];
-          
-          if (allUsers.some(user => user.email.toLowerCase() === data.email.toLowerCase())) {
+          // Check for duplicate email in Supabase
+          const { data: existingUser, error: checkError } = await supabase
+            .from('users')
+            .select('id')
+            .eq('email', data.email.toLowerCase().trim())
+            .eq('is_active', true)
+            .single();
+
+          if (checkError && checkError.code !== 'PGRST116') {
+            throw checkError;
+          }
+
+          if (existingUser) {
             throw new Error('A user with this email already exists');
           }
 
-          await new Promise(resolve => setTimeout(resolve, 500));
-          
-          // Generate organization and staff IDs using assessment results store functions
-          const { generateOrganizationId, generateStaffId } = useAssessmentResultsStore.getState();
-          
-          // Generate organization ID if not provided
-          let organizationId = data.organizationId;
-          if (!organizationId && data.organizationName) {
-            organizationId = generateOrganizationId(data.organizationName);
-          }
-          
-          // Generate staff ID
-          const fullName = `${data.firstName} ${data.lastName}`;
-          const staffId = generateStaffId(data.organizationName || 'Organization', fullName);
-          
-          const newUser: User = {
-            ...data,
-            id: `user-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          // Generate temporary password
+          const tempPassword = 'Temp' + Math.random().toString(36).substring(2, 10) + '!';
+
+          // Create user in Supabase Auth
+          const { data: authData, error: authError } = await supabase.auth.admin.createUser({
             email: data.email.toLowerCase().trim(),
-            firstName: data.firstName.trim(),
-            lastName: data.lastName.trim(),
-            organizationId,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-            requiresPasswordChange: true
+            password: tempPassword,
+            email_confirm: true,
+            user_metadata: {
+              first_name: data.firstName.trim(),
+              last_name: data.lastName.trim(),
+              role: data.role,
+              organization_id: data.organizationId,
+              requires_password_change: true
+            }
+          });
+
+          if (authError) {
+            if (authError.message.includes('User already registered')) {
+              throw new Error('A user with this email already exists');
+            }
+            throw new Error(`Failed to create user account: ${authError.message}`);
+          }
+
+          if (!authData.user) {
+            throw new Error('Failed to create user account');
+          }
+
+          // Create user profile in database
+          const { data: profileData, error: profileError } = await supabase
+            .from('users')
+            .insert({
+              id: authData.user.id,
+              email: data.email.toLowerCase().trim(),
+              first_name: data.firstName.trim(),
+              last_name: data.lastName.trim(),
+              role: data.role,
+              organization_id: data.organizationId,
+              department_id: data.departmentId,
+              requires_password_change: true,
+              is_active: true,
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            })
+            .select()
+            .single();
+
+          if (profileError) {
+            // If profile creation fails, delete the auth user
+            await supabase.auth.admin.deleteUser(authData.user.id);
+            throw profileError;
+          }
+
+          const newUser: User = {
+            id: profileData.id,
+            email: profileData.email,
+            firstName: profileData.first_name,
+            lastName: profileData.last_name,
+            role: profileData.role,
+            organizationId: profileData.organization_id,
+            departmentId: profileData.department_id,
+            createdAt: profileData.created_at,
+            updatedAt: profileData.updated_at,
+            requiresPasswordChange: profileData.requires_password_change || true
           };
 
-          // Automatically create staff assignment for the new user
-          try {
-            const { assignStaff } = useProfileStore.getState();
-            await assignStaff(
-              newUser.id,
-              newUser.organizationId,
-              undefined, // supervisor will be assigned later
-              newUser.departmentId,
-              'system' // created by system
-            );
-            
-            SecureLogger.info('Staff assignment created for new user', { 
-              userId: newUser.id, 
-              organizationId: newUser.organizationId,
-              departmentId: newUser.departmentId,
-              staffId
-            });
-          } catch (assignmentError) {
-            SecureLogger.warn('Failed to create staff assignment for new user', assignmentError);
-            // Don't fail user creation if staff assignment fails
-          }
-
-          // Send email notification to the new user
+          // Send email notification to the new user with temporary password
           try {
             const userCreationData: UserCreationData = {
               userId: newUser.id,
@@ -130,10 +176,11 @@ export const useUserStore = create<UserState>()(
               role: newUser.role,
               organizationId: newUser.organizationId,
               organizationName: data.organizationName || 'Your Organization',
-              staffId,
+              staffId: `STF-${Date.now()}`,
               departmentId: newUser.departmentId,
               departmentName: data.departmentName,
-              assignedBy: currentUser ? `${currentUser.firstName} ${currentUser.lastName}` : 'System Administrator'
+              assignedBy: currentUser ? `${currentUser.firstName} ${currentUser.lastName}` : 'System Administrator',
+              temporaryPassword: tempPassword
             };
 
             if (newUser.role === 'org_admin') {
@@ -141,41 +188,30 @@ export const useUserStore = create<UserState>()(
                 recipientEmail: newUser.email,
                 recipientName: `${newUser.firstName} ${newUser.lastName}`,
                 organizationId: newUser.organizationId,
-                loginUrl: `${config.app.url}/login`
+                loginUrl: `${config.app.url}/login`,
+                temporaryPassword: tempPassword
               });
             } else {
               await emailService.sendUserCreationNotification(userCreationData);
             }
             
-            SecureLogger.info('User creation email sent successfully', {
-              userId: newUser.id,
-              email: newUser.email,
-              organizationId: newUser.organizationId,
-              staffId
-            });
+            SecureLogger.info(`User creation email sent successfully for ${newUser.email}`);
           } catch (emailError) {
             SecureLogger.warn('Failed to send user creation email', emailError);
             // Don't fail user creation if email fails
           }
           
-          set(state => ({ 
+          set((state: any) => ({ 
             users: [...state.users, newUser],
             isLoading: false,
             error: null
           }));
 
-          // Log successful user creation with IDs
-          SecureLogger.info('User created successfully', {
-            userId: newUser.id,
-            email: newUser.email,
-            organizationId: newUser.organizationId,
-            staffId,
-            role: newUser.role,
-            createdBy: currentUser?.id || 'system'
-          });
+          // Log successful user creation
+          SecureLogger.info(`User created successfully: ${newUser.email} (${newUser.role})`);
 
         } catch (error) {
-          set({ error: (error as Error).message || 'Failed to create user', isLoading: false });
+          set({ error: handleSupabaseError(error), isLoading: false });
         }
       },
       
@@ -183,11 +219,11 @@ export const useUserStore = create<UserState>()(
         set({ isLoading: true, error: null });
         try {
           // Validate input if email is being updated
-          if (data.email) {
+          if (data.email && data.email.trim()) {
             const { users: persistedUsers } = get();
             const allUsers = [...persistedUsers];
             
-            if (allUsers.some(user => user.id !== id && user.email.toLowerCase() === data.email.toLowerCase())) {
+            if (allUsers.some(user => user.id !== id && user.email.toLowerCase() === data.email!.toLowerCase())) {
               throw new Error('A user with this email already exists');
             }
           }
@@ -244,3 +280,4 @@ export const useUserStore = create<UserState>()(
     }
   )
 );
+

@@ -183,6 +183,44 @@ export class EmailNotificationService {
   }
 
   /**
+   * Send org admin account created notification
+   */
+  async sendOrgAdminAccountCreatedNotification(data: {
+    recipientEmail: string;
+    recipientName: string;
+    organizationId: string;
+    loginUrl: string;
+    temporaryPassword: string;
+  }): Promise<void> {
+    if (!config.features.emailNotifications || config.email.provider === 'demo') {
+      console.log('Email notifications disabled or in demo mode');
+      return;
+    }
+
+    try {
+      await emailService.sendUserCreationNotification({
+        userId: `temp-${Date.now()}`,
+        email: data.recipientEmail,
+        firstName: data.recipientName.split(' ')[0] || data.recipientName,
+        lastName: data.recipientName.split(' ').slice(1).join(' ') || '',
+        role: 'org_admin',
+        organizationId: data.organizationId,
+        organizationName: 'Your Organization',
+        assignedBy: 'System Administrator',
+        temporaryPassword: data.temporaryPassword
+      });
+
+      SecureLogger.info('Org admin account creation notification email sent successfully', {
+        email: data.recipientEmail,
+        organizationId: data.organizationId
+      });
+    } catch (error) {
+      SecureLogger.error('Failed to send org admin account creation notification email', error);
+      throw error;
+    }
+  }
+
+  /**
    * Send welcome email to new users
    */
   async sendWelcomeEmail(welcomeData: {

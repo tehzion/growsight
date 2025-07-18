@@ -69,6 +69,15 @@ export const useRelationshipStore = create<RelationshipState>()(
           const { data: { user } } = await supabase.auth.getUser();
           if (!user) throw new Error('User not authenticated');
 
+          // Get current user's profile to check permissions
+          const { data: currentUserProfile, error: profileError } = await supabase
+            .from('users')
+            .select('id, role, organization_id')
+            .eq('id', user.id)
+            .single();
+
+          if (profileError) throw profileError;
+
           // Check for existing relationship
           const { data: existingRelationship, error: checkError } = await supabase
             .from('user_relationships')
@@ -88,7 +97,7 @@ export const useRelationshipStore = create<RelationshipState>()(
           // Validate that users exist and are in the same organization
           const { data: users, error: usersError } = await supabase
             .from('users')
-            .select('id, organization_id')
+            .select('id, organization_id, role')
             .in('id', [data.userId, data.relatedUserId])
             .eq('is_active', true);
 
@@ -100,6 +109,12 @@ export const useRelationshipStore = create<RelationshipState>()(
 
           if (users[0].organization_id !== users[1].organization_id) {
             throw new Error('Users must be in the same organization');
+          }
+
+          // Validate organization access for org admins
+          if (currentUserProfile.role === 'org_admin' && 
+              currentUserProfile.organization_id !== users[0].organization_id) {
+            throw new Error('You can only create relationships within your organization');
           }
 
           const { data: newRelationship, error } = await supabase
