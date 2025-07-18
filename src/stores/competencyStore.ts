@@ -1,5 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { supabase } from '../lib/supabase';
+import { handleSupabaseError } from '../lib/supabaseError';
 import { Competency } from '../types';
 
 interface CompetencyState {
@@ -13,74 +15,6 @@ interface CompetencyState {
   getCompetenciesByIds: (ids: string[]) => Competency[];
 }
 
-// Mock competencies for demo
-const defaultMockCompetencies: Competency[] = [
-  {
-    id: 'comp-1',
-    name: 'Leadership',
-    description: 'Ability to lead and inspire teams',
-    organizationId: 'demo-org-1',
-    createdAt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
-    updatedAt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
-  },
-  {
-    id: 'comp-2',
-    name: 'Communication',
-    description: 'Effective verbal and written communication skills',
-    organizationId: 'demo-org-1',
-    createdAt: new Date(Date.now() - 29 * 24 * 60 * 60 * 1000).toISOString(),
-    updatedAt: new Date(Date.now() - 29 * 24 * 60 * 60 * 1000).toISOString()
-  },
-  {
-    id: 'comp-3',
-    name: 'Problem Solving',
-    description: 'Ability to analyze and solve complex problems',
-    organizationId: 'demo-org-1',
-    createdAt: new Date(Date.now() - 28 * 24 * 60 * 60 * 1000).toISOString(),
-    updatedAt: new Date(Date.now() - 28 * 24 * 60 * 60 * 1000).toISOString()
-  },
-  {
-    id: 'comp-4',
-    name: 'Teamwork',
-    description: 'Ability to collaborate effectively with others',
-    organizationId: 'demo-org-1',
-    createdAt: new Date(Date.now() - 27 * 24 * 60 * 60 * 1000).toISOString(),
-    updatedAt: new Date(Date.now() - 27 * 24 * 60 * 60 * 1000).toISOString()
-  },
-  {
-    id: 'comp-5',
-    name: 'Technical Skills',
-    description: 'Proficiency in required technical areas',
-    organizationId: 'demo-org-1',
-    createdAt: new Date(Date.now() - 26 * 24 * 60 * 60 * 1000).toISOString(),
-    updatedAt: new Date(Date.now() - 26 * 24 * 60 * 60 * 1000).toISOString()
-  },
-  {
-    id: 'comp-6',
-    name: 'Innovation',
-    description: 'Ability to generate new ideas and approaches',
-    organizationId: 'demo-org-2',
-    createdAt: new Date(Date.now() - 25 * 24 * 60 * 60 * 1000).toISOString(),
-    updatedAt: new Date(Date.now() - 25 * 24 * 60 * 60 * 1000).toISOString()
-  },
-  {
-    id: 'comp-7',
-    name: 'Customer Focus',
-    description: 'Understanding and meeting customer needs',
-    organizationId: 'demo-org-2',
-    createdAt: new Date(Date.now() - 24 * 24 * 60 * 60 * 1000).toISOString(),
-    updatedAt: new Date(Date.now() - 24 * 24 * 60 * 60 * 1000).toISOString()
-  },
-  {
-    id: 'comp-8',
-    name: 'Strategic Thinking',
-    description: 'Ability to think and plan for the long term',
-    organizationId: 'demo-org-3',
-    createdAt: new Date(Date.now() - 23 * 24 * 60 * 60 * 1000).toISOString(),
-    updatedAt: new Date(Date.now() - 23 * 24 * 60 * 60 * 1000).toISOString()
-  }
-];
-
 export const useCompetencyStore = create<CompetencyState>()(
   persist(
     (set, get) => ({
@@ -91,20 +25,31 @@ export const useCompetencyStore = create<CompetencyState>()(
       fetchCompetencies: async (organizationId: string) => {
         set({ isLoading: true, error: null });
         try {
-          await new Promise(resolve => setTimeout(resolve, 300));
-          
-          // For demo, filter mock competencies by organization
-          const filteredCompetencies = defaultMockCompetencies.filter(
-            comp => comp.organizationId === organizationId
-          );
-          
+          const { data, error } = await supabase
+            .from('competencies')
+            .select('*')
+            .eq('organization_id', organizationId)
+            .eq('is_active', true)
+            .order('name');
+
+          if (error) throw error;
+
+          const competencies: Competency[] = (data || []).map((item: any) => ({
+            id: item.id,
+            name: item.name,
+            description: item.description,
+            organizationId: item.organization_id,
+            createdAt: item.created_at,
+            updatedAt: item.updated_at
+          }));
+
           set({ 
-            competencies: filteredCompetencies, 
+            competencies, 
             isLoading: false 
           });
         } catch (error) {
           set({ 
-            error: (error as Error).message || 'Failed to fetch competencies', 
+            error: handleSupabaseError(error), 
             isLoading: false 
           });
         }
@@ -113,35 +58,51 @@ export const useCompetencyStore = create<CompetencyState>()(
       createCompetency: async (data) => {
         set({ isLoading: true, error: null });
         try {
-          await new Promise(resolve => setTimeout(resolve, 500));
-          
           // Check for duplicate name in the same organization
-          const { competencies } = get();
-          const isDuplicate = competencies.some(
-            comp => comp.organizationId === data.organizationId && 
-                   comp.name.toLowerCase() === data.name.toLowerCase()
-          );
-          
-          if (isDuplicate) {
+          const { data: existingCompetencies, error: checkError } = await supabase
+            .from('competencies')
+            .select('id')
+            .eq('organization_id', data.organizationId)
+            .eq('name', data.name.trim())
+            .eq('is_active', true);
+
+          if (checkError) throw checkError;
+
+          if (existingCompetencies && existingCompetencies.length > 0) {
             throw new Error('A competency with this name already exists in your organization');
           }
-          
-          const newCompetency: Competency = {
-            id: `comp-${Date.now()}`,
-            name: data.name.trim(),
-            description: data.description?.trim(),
-            organizationId: data.organizationId,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString()
+
+          const { data: newCompetency, error } = await supabase
+            .from('competencies')
+            .insert({
+              name: data.name.trim(),
+              description: data.description?.trim(),
+              organization_id: data.organizationId,
+              is_active: true,
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString()
+            })
+            .select()
+            .single();
+
+          if (error) throw error;
+
+          const competency: Competency = {
+            id: newCompetency.id,
+            name: newCompetency.name,
+            description: newCompetency.description,
+            organizationId: newCompetency.organization_id,
+            createdAt: newCompetency.created_at,
+            updatedAt: newCompetency.updated_at
           };
-          
+
           set(state => ({
-            competencies: [...state.competencies, newCompetency],
+            competencies: [...state.competencies, competency],
             isLoading: false
           }));
         } catch (error) {
           set({ 
-            error: (error as Error).message || 'Failed to create competency', 
+            error: handleSupabaseError(error), 
             isLoading: false 
           });
         }
@@ -150,8 +111,6 @@ export const useCompetencyStore = create<CompetencyState>()(
       updateCompetency: async (id, data) => {
         set({ isLoading: true, error: null });
         try {
-          await new Promise(resolve => setTimeout(resolve, 300));
-          
           // Check for duplicate name if name is being updated
           if (data.name) {
             const { competencies } = get();
@@ -160,33 +119,56 @@ export const useCompetencyStore = create<CompetencyState>()(
             if (!competency) {
               throw new Error('Competency not found');
             }
-            
-            const isDuplicate = competencies.some(
-              comp => comp.id !== id && 
-                     comp.organizationId === competency.organizationId && 
-                     comp.name.toLowerCase() === data.name.toLowerCase()
-            );
-            
-            if (isDuplicate) {
+
+            const { data: existingCompetencies, error: checkError } = await supabase
+              .from('competencies')
+              .select('id')
+              .eq('organization_id', competency.organizationId)
+              .eq('name', data.name.trim())
+              .neq('id', id)
+              .eq('is_active', true);
+
+            if (checkError) throw checkError;
+
+            if (existingCompetencies && existingCompetencies.length > 0) {
               throw new Error('A competency with this name already exists in your organization');
             }
           }
-          
+
+          const updateData: Record<string, any> = {
+            updated_at: new Date().toISOString()
+          };
+
+          if (data.name) updateData.name = data.name.trim();
+          if (data.description !== undefined) updateData.description = data.description?.trim();
+
+          const { data: updatedCompetency, error } = await supabase
+            .from('competencies')
+            .update(updateData)
+            .eq('id', id)
+            .select()
+            .single();
+
+          if (error) throw error;
+
+          const competency: Competency = {
+            id: updatedCompetency.id,
+            name: updatedCompetency.name,
+            description: updatedCompetency.description,
+            organizationId: updatedCompetency.organization_id,
+            createdAt: updatedCompetency.created_at,
+            updatedAt: updatedCompetency.updated_at
+          };
+
           set(state => ({
             competencies: state.competencies.map(comp =>
-              comp.id === id ? { 
-                ...comp, 
-                ...data,
-                name: data.name ? data.name.trim() : comp.name,
-                description: data.description !== undefined ? data.description?.trim() : comp.description,
-                updatedAt: new Date().toISOString() 
-              } : comp
+              comp.id === id ? competency : comp
             ),
             isLoading: false
           }));
         } catch (error) {
           set({ 
-            error: (error as Error).message || 'Failed to update competency', 
+            error: handleSupabaseError(error), 
             isLoading: false 
           });
         }
@@ -195,15 +177,23 @@ export const useCompetencyStore = create<CompetencyState>()(
       deleteCompetency: async (id) => {
         set({ isLoading: true, error: null });
         try {
-          await new Promise(resolve => setTimeout(resolve, 300));
-          
+          const { error } = await supabase
+            .from('competencies')
+            .update({ 
+              is_active: false,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', id);
+
+          if (error) throw error;
+
           set(state => ({
             competencies: state.competencies.filter(comp => comp.id !== id),
             isLoading: false
           }));
         } catch (error) {
           set({ 
-            error: (error as Error).message || 'Failed to delete competency', 
+            error: handleSupabaseError(error), 
             isLoading: false 
           });
         }

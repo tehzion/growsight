@@ -1,5 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { supabase } from '../lib/supabase';
+import { handleSupabaseError } from '../lib/supabaseError';
 import { Department } from '../types';
 
 interface DepartmentState {
@@ -12,66 +14,6 @@ interface DepartmentState {
   deleteDepartment: (id: string) => Promise<void>;
 }
 
-// Mock departments for demo
-const defaultMockDepartments: Department[] = [
-  {
-    id: 'dept-1',
-    name: 'Executive',
-    description: 'Executive leadership team',
-    organizationId: 'demo-org-1',
-    createdById: '1',
-    createdAt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
-    updatedAt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
-  },
-  {
-    id: 'dept-2',
-    name: 'Human Resources',
-    description: 'HR department',
-    organizationId: 'demo-org-1',
-    createdById: '1',
-    createdAt: new Date(Date.now() - 29 * 24 * 60 * 60 * 1000).toISOString(),
-    updatedAt: new Date(Date.now() - 29 * 24 * 60 * 60 * 1000).toISOString()
-  },
-  {
-    id: 'dept-3',
-    name: 'Engineering',
-    description: 'Software engineering department',
-    organizationId: 'demo-org-1',
-    createdById: '1',
-    createdAt: new Date(Date.now() - 28 * 24 * 60 * 60 * 1000).toISOString(),
-    updatedAt: new Date(Date.now() - 28 * 24 * 60 * 60 * 1000).toISOString()
-  },
-  {
-    id: 'dept-4',
-    name: 'Frontend Team',
-    description: 'Frontend development team',
-    organizationId: 'demo-org-1',
-    parentDepartmentId: 'dept-3',
-    createdById: '1',
-    createdAt: new Date(Date.now() - 27 * 24 * 60 * 60 * 1000).toISOString(),
-    updatedAt: new Date(Date.now() - 27 * 24 * 60 * 60 * 1000).toISOString()
-  },
-  {
-    id: 'dept-5',
-    name: 'Backend Team',
-    description: 'Backend development team',
-    organizationId: 'demo-org-1',
-    parentDepartmentId: 'dept-3',
-    createdById: '1',
-    createdAt: new Date(Date.now() - 26 * 24 * 60 * 60 * 1000).toISOString(),
-    updatedAt: new Date(Date.now() - 26 * 24 * 60 * 60 * 1000).toISOString()
-  },
-  {
-    id: 'dept-6',
-    name: 'Marketing',
-    description: 'Marketing department',
-    organizationId: 'demo-org-1',
-    createdById: '1',
-    createdAt: new Date(Date.now() - 25 * 24 * 60 * 60 * 1000).toISOString(),
-    updatedAt: new Date(Date.now() - 25 * 24 * 60 * 60 * 1000).toISOString()
-  }
-];
-
 export const useDepartmentStore = create<DepartmentState>()(
   persist(
     (set, get) => ({
@@ -82,20 +24,33 @@ export const useDepartmentStore = create<DepartmentState>()(
       fetchDepartments: async (organizationId: string) => {
         set({ isLoading: true, error: null });
         try {
-          await new Promise(resolve => setTimeout(resolve, 300));
-          
-          // For demo, filter mock departments by organization
-          const filteredDepartments = defaultMockDepartments.filter(
-            dept => dept.organizationId === organizationId
-          );
-          
+          const { data, error } = await supabase
+            .from('departments')
+            .select('*')
+            .eq('organization_id', organizationId)
+            .eq('is_active', true)
+            .order('name');
+
+          if (error) throw error;
+
+          const departments: Department[] = (data || []).map((item: any) => ({
+            id: item.id,
+            name: item.name,
+            description: item.description,
+            organizationId: item.organization_id,
+            parentDepartmentId: item.parent_department_id,
+            createdById: item.created_by_id,
+            createdAt: item.created_at,
+            updatedAt: item.updated_at
+          }));
+
           set({ 
-            departments: filteredDepartments, 
+            departments, 
             isLoading: false 
           });
         } catch (error) {
           set({ 
-            error: (error as Error).message || 'Failed to fetch departments', 
+            error: handleSupabaseError(error), 
             isLoading: false 
           });
         }
@@ -104,26 +59,59 @@ export const useDepartmentStore = create<DepartmentState>()(
       createDepartment: async (data) => {
         set({ isLoading: true, error: null });
         try {
-          await new Promise(resolve => setTimeout(resolve, 500));
-          
-          const newDepartment: Department = {
-            id: `dept-${Date.now()}`,
-            name: data.name,
-            description: data.description,
-            organizationId: data.organizationId,
-            parentDepartmentId: data.parentDepartmentId,
-            createdById: 'current-user-id', // Would be actual user ID
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString()
+          // Get current user
+          const { data: { user } } = await supabase.auth.getUser();
+          if (!user) throw new Error('User not authenticated');
+
+          // Check for duplicate name in the same organization
+          const { data: existingDepartments, error: checkError } = await supabase
+            .from('departments')
+            .select('id')
+            .eq('organization_id', data.organizationId)
+            .eq('name', data.name.trim())
+            .eq('is_active', true);
+
+          if (checkError) throw checkError;
+
+          if (existingDepartments && existingDepartments.length > 0) {
+            throw new Error('A department with this name already exists in your organization');
+          }
+
+          const { data: newDepartment, error } = await supabase
+            .from('departments')
+            .insert({
+              name: data.name.trim(),
+              description: data.description?.trim(),
+              organization_id: data.organizationId,
+              parent_department_id: data.parentDepartmentId,
+              created_by_id: user.id,
+              is_active: true,
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString()
+            })
+            .select()
+            .single();
+
+          if (error) throw error;
+
+          const department: Department = {
+            id: newDepartment.id,
+            name: newDepartment.name,
+            description: newDepartment.description,
+            organizationId: newDepartment.organization_id,
+            parentDepartmentId: newDepartment.parent_department_id,
+            createdById: newDepartment.created_by_id,
+            createdAt: newDepartment.created_at,
+            updatedAt: newDepartment.updated_at
           };
-          
+
           set(state => ({
-            departments: [...state.departments, newDepartment],
+            departments: [...state.departments, department],
             isLoading: false
           }));
         } catch (error) {
           set({ 
-            error: (error as Error).message || 'Failed to create department', 
+            error: handleSupabaseError(error), 
             isLoading: false 
           });
         }
@@ -132,21 +120,67 @@ export const useDepartmentStore = create<DepartmentState>()(
       updateDepartment: async (id, data) => {
         set({ isLoading: true, error: null });
         try {
-          await new Promise(resolve => setTimeout(resolve, 300));
-          
+          // Check for duplicate name if name is being updated
+          if (data.name) {
+            const { departments } = get();
+            const department = departments.find(dept => dept.id === id);
+            
+            if (!department) {
+              throw new Error('Department not found');
+            }
+
+            const { data: existingDepartments, error: checkError } = await supabase
+              .from('departments')
+              .select('id')
+              .eq('organization_id', department.organizationId)
+              .eq('name', data.name.trim())
+              .neq('id', id)
+              .eq('is_active', true);
+
+            if (checkError) throw checkError;
+
+            if (existingDepartments && existingDepartments.length > 0) {
+              throw new Error('A department with this name already exists in your organization');
+            }
+          }
+
+          const updateData: Record<string, any> = {
+            updated_at: new Date().toISOString()
+          };
+
+          if (data.name) updateData.name = data.name.trim();
+          if (data.description !== undefined) updateData.description = data.description?.trim();
+          if (data.parentDepartmentId !== undefined) updateData.parent_department_id = data.parentDepartmentId;
+
+          const { data: updatedDepartment, error } = await supabase
+            .from('departments')
+            .update(updateData)
+            .eq('id', id)
+            .select()
+            .single();
+
+          if (error) throw error;
+
+          const department: Department = {
+            id: updatedDepartment.id,
+            name: updatedDepartment.name,
+            description: updatedDepartment.description,
+            organizationId: updatedDepartment.organization_id,
+            parentDepartmentId: updatedDepartment.parent_department_id,
+            createdById: updatedDepartment.created_by_id,
+            createdAt: updatedDepartment.created_at,
+            updatedAt: updatedDepartment.updated_at
+          };
+
           set(state => ({
             departments: state.departments.map(dept =>
-              dept.id === id ? { 
-                ...dept, 
-                ...data,
-                updatedAt: new Date().toISOString() 
-              } : dept
+              dept.id === id ? department : dept
             ),
             isLoading: false
           }));
         } catch (error) {
           set({ 
-            error: (error as Error).message || 'Failed to update department', 
+            error: handleSupabaseError(error), 
             isLoading: false 
           });
         }
@@ -155,23 +189,49 @@ export const useDepartmentStore = create<DepartmentState>()(
       deleteDepartment: async (id) => {
         set({ isLoading: true, error: null });
         try {
-          await new Promise(resolve => setTimeout(resolve, 300));
-          
           // Check if department has children
-          const { departments } = get();
-          const hasChildren = departments.some(dept => dept.parentDepartmentId === id);
-          
-          if (hasChildren) {
+          const { data: childDepartments, error: checkError } = await supabase
+            .from('departments')
+            .select('id')
+            .eq('parent_department_id', id)
+            .eq('is_active', true);
+
+          if (checkError) throw checkError;
+
+          if (childDepartments && childDepartments.length > 0) {
             throw new Error('Cannot delete department with sub-departments. Please delete or reassign sub-departments first.');
           }
-          
+
+          // Check if department has users
+          const { data: departmentUsers, error: userCheckError } = await supabase
+            .from('users')
+            .select('id')
+            .eq('department_id', id)
+            .eq('is_active', true);
+
+          if (userCheckError) throw userCheckError;
+
+          if (departmentUsers && departmentUsers.length > 0) {
+            throw new Error('Cannot delete department with assigned users. Please reassign users first.');
+          }
+
+          const { error } = await supabase
+            .from('departments')
+            .update({ 
+              is_active: false,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', id);
+
+          if (error) throw error;
+
           set(state => ({
             departments: state.departments.filter(dept => dept.id !== id),
             isLoading: false
           }));
         } catch (error) {
           set({ 
-            error: (error as Error).message || 'Failed to delete department', 
+            error: handleSupabaseError(error), 
             isLoading: false 
           });
         }

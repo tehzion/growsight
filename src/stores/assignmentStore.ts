@@ -1,5 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { supabase } from '../lib/supabase';
+import { handleSupabaseError } from '../lib/supabaseError';
 import { AssessmentAssignment, AssessmentNotification, RelationshipType } from '../types';
 import { emailService } from '../services/emailService';
 import { config } from '../config/environment';
@@ -29,52 +31,6 @@ interface AssignmentState {
   markNotificationSent: (notificationId: string) => Promise<void>;
 }
 
-// Mock assignments for demo
-const defaultMockAssignments: AssessmentAssignment[] = [
-  {
-    id: 'assign-1',
-    assessmentId: 'preset-assessment-1',
-    employeeId: '3', // John Doe
-    reviewerId: '4', // Jane Smith
-    relationshipType: 'peer',
-    deadline: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-    assignedById: '2', // Org Admin
-    status: 'pending',
-    dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-    notificationSent: true,
-    createdAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
-    updatedAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
-  },
-  {
-    id: 'assign-2',
-    assessmentId: 'preset-assessment-1',
-    employeeId: '3', // John Doe
-    reviewerId: '2', // Michael Chen (supervisor)
-    relationshipType: 'supervisor',
-    deadline: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString(),
-    assignedById: '2',
-    status: 'in_progress',
-    dueDate: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString(),
-    notificationSent: true,
-    createdAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
-    updatedAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
-  },
-  {
-    id: 'assign-3',
-    assessmentId: 'preset-assessment-2',
-    employeeId: '5', // Mike Wilson
-    reviewerId: '6', // Lisa Brown
-    relationshipType: 'peer',
-    deadline: new Date(Date.now() + 10 * 24 * 60 * 60 * 1000).toISOString(),
-    assignedById: '2',
-    status: 'pending',
-    dueDate: new Date(Date.now() + 10 * 24 * 60 * 60 * 1000).toISOString(),
-    notificationSent: false,
-    createdAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
-    updatedAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
-  }
-];
-
 export const useAssignmentStore = create<AssignmentState>()(
   persist(
     (set, get) => ({
@@ -86,43 +42,90 @@ export const useAssignmentStore = create<AssignmentState>()(
       fetchAssignments: async (userId?: string) => {
         set({ isLoading: true, error: null });
         try {
-          await new Promise(resolve => setTimeout(resolve, 400));
-          
-          const { assignments: currentAssignments } = get();
-          const allAssignments = currentAssignments.length > 0 ? currentAssignments : defaultMockAssignments;
-          
-          const filteredAssignments = userId 
-            ? allAssignments.filter(a => a.employeeId === userId || a.reviewerId === userId)
-            : allAssignments;
-          
-          set({ assignments: filteredAssignments, isLoading: false });
+          let query = supabase
+            .from('assessment_assignments')
+            .select(`
+              *,
+              assessments!inner(*),
+              employees:users!assessment_assignments_employee_id_fkey(*),
+              reviewers:users!assessment_assignments_reviewer_id_fkey(*)
+            `)
+            .eq('is_active', true);
+
+          if (userId) {
+            query = query.or(`employee_id.eq.${userId},reviewer_id.eq.${userId}`);
+          }
+
+          const { data, error } = await query.order('created_at', { ascending: false });
+
+          if (error) throw error;
+
+          const assignments: AssessmentAssignment[] = (data || []).map((item: any) => ({
+            id: item.id,
+            assessmentId: item.assessment_id,
+            employeeId: item.employee_id,
+            reviewerId: item.reviewer_id,
+            relationshipType: item.relationship_type,
+            deadline: item.deadline,
+            assignedById: item.assigned_by_id,
+            status: item.status,
+            dueDate: item.due_date,
+            notificationSent: item.notification_sent,
+            createdAt: item.created_at,
+            updatedAt: item.updated_at,
+          }));
+
+          set({ assignments, isLoading: false });
         } catch (error) {
-          set({ error: 'Failed to fetch assignments', isLoading: false });
+          set({ error: handleSupabaseError(error), isLoading: false });
         }
       },
 
       createAssignment: async (data) => {
         set({ isLoading: true, error: null });
         try {
-          await new Promise(resolve => setTimeout(resolve, 600));
-          
-          const newAssignment: AssessmentAssignment = {
-            id: `assign-${Date.now()}`,
-            assessmentId: data.assessmentId,
-            employeeId: data.employeeId,
-            reviewerId: data.reviewerId,
-            relationshipType: data.relationshipType,
-            deadline: data.deadline,
-            assignedById: 'current-user-id', // Would be actual user ID
-            status: 'pending',
-            dueDate: data.deadline,
-            notificationSent: false,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
+          // Get current user
+          const { data: { user } } = await supabase.auth.getUser();
+          if (!user) throw new Error('User not authenticated');
+
+          const { data: newAssignment, error } = await supabase
+            .from('assessment_assignments')
+            .insert({
+              assessment_id: data.assessmentId,
+              employee_id: data.employeeId,
+              reviewer_id: data.reviewerId,
+              relationship_type: data.relationshipType,
+              deadline: data.deadline,
+              due_date: data.deadline,
+              assigned_by_id: user.id,
+              status: 'pending',
+              notification_sent: false,
+              is_active: true,
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            })
+            .select()
+            .single();
+
+          if (error) throw error;
+
+          const assignment: AssessmentAssignment = {
+            id: newAssignment.id,
+            assessmentId: newAssignment.assessment_id,
+            employeeId: newAssignment.employee_id,
+            reviewerId: newAssignment.reviewer_id,
+            relationshipType: newAssignment.relationship_type,
+            deadline: newAssignment.deadline,
+            assignedById: newAssignment.assigned_by_id,
+            status: newAssignment.status,
+            dueDate: newAssignment.due_date,
+            notificationSent: newAssignment.notification_sent,
+            createdAt: newAssignment.created_at,
+            updatedAt: newAssignment.updated_at,
           };
-          
+
           set(state => ({
-            assignments: [...state.assignments, newAssignment],
+            assignments: [assignment, ...state.assignments],
             isLoading: false,
           }));
 
@@ -145,7 +148,7 @@ export const useAssignmentStore = create<AssignmentState>()(
               // Send 360° assessment assignment notification if applicable
               if (data.assessmentTitle && data.employeeEmail && data.reviewerEmail) {
                 await emailService.sendAssessmentAssignmentNotification(
-                  newAssignment.id,
+                  assignment.id,
                   data.employeeEmail,
                   data.reviewerEmail,
                   data.assessmentTitle,
@@ -175,81 +178,137 @@ export const useAssignmentStore = create<AssignmentState>()(
           }
           
         } catch (error) {
-          set({ error: 'Failed to create assignment', isLoading: false });
+          set({ error: handleSupabaseError(error), isLoading: false });
         }
       },
 
       updateAssignmentStatus: async (id, status) => {
         set({ isLoading: true, error: null });
         try {
-          await new Promise(resolve => setTimeout(resolve, 300));
-          
-          const { assignments } = get();
-          const assignment = assignments.find(a => a.id === id);
-          
+          const { data: updatedAssignment, error } = await supabase
+            .from('assessment_assignments')
+            .update({ 
+              status,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', id)
+            .select()
+            .single();
+
+          if (error) throw error;
+
+          const assignment: AssessmentAssignment = {
+            id: updatedAssignment.id,
+            assessmentId: updatedAssignment.assessment_id,
+            employeeId: updatedAssignment.employee_id,
+            reviewerId: updatedAssignment.reviewer_id,
+            relationshipType: updatedAssignment.relationship_type,
+            deadline: updatedAssignment.deadline,
+            assignedById: updatedAssignment.assigned_by_id,
+            status: updatedAssignment.status,
+            dueDate: updatedAssignment.due_date,
+            notificationSent: updatedAssignment.notification_sent,
+            createdAt: updatedAssignment.created_at,
+            updatedAt: updatedAssignment.updated_at,
+          };
+
           set(state => ({
-            assignments: state.assignments.map(assignment =>
-              assignment.id === id 
-                ? { ...assignment, status, updatedAt: new Date().toISOString() }
-                : assignment
+            assignments: state.assignments.map(a =>
+              a.id === id ? assignment : a
             ),
             isLoading: false,
           }));
 
           // Send completion notification if assessment is completed
-          if (status === 'completed' && assignment && config.features.emailNotifications && config.email.provider !== 'demo') {
+          if (status === 'completed' && config.features.emailNotifications && config.email.provider !== 'demo') {
             try {
-              // This would need the actual email addresses and names from the database
-              // For now, we'll just log the completion
-              console.log(`Assessment completed notification should be sent for assignment ${id}`);
+              // Get assignment details for email notification
+              const { data: assignmentDetails, error: detailsError } = await supabase
+                .from('assessment_assignments')
+                .select(`
+                  *,
+                  assessments!inner(*),
+                  employees:users!assessment_assignments_employee_id_fkey(*),
+                  reviewers:users!assessment_assignments_reviewer_id_fkey(*)
+                `)
+                .eq('id', id)
+                .single();
+
+              if (!detailsError && assignmentDetails) {
+                // Send completion notification
+                console.log(`Assessment completed notification should be sent for assignment ${id}`);
+                // TODO: Implement completion notification logic
+              }
             } catch (emailError) {
               console.error('Failed to send completion notification:', emailError);
             }
           }
         } catch (error) {
-          set({ error: 'Failed to update assignment status', isLoading: false });
+          set({ error: handleSupabaseError(error), isLoading: false });
         }
       },
 
       fetchNotifications: async (userId: string) => {
         set({ isLoading: true, error: null });
         try {
-          await new Promise(resolve => setTimeout(resolve, 300));
-          
-          // Mock notifications based on assignments
-          const mockNotifications: AssessmentNotification[] = [
-            {
-              id: 'notif-1',
-              assignmentId: 'assign-1',
-              userId: userId,
-              notificationType: 'assignment_created',
-              emailSent: true,
-              sentAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
-              createdAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
-            }
-          ];
-          
-          set({ notifications: mockNotifications, isLoading: false });
+          const { data, error } = await supabase
+            .from('assessment_notifications')
+            .select('*')
+            .eq('user_id', userId)
+            .order('created_at', { ascending: false });
+
+          if (error) throw error;
+
+          const notifications: AssessmentNotification[] = (data || []).map((item: any) => ({
+            id: item.id,
+            assignmentId: item.assignment_id,
+            userId: item.user_id,
+            notificationType: item.notification_type,
+            emailSent: item.email_sent,
+            sentAt: item.sent_at,
+            createdAt: item.created_at,
+          }));
+
+          set({ notifications, isLoading: false });
         } catch (error) {
-          set({ error: 'Failed to fetch notifications', isLoading: false });
+          set({ error: handleSupabaseError(error), isLoading: false });
         }
       },
 
       markNotificationSent: async (notificationId: string) => {
         set({ isLoading: true, error: null });
         try {
-          await new Promise(resolve => setTimeout(resolve, 200));
-          
+          const { data: updatedNotification, error } = await supabase
+            .from('assessment_notifications')
+            .update({ 
+              email_sent: true, 
+              sent_at: new Date().toISOString(),
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', notificationId)
+            .select()
+            .single();
+
+          if (error) throw error;
+
+          const notification: AssessmentNotification = {
+            id: updatedNotification.id,
+            assignmentId: updatedNotification.assignment_id,
+            userId: updatedNotification.user_id,
+            notificationType: updatedNotification.notification_type,
+            emailSent: updatedNotification.email_sent,
+            sentAt: updatedNotification.sent_at,
+            createdAt: updatedNotification.created_at,
+          };
+
           set(state => ({
-            notifications: state.notifications.map(notification =>
-              notification.id === notificationId 
-                ? { ...notification, emailSent: true, sentAt: new Date().toISOString() }
-                : notification
+            notifications: state.notifications.map(n =>
+              n.id === notificationId ? notification : n
             ),
             isLoading: false,
           }));
         } catch (error) {
-          set({ error: 'Failed to mark notification as sent', isLoading: false });
+          set({ error: handleSupabaseError(error), isLoading: false });
         }
       },
     }),
