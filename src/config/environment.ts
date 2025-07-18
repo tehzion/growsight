@@ -34,6 +34,23 @@ export interface AppConfig {
     maxFileSize: number;
     passwordMinLength: number;
     maxLoginAttempts: number;
+    csp: {
+      reportOnly: boolean;
+      reportUri?: string;
+      upgradeInsecureRequests: boolean;
+      scriptSrc?: string[];
+      styleSrc?: string[];
+      imgSrc?: string[];
+      connectSrc?: string[];
+      fontSrc?: string[];
+      frameSrc?: string[];
+      objectSrc?: string[];
+      mediaSrc?: string[];
+      workerSrc?: string[];
+      formAction?: string[];
+      frameAncestors?: string[];
+      additionalConnectSrc?: string[];
+    };
   };
   performance: {
     cacheTimeout: number;
@@ -61,6 +78,12 @@ const getConfig = (): AppConfig => {
   const isStaging = import.meta.env.VITE_NODE_ENV === 'staging';
   const isProduction = import.meta.env.PROD && !isStaging;
   
+  // Helper function to parse CSP sources from environment
+  const parseCSPSources = (envVar: string | undefined): string[] | undefined => {
+    if (!envVar) return undefined;
+    return envVar.split(',').map(s => s.trim()).filter(s => s.length > 0);
+  };
+  
   return {
     supabase: {
       url: import.meta.env.VITE_SUPABASE_URL || '',
@@ -69,19 +92,19 @@ const getConfig = (): AppConfig => {
     email: {
       provider: import.meta.env.VITE_EMAIL_PROVIDER || 'smtp',
       apiKey: import.meta.env.VITE_SENDGRID_API_KEY || import.meta.env.VITE_MAILGUN_API_KEY || '',
-      fromEmail: import.meta.env.VITE_EMAIL_FROM_ADDRESS || 'noreply@growsight.com',
-      fromName: import.meta.env.VITE_EMAIL_FROM_NAME || 'Growsight',
+      fromEmail: import.meta.env.VITE_EMAIL_FROM_ADDRESS || 'noreply@leadership360.com',
+      fromName: import.meta.env.VITE_EMAIL_FROM_NAME || 'Leadership 360',
       domain: import.meta.env.VITE_MAILGUN_DOMAIN,
       smtpHost: import.meta.env.VITE_SMTP_HOST,
-      smtpPort: parseInt(import.meta.env.VITE_SMTP_PORT || '587'),
-      smtpSecure: import.meta.env.VITE_SMTP_SECURE === 'true',
+      smtpPort: parseInt(import.meta.env.VITE_SMTP_PORT || '587') || 587,
+      smtpSecure: import.meta.env.VITE_SMTP_SECURE === 'true' ? true : false,
       smtpUsername: import.meta.env.VITE_SMTP_USERNAME,
       smtpPassword: import.meta.env.VITE_SMTP_PASSWORD,
     },
     app: {
-      name: import.meta.env.VITE_APP_NAME || 'Growsight',
+      name: import.meta.env.VITE_APP_NAME || 'Leadership 360',
       url: import.meta.env.VITE_APP_URL || (isDevelopment ? 'http://localhost:3000' : 'https://your-domain.com'),
-      supportEmail: import.meta.env.VITE_SUPPORT_EMAIL || 'support@growsight.com',
+      supportEmail: import.meta.env.VITE_SUPPORT_EMAIL || 'support@leadership360.com',
       environment: isDevelopment ? 'development' : isStaging ? 'staging' : 'production',
       version: import.meta.env.VITE_APP_VERSION || '1.0.0',
     },
@@ -93,15 +116,32 @@ const getConfig = (): AppConfig => {
       advancedReporting: import.meta.env.VITE_ENABLE_ADVANCED_REPORTING !== 'false',
     },
     security: {
-      sessionTimeout: parseInt(import.meta.env.VITE_SESSION_TIMEOUT || '3600000'), // 1 hour
-      maxFileSize: parseInt(import.meta.env.VITE_MAX_FILE_SIZE || '10485760'), // 10MB
-      passwordMinLength: parseInt(import.meta.env.VITE_PASSWORD_MIN_LENGTH || '8'),
-      maxLoginAttempts: parseInt(import.meta.env.VITE_MAX_LOGIN_ATTEMPTS || '5'),
+      sessionTimeout: parseInt(import.meta.env.VITE_SESSION_TIMEOUT || '3600000') || 3600000, // 1 hour
+      maxFileSize: parseInt(import.meta.env.VITE_MAX_FILE_SIZE || '10485760') || 10485760, // 10MB
+      passwordMinLength: parseInt(import.meta.env.VITE_PASSWORD_MIN_LENGTH || '8') || 8,
+      maxLoginAttempts: parseInt(import.meta.env.VITE_MAX_LOGIN_ATTEMPTS || '5') || 5,
+      csp: {
+        reportOnly: import.meta.env.VITE_CSP_REPORT_ONLY === 'true',
+        reportUri: import.meta.env.VITE_CSP_REPORT_URI,
+        upgradeInsecureRequests: import.meta.env.VITE_CSP_UPGRADE_INSECURE_REQUESTS !== 'false' ? true : false,
+        scriptSrc: parseCSPSources(import.meta.env.VITE_CSP_SCRIPT_SRC),
+        styleSrc: parseCSPSources(import.meta.env.VITE_CSP_STYLE_SRC),
+        imgSrc: parseCSPSources(import.meta.env.VITE_CSP_IMG_SRC),
+        connectSrc: parseCSPSources(import.meta.env.VITE_CSP_CONNECT_SRC),
+        fontSrc: parseCSPSources(import.meta.env.VITE_CSP_FONT_SRC),
+        frameSrc: parseCSPSources(import.meta.env.VITE_CSP_FRAME_SRC),
+        objectSrc: parseCSPSources(import.meta.env.VITE_CSP_OBJECT_SRC),
+        mediaSrc: parseCSPSources(import.meta.env.VITE_CSP_MEDIA_SRC),
+        workerSrc: parseCSPSources(import.meta.env.VITE_CSP_WORKER_SRC),
+        formAction: parseCSPSources(import.meta.env.VITE_CSP_FORM_ACTION),
+        frameAncestors: parseCSPSources(import.meta.env.VITE_CSP_FRAME_ANCESTORS),
+        additionalConnectSrc: parseCSPSources(import.meta.env.VITE_CSP_ADDITIONAL_CONNECT_SRC),
+      },
     },
     performance: {
-      cacheTimeout: parseInt(import.meta.env.VITE_CACHE_TIMEOUT || '300000'), // 5 minutes
-      maxConcurrentRequests: parseInt(import.meta.env.VITE_MAX_CONCURRENT_REQUESTS || '10'),
-      requestTimeout: parseInt(import.meta.env.VITE_REQUEST_TIMEOUT || '30000'), // 30 seconds
+      cacheTimeout: parseInt(import.meta.env.VITE_CACHE_TIMEOUT || '300000') || 300000, // 5 minutes
+      maxConcurrentRequests: parseInt(import.meta.env.VITE_MAX_CONCURRENT_REQUESTS || '10') || 10,
+      requestTimeout: parseInt(import.meta.env.VITE_REQUEST_TIMEOUT || '30000') || 30000, // 30 seconds
     },
     notifications: {
       assignmentCreated: import.meta.env.VITE_ENABLE_ASSIGNMENT_NOTIFICATIONS !== 'false',
@@ -110,9 +150,9 @@ const getConfig = (): AppConfig => {
       userCreated: import.meta.env.VITE_ENABLE_USER_CREATION_NOTIFICATIONS !== 'false',
       welcomeEmails: import.meta.env.VITE_ENABLE_WELCOME_EMAILS !== 'false',
       passwordReset: import.meta.env.VITE_ENABLE_PASSWORD_RESET_EMAILS !== 'false',
-      reminderDaysBeforeDeadline: parseInt(import.meta.env.VITE_REMINDER_DAYS_BEFORE_DEADLINE || '3'),
-      maxRetryAttempts: parseInt(import.meta.env.VITE_MAX_EMAIL_RETRY_ATTEMPTS || '3'),
-      retryDelayMinutes: parseInt(import.meta.env.VITE_EMAIL_RETRY_DELAY_MINUTES || '5'),
+      reminderDaysBeforeDeadline: parseInt(import.meta.env.VITE_REMINDER_DAYS_BEFORE_DEADLINE || '3') || 3,
+      maxRetryAttempts: parseInt(import.meta.env.VITE_MAX_EMAIL_RETRY_ATTEMPTS || '3') || 3,
+      retryDelayMinutes: parseInt(import.meta.env.VITE_EMAIL_RETRY_DELAY_MINUTES || '5') || 5,
     },
   };
 };
