@@ -1,295 +1,338 @@
 import { create } from 'zustand';
-import { Tag, UserTag, OrganizationTag, TagInsight } from '../types';
+import { persist } from 'zustand/middleware';
+import { supabase } from '../lib/supabase';
+import SecureLogger from '../lib/secureLogger';
+
+export interface Tag {
+  id: string;
+  name: string;
+  description?: string;
+  color: string;
+  organizationId: string;
+  createdBy: string;
+  isActive: boolean;
+  usageCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateTagData {
+  name: string;
+  description?: string;
+  color: string;
+  organizationId: string;
+}
+
+export interface UpdateTagData {
+  name?: string;
+  description?: string;
+  color?: string;
+}
 
 interface TagState {
   tags: Tag[];
-  userTags: UserTag[];
-  organizationTags: OrganizationTag[];
-  insights: TagInsight[];
   isLoading: boolean;
   error: string | null;
   
-  // Actions
-  fetchTags: (organizationId?: string) => Promise<void>;
-  fetchUserTags: (userId: string) => Promise<void>;
-  fetchOrganizationTags: (organizationId: string) => Promise<void>;
-  createTag: (tag: Omit<Tag, 'id' | 'createdAt' | 'updatedAt'>) => Promise<Tag>;
-  assignUserTag: (userTag: Omit<UserTag, 'id' | 'assignedAt'>) => Promise<UserTag>;
-  assignOrganizationTag: (orgTag: Omit<OrganizationTag, 'id' | 'assignedAt'>) => Promise<OrganizationTag>;
-  removeUserTag: (userTagId: string) => Promise<void>;
-  removeOrganizationTag: (orgTagId: string) => Promise<void>;
-  generateInsights: (userId?: string, organizationId?: string) => Promise<TagInsight[]>;
-  analyzeUserForTags: (userId: string, assessmentData?: Record<string, unknown>) => Promise<UserTag[]>;
-  analyzeOrganizationForTags: (organizationId: string, metricsData?: Record<string, unknown>) => Promise<OrganizationTag[]>;
+  fetchTags: (organizationId: string) => Promise<void>;
+  createTag: (data: CreateTagData, createdBy: string) => Promise<void>;
+  updateTag: (id: string, data: UpdateTagData) => Promise<void>;
+  deleteTag: (id: string) => Promise<void>;
+  getTagsByAssessment: (assessmentId: string) => Promise<Tag[]>;
+  assignTagToAssessment: (tagId: string, assessmentId: string) => Promise<void>;
+  removeTagFromAssessment: (tagId: string, assessmentId: string) => Promise<void>;
   clearError: () => void;
 }
 
-const useTagStore = create<TagState>((set) => ({
-  tags: [],
-  userTags: [],
-  organizationTags: [],
-  insights: [],
-  isLoading: false,
-  error: null,
+export const useTagStore = create<TagState>()(
+  persist(
+    (set, get) => ({
+      tags: [],
+      isLoading: false,
+      error: null,
 
-  fetchTags: async (organizationId?: string) => {
-    set({ isLoading: true, error: null });
-    try {
-      // Mock API call - replace with actual API
-      const response = await fetch(`/api/tags${organizationId ? `?organizationId=${organizationId}` : ''}`);
-      const tags = await response.json();
-      set({ tags, isLoading: false });
-    } catch (error) {
-      set({ error: (error as Error).message, isLoading: false });
-    }
-  },
+      fetchTags: async (organizationId: string) => {
+        set({ isLoading: true, error: null });
+        try {
+          const { data: tags, error } = await supabase
+            .from('tags')
+            .select('*')
+            .eq('organization_id', organizationId)
+            .eq('is_active', true)
+            .order('name', { ascending: true });
 
-  fetchUserTags: async (userId: string) => {
-    set({ isLoading: true, error: null });
-    try {
-      // Mock API call - replace with actual API
-      const response = await fetch(`/api/users/${userId}/tags`);
-      const userTags = await response.json();
-      set({ userTags, isLoading: false });
-    } catch (error) {
-      set({ error: (error as Error).message, isLoading: false });
-    }
-  },
+          if (error) throw error;
 
-  fetchOrganizationTags: async (organizationId: string) => {
-    set({ isLoading: true, error: null });
-    try {
-      // Mock API call - replace with actual API
-      const response = await fetch(`/api/organizations/${organizationId}/tags`);
-      const organizationTags = await response.json();
-      set({ organizationTags, isLoading: false });
-    } catch (error) {
-      set({ error: (error as Error).message, isLoading: false });
-    }
-  },
+          // Get usage counts for each tag
+          const tagsWithUsage = await Promise.all(
+            (tags || []).map(async (tag: any) => {
+              const { count: usageCount, error: countError } = await supabase
+                .from('assessment_tags')
+                .select('*', { count: 'exact', head: true })
+                .eq('tag_id', tag.id)
+                .eq('is_active', true);
 
-  createTag: async (tagData) => {
-    set({ isLoading: true, error: null });
-    try {
-      // Mock API call - replace with actual API
-      const response = await fetch('/api/tags', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(tagData),
-      });
-      const newTag = await response.json();
-      set(state => ({ 
-        tags: [...state.tags, newTag], 
-        isLoading: false 
-      }));
-      return newTag;
-    } catch (error) {
-      set({ error: (error as Error).message, isLoading: false });
-      throw error;
-    }
-  },
+              if (countError) {
+                SecureLogger.warn(`Failed to get usage count for tag ${tag.id}`, countError);
+              }
 
-  assignUserTag: async (userTagData) => {
-    set({ isLoading: true, error: null });
-    try {
-      // Mock API call - replace with actual API
-      const response = await fetch('/api/user-tags', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(userTagData),
-      });
-      const newUserTag = await response.json();
-      set(state => ({ 
-        userTags: [...state.userTags, newUserTag], 
-        isLoading: false 
-      }));
-      return newUserTag;
-    } catch (error) {
-      set({ error: (error as Error).message, isLoading: false });
-      throw error;
-    }
-  },
+              return {
+                ...tag,
+                usageCount: usageCount || 0
+              };
+            })
+          );
 
-  assignOrganizationTag: async (orgTagData) => {
-    set({ isLoading: true, error: null });
-    try {
-      // Mock API call - replace with actual API
-      const response = await fetch('/api/organization-tags', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(orgTagData),
-      });
-      const newOrgTag = await response.json();
-      set(state => ({ 
-        organizationTags: [...state.organizationTags, newOrgTag], 
-        isLoading: false 
-      }));
-      return newOrgTag;
-    } catch (error) {
-      set({ error: (error as Error).message, isLoading: false });
-      throw error;
-    }
-  },
-
-  removeUserTag: async (userTagId: string) => {
-    set({ isLoading: true, error: null });
-    try {
-      // Mock API call - replace with actual API
-      await fetch(`/api/user-tags/${userTagId}`, { method: 'DELETE' });
-      set(state => ({ 
-        userTags: state.userTags.filter(tag => tag.id !== userTagId), 
-        isLoading: false 
-      }));
-    } catch (error) {
-      set({ error: (error as Error).message, isLoading: false });
-    }
-  },
-
-  removeOrganizationTag: async (orgTagId: string) => {
-    set({ isLoading: true, error: null });
-    try {
-      // Mock API call - replace with actual API
-      await fetch(`/api/organization-tags/${orgTagId}`, { method: 'DELETE' });
-      set(state => ({ 
-        organizationTags: state.organizationTags.filter(tag => tag.id !== orgTagId), 
-        isLoading: false 
-      }));
-    } catch (error) {
-      set({ error: (error as Error).message, isLoading: false });
-    }
-  },
-
-  generateInsights: async (userId?: string, organizationId?: string) => {
-    set({ isLoading: true, error: null });
-    try {
-      // Mock API call - replace with actual API
-      const params = new URLSearchParams();
-      if (userId) params.append('userId', userId);
-      if (organizationId) params.append('organizationId', organizationId);
-      
-      const response = await fetch(`/api/insights?${params}`);
-      const insights = await response.json();
-      set({ insights, isLoading: false });
-      return insights;
-    } catch (error) {
-      set({ error: (error as Error).message, isLoading: false });
-      return [];
-    }
-  },
-
-  analyzeUserForTags: async (userId: string, assessmentData?: any) => {
-    set({ isLoading: true, error: null });
-    try {
-      // AI-powered tag analysis based on assessment data
-      const suggestedTags: UserTag[] = [];
-      
-      if (assessmentData) {
-        // Analyze assessment results for strengths
-        const strengths = assessmentData.filter((q: any) => q.avgReviewerRating >= 5.5);
-        if (strengths.length > 0) {
-          suggestedTags.push({
-            id: `temp-${Date.now()}-1`,
-            userId,
-            tagId: 'strength-high-performer',
-            assignedById: 'system',
-            assignedAt: new Date().toISOString(),
-            confidence: 85,
-            source: 'ai_analysis',
-            metadata: {
-              assessmentId: assessmentData.assessmentId,
-              rating: strengths[0].avgReviewerRating,
-              context: 'High performance in assessment',
-              evidence: strengths.map((s: any) => s.text)
-            }
+          set({ tags: tagsWithUsage, isLoading: false });
+        } catch (error) {
+          console.error('Failed to fetch tags:', error);
+          set({ 
+            error: (error as Error).message || 'Failed to fetch tags', 
+            isLoading: false 
           });
         }
+      },
 
-        // Analyze for development areas
-        const developmentAreas = assessmentData.filter((q: any) => q.avgReviewerRating <= 3.5);
-        if (developmentAreas.length > 0) {
-          suggestedTags.push({
-            id: `temp-${Date.now()}-2`,
-            userId,
-            tagId: 'development-needs-improvement',
-            assignedById: 'system',
-            assignedAt: new Date().toISOString(),
-            confidence: 75,
-            source: 'ai_analysis',
-            metadata: {
-              assessmentId: assessmentData.assessmentId,
-              rating: developmentAreas[0].avgReviewerRating,
-              context: 'Areas needing development',
-              evidence: developmentAreas.map((d: any) => d.text)
-            }
+      createTag: async (data: CreateTagData, createdBy: string) => {
+        set({ isLoading: true, error: null });
+        try {
+          // Check if tag name already exists in organization
+          const { data: existingTag, error: checkError } = await supabase
+            .from('tags')
+            .select('id')
+            .eq('organization_id', data.organizationId)
+            .eq('name', data.name.trim())
+            .eq('is_active', true)
+            .single();
+
+          if (checkError && checkError.code !== 'PGRST116') {
+            throw checkError;
+          }
+
+          if (existingTag) {
+            throw new Error('A tag with this name already exists in your organization');
+          }
+
+          const { data: tag, error } = await supabase
+            .from('tags')
+            .insert({
+              name: data.name.trim(),
+              description: data.description?.trim(),
+              color: data.color,
+              organization_id: data.organizationId,
+              created_by: createdBy,
+              is_active: true,
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString()
+            })
+            .select()
+            .single();
+
+          if (error) throw error;
+
+          const newTag: Tag = {
+            ...tag,
+            usageCount: 0
+          };
+
+          set(state => ({
+            tags: [...state.tags, newTag],
+            isLoading: false
+          }));
+
+          SecureLogger.info(`Tag created: ${newTag.name} - ID: ${newTag.id}, Organization: ${newTag.organizationId}, Created by: ${createdBy}`);
+        } catch (error) {
+          console.error('Failed to create tag:', error);
+          set({ 
+            error: (error as Error).message || 'Failed to create tag',
+            isLoading: false 
           });
         }
-      }
+      },
 
-      set({ isLoading: false });
-      return suggestedTags;
-    } catch (error) {
-      set({ error: (error as Error).message, isLoading: false });
-      return [];
+      updateTag: async (id: string, data: UpdateTagData) => {
+        set({ isLoading: true, error: null });
+        try {
+          const { data: tag, error } = await supabase
+            .from('tags')
+            .update({
+              ...(data.name && { name: data.name.trim() }),
+              ...(data.description !== undefined && { description: data.description?.trim() }),
+              ...(data.color && { color: data.color }),
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', id)
+            .select()
+            .single();
+
+          if (error) throw error;
+
+          // Update local state
+          set(state => ({
+            tags: state.tags.map(t => 
+              t.id === id 
+                ? { ...t, ...tag }
+                : t
+            ),
+            isLoading: false
+          }));
+
+          SecureLogger.info(`Tag updated: ${tag.name} - ID: ${id}, Organization: ${tag.organization_id}`);
+        } catch (error) {
+          console.error('Failed to update tag:', error);
+          set({ 
+            error: (error as Error).message || 'Failed to update tag',
+            isLoading: false 
+          });
+        }
+      },
+
+      deleteTag: async (id: string) => {
+        set({ isLoading: true, error: null });
+        try {
+          // Check if tag is being used
+          const { count: usageCount, error: countError } = await supabase
+            .from('assessment_tags')
+            .select('*', { count: 'exact', head: true })
+            .eq('tag_id', id)
+            .eq('is_active', true);
+
+          if (countError) throw countError;
+
+          if (usageCount && usageCount > 0) {
+            throw new Error(`Cannot delete tag: it is being used by ${usageCount} assessment(s)`);
+          }
+
+          // Soft delete the tag
+          const { error } = await supabase
+            .from('tags')
+            .update({
+              is_active: false,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', id);
+
+          if (error) throw error;
+
+          // Remove from local state
+          set(state => ({
+            tags: state.tags.filter(t => t.id !== id),
+            isLoading: false
+          }));
+
+          SecureLogger.info(`Tag deleted: ${id}`);
+        } catch (error) {
+          console.error('Failed to delete tag:', error);
+          set({ 
+            error: (error as Error).message || 'Failed to delete tag',
+            isLoading: false 
+          });
+        }
+      },
+
+      getTagsByAssessment: async (assessmentId: string): Promise<Tag[]> => {
+        try {
+          const { data: assessmentTags, error } = await supabase
+            .from('assessment_tags')
+            .select(`
+              tag_id,
+              tags (*)
+            `)
+            .eq('assessment_id', assessmentId)
+            .eq('is_active', true);
+
+          if (error) throw error;
+
+          return (assessmentTags || []).map((at: any) => at.tags).filter(Boolean);
+        } catch (error) {
+          console.error('Failed to get tags by assessment:', error);
+          return [];
+        }
+      },
+
+      assignTagToAssessment: async (tagId: string, assessmentId: string) => {
+        try {
+          // Check if assignment already exists
+          const { data: existingAssignment, error: checkError } = await supabase
+            .from('assessment_tags')
+            .select('id')
+            .eq('tag_id', tagId)
+            .eq('assessment_id', assessmentId)
+            .eq('is_active', true)
+            .single();
+
+          if (checkError && checkError.code !== 'PGRST116') {
+            throw checkError;
+          }
+
+          if (existingAssignment) {
+            throw new Error('Tag is already assigned to this assessment');
+          }
+
+          const { error } = await supabase
+            .from('assessment_tags')
+            .insert({
+              tag_id: tagId,
+              assessment_id: assessmentId,
+              is_active: true,
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString()
+            });
+
+          if (error) throw error;
+
+          // Update usage count in local state
+          set(state => ({
+            tags: state.tags.map(tag => 
+              tag.id === tagId 
+                ? { ...tag, usageCount: tag.usageCount + 1 }
+                : tag
+            )
+          }));
+
+          SecureLogger.info(`Tag assigned to assessment - Tag ID: ${tagId}, Assessment ID: ${assessmentId}`);
+        } catch (error) {
+          console.error('Failed to assign tag to assessment:', error);
+          throw error;
+        }
+      },
+
+      removeTagFromAssessment: async (tagId: string, assessmentId: string) => {
+        try {
+          const { error } = await supabase
+            .from('assessment_tags')
+            .update({
+              is_active: false,
+              updated_at: new Date().toISOString()
+            })
+            .eq('tag_id', tagId)
+            .eq('assessment_id', assessmentId);
+
+          if (error) throw error;
+
+          // Update usage count in local state
+          set(state => ({
+            tags: state.tags.map(tag => 
+              tag.id === tagId 
+                ? { ...tag, usageCount: Math.max(0, tag.usageCount - 1) }
+                : tag
+            )
+          }));
+
+          SecureLogger.info(`Tag removed from assessment - Tag ID: ${tagId}, Assessment ID: ${assessmentId}`);
+        } catch (error) {
+          console.error('Failed to remove tag from assessment:', error);
+          throw error;
+        }
+      },
+
+      clearError: () => set({ error: null })
+    }),
+    {
+      name: 'tag-storage',
+      partialize: (state) => ({
+        tags: state.tags
+      })
     }
-  },
-
-  analyzeOrganizationForTags: async (organizationId: string, metricsData?: any) => {
-    set({ isLoading: true, error: null });
-    try {
-      // AI-powered organization tag analysis
-      const suggestedTags: OrganizationTag[] = [];
-      
-      if (metricsData) {
-        // Analyze completion rates
-        if (metricsData.completionRate >= 90) {
-          suggestedTags.push({
-            id: `temp-${Date.now()}-1`,
-            organizationId,
-            tagId: 'performance-high-engagement',
-            assignedById: 'system',
-            assignedAt: new Date().toISOString(),
-            confidence: 90,
-            source: 'ai_analysis',
-            metadata: {
-              metricValue: metricsData.completionRate,
-              benchmark: 75,
-              trend: 'improving',
-              context: 'High assessment completion rate',
-              evidence: [`${metricsData.completionRate}% completion rate`]
-            }
-          });
-        }
-
-        // Analyze average ratings
-        if (metricsData.averageRating >= 5.5) {
-          suggestedTags.push({
-            id: `temp-${Date.now()}-2`,
-            organizationId,
-            tagId: 'performance-excellent-quality',
-            assignedById: 'system',
-            assignedAt: new Date().toISOString(),
-            confidence: 85,
-            source: 'ai_analysis',
-            metadata: {
-              metricValue: metricsData.averageRating,
-              benchmark: 4.5,
-              trend: 'stable',
-              context: 'High quality performance',
-              evidence: [`${metricsData.averageRating}/7 average rating`]
-            }
-          });
-        }
-      }
-
-      set({ isLoading: false });
-      return suggestedTags;
-    } catch (error) {
-      set({ error: (error as Error).message, isLoading: false });
-      return [];
-    }
-  },
-
-  clearError: () => set({ error: null }),
-}));
-
-export default useTagStore; 
+  )
+); 
