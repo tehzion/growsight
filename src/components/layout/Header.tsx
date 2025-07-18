@@ -1,9 +1,10 @@
-import { ChevronDown, LogOut, Menu, User, Shield, Eye, Settings, KeyRound, UserCircle, Bell, BellDot, MessageSquare } from 'lucide-react';
+import { ChevronDown, LogOut, Menu, User, Shield, Eye, Settings, KeyRound, UserCircle, Bell, BellDot, MessageSquare, CheckCircle, AlertTriangle, AlertCircle, Info } from 'lucide-react';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Organization, User as UserType } from '../../types';
 import { useNotificationStore } from '../../stores/notificationStore';
 import { useSupportStore } from '../../stores/supportStore';
+import { useBrandingStore } from '../../stores/brandingStore';
 
 interface HeaderProps {
   toggleSidebar: () => void;
@@ -18,6 +19,7 @@ const Header = ({ toggleSidebar, user, onLogout, currentOrganization }: HeaderPr
   const navigate = useNavigate();
   const { notifications, unreadCount, markAsRead, markAllAsRead } = useNotificationStore();
   const { tickets } = useSupportStore();
+  const { webBranding } = useBrandingStore();
   
   // Count open tickets
   const openTicketsCount = tickets.filter(t => 
@@ -101,10 +103,30 @@ const Header = ({ toggleSidebar, user, onLogout, currentOrganization }: HeaderPr
             </button>
             <div className="flex-shrink-0 flex items-center ml-4 md:ml-0">
               {currentOrganization && (
-                <div>
-                  <span className="text-lg font-semibold text-gray-900">{currentOrganization.name}</span>
-                  <div className="text-xs text-gray-500">
-                    {user?.role === 'super_admin' ? 'System Dashboard' : 'Organization Dashboard'}
+                <div className="flex items-center space-x-3">
+                  {webBranding?.logo_url && (
+                    <img 
+                      src={webBranding.logo_url} 
+                      alt="Logo" 
+                      className="h-8 w-auto"
+                      onError={(e) => {
+                        e.currentTarget.style.display = 'none';
+                      }}
+                    />
+                  )}
+                  <div>
+                    <span 
+                      className="text-lg font-semibold" 
+                      style={{ 
+                        color: webBranding?.primary_color || '#1f2937',
+                        fontFamily: webBranding?.font_family || 'inherit'
+                      }}
+                    >
+                      {webBranding?.company_name || currentOrganization.name}
+                    </span>
+                    <div className="text-xs text-gray-500">
+                      {user?.role === 'super_admin' ? 'System Dashboard' : 'Organization Dashboard'}
+                    </div>
                   </div>
                 </div>
               )}

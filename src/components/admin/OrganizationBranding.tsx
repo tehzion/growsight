@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Save, CheckCircle, AlertTriangle, FileText, RefreshCw, Globe, Mail, RotateCcw } from 'lucide-react';
+import { Save, CheckCircle, AlertTriangle, FileText, RefreshCw, Globe, Mail, RotateCcw, Building2 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '../ui/Card';
 import Button from '../ui/Button';
 import FormInput from '../ui/FormInput';
 import { useAuthStore } from '../../stores/authStore';
 import { useOrganizationStore } from '../../stores/organizationStore';
-import { usePDFExportStore } from '../../stores/pdfExportStore';
+import { useBrandingStore } from '../../stores/brandingStore';
 import { useNotificationStore } from '../../stores/notificationStore';
 
 interface OrganizationBrandingProps {
@@ -15,7 +15,17 @@ interface OrganizationBrandingProps {
 const OrganizationBranding: React.FC<OrganizationBrandingProps> = ({ organizationId }) => {
   const { user } = useAuthStore();
   const { currentOrganization } = useOrganizationStore();
-  const { pdfSettings, updatePDFSettings } = usePDFExportStore();
+  const { 
+    webBranding, 
+    emailBranding, 
+    pdfBranding, 
+    saveWebBranding, 
+    saveEmailBranding, 
+    savePdfBranding, 
+    loadBranding,
+    isLoading,
+    error 
+  } = useBrandingStore();
   const { addNotification } = useNotificationStore();
   
   const [activeTab, setActiveTab] = useState<'web' | 'pdf' | 'email'>('web');
@@ -24,53 +34,33 @@ const OrganizationBranding: React.FC<OrganizationBrandingProps> = ({ organizatio
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [saveMessage, setSaveMessage] = useState('');
   
-  const [webBranding, setWebBranding] = useState({
-    logoUrl: '',
-    favicon: '',
-    primaryColor: '#2563EB',
-    secondaryColor: '#7E22CE',
-    accentColor: '#14B8A6',
-    companyName: currentOrganization?.name || '360° Feedback Platform',
-    emailFooter: `© ${new Date().getFullYear()} ${currentOrganization?.name || '360° Feedback Platform'}. All rights reserved.`,
-    fontFamily: 'Inter',
-    buttonStyle: 'rounded',
-    darkMode: false
-  });
-
-  const [emailBranding, setEmailBranding] = useState({
-    senderName: currentOrganization?.name || '360° Feedback Platform',
-    senderEmail: 'noreply@example.com',
-    emailHeader: `Welcome to ${currentOrganization?.name || '360° Feedback Platform'}`,
-    emailFooter: `© ${new Date().getFullYear()} ${currentOrganization?.name || '360° Feedback Platform'}. All rights reserved.`,
-    primaryColor: '#2563EB',
-    secondaryColor: '#7E22CE'
-  });
+  // Local state for editing
+  const [localWebBranding, setLocalWebBranding] = useState(webBranding);
+  const [localEmailBranding, setLocalEmailBranding] = useState(emailBranding);
+  const [localPdfBranding, setLocalPdfBranding] = useState(pdfBranding);
+  
+  // Update local state when store data changes
+  useEffect(() => {
+    setLocalWebBranding(webBranding);
+  }, [webBranding]);
+  
+  useEffect(() => {
+    setLocalEmailBranding(emailBranding);
+  }, [emailBranding]);
+  
+  useEffect(() => {
+    setLocalPdfBranding(pdfBranding);
+  }, [pdfBranding]);
 
   const isSuperAdmin = user?.role === 'super_admin';
   const isOrgAdmin = user?.role === 'org_admin';
   const targetOrgId = organizationId || user?.organizationId;
 
   useEffect(() => {
-    // Organization data is already available in the store
-    // No need to fetch individual organization
-  }, [targetOrgId]);
-
-  useEffect(() => {
-    if (currentOrganization) {
-      setWebBranding(prev => ({
-        ...prev,
-        companyName: currentOrganization.name,
-        emailFooter: `© ${new Date().getFullYear()} ${currentOrganization.name}. All rights reserved.`
-      }));
-      
-      setEmailBranding(prev => ({
-        ...prev,
-        senderName: currentOrganization.name,
-        emailHeader: `Welcome to ${currentOrganization.name}`,
-        emailFooter: `© ${new Date().getFullYear()} ${currentOrganization.name}. All rights reserved.`
-      }));
+    if (targetOrgId) {
+      loadBranding(targetOrgId);
     }
-  }, [currentOrganization]);
+  }, [targetOrgId, loadBranding]);
 
   // Check if user has permission to view branding
   const canViewBranding = () => {
@@ -91,61 +81,60 @@ const OrganizationBranding: React.FC<OrganizationBrandingProps> = ({ organizatio
     );
   }
 
-  const handleWebBrandingChange = (field: keyof typeof webBranding, value: string | boolean) => {
-    setWebBranding(prev => ({ ...prev, [field]: value }));
+  const handleWebBrandingChange = (field: string, value: string | boolean) => {
+    // This will be handled by the individual input handlers
   };
 
-  const handleEmailBrandingChange = (field: keyof typeof emailBranding, value: string) => {
-    setEmailBranding(prev => ({ ...prev, [field]: value }));
+  const handleEmailBrandingChange = (field: string, value: string) => {
+    // This will be handled by the individual input handlers
   };
 
   const resetToDefaults = () => {
-    if (activeTab === 'web') {
-      setWebBranding({
-        logoUrl: '',
-        favicon: '',
-        primaryColor: '#2563EB',
-        secondaryColor: '#7E22CE',
-        accentColor: '#14B8A6',
-        companyName: currentOrganization?.name || '360° Feedback Platform',
-        emailFooter: `© ${new Date().getFullYear()} ${currentOrganization?.name || '360° Feedback Platform'}. All rights reserved.`,
-        fontFamily: 'Inter',
-        buttonStyle: 'rounded',
-        darkMode: false
-      });
-    } else if (activeTab === 'email') {
-      setEmailBranding({
-        senderName: currentOrganization?.name || '360° Feedback Platform',
-        senderEmail: 'noreply@example.com',
-        emailHeader: `Welcome to ${currentOrganization?.name || '360° Feedback Platform'}`,
-        emailFooter: `© ${new Date().getFullYear()} ${currentOrganization?.name || '360° Feedback Platform'}. All rights reserved.`,
-        primaryColor: '#2563EB',
-        secondaryColor: '#7E22CE'
-      });
-    } else if (activeTab === 'pdf') {
-      updatePDFSettings({
-        logoUrl: '',
-        companyName: currentOrganization?.name || '360° Feedback Platform',
-        primaryColor: '#2563EB',
-        secondaryColor: '#7E22CE',
-        footerText: `© ${new Date().getFullYear()} ${currentOrganization?.name || '360° Feedback Platform'}. All rights reserved.`,
-        includeTimestamp: true,
-        includePageNumbers: true,
-        defaultTemplate: 'standard'
-      });
+    if (activeTab === 'web' && targetOrgId) {
+      const defaultSettings = {
+        primary_color: '#2563EB',
+        secondary_color: '#7E22CE',
+        accent_color: '#14B8A6',
+        company_name: currentOrganization?.name || 'GrowSight',
+        font_family: 'Inter',
+        button_style: 'rounded',
+        dark_mode_enabled: false,
+        logo_url: '',
+        favicon_url: '',
+      };
+      saveWebBranding(targetOrgId, defaultSettings);
+    } else if (activeTab === 'email' && targetOrgId) {
+      const defaultSettings = {
+        email_header_color: '#2563EB',
+        template_style: 'modern',
+        sender_name: currentOrganization?.name || 'GrowSight',
+        reply_to_email: 'noreply@example.com',
+      };
+      saveEmailBranding(targetOrgId, defaultSettings);
+    } else if (activeTab === 'pdf' && targetOrgId) {
+      const defaultSettings = {
+        primary_color: '#2563EB',
+        secondary_color: '#7E22CE',
+        font_family: 'Helvetica',
+        include_watermark: false,
+        page_layout: 'portrait',
+        include_timestamp: true,
+        include_page_numbers: true,
+        header_logo_url: '',
+        footer_text: `© ${new Date().getFullYear()} ${currentOrganization?.name || 'GrowSight'}. All rights reserved.`,
+      };
+      savePdfBranding(targetOrgId, defaultSettings);
     }
   };
 
-  const saveWebBranding = async () => {
+  const saveWebBrandingSettings = async () => {
+    if (!targetOrgId || !localWebBranding) return;
+    
     setSaveStatus('saving');
     setSaveMessage('Saving web branding settings...');
     
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // In a real implementation, this would save to the database
-      console.log('Saving web branding:', webBranding);
+      await saveWebBranding(targetOrgId, localWebBranding);
       
       setSaveStatus('saved');
       setSaveMessage('Web branding settings saved successfully!');
@@ -172,16 +161,14 @@ const OrganizationBranding: React.FC<OrganizationBrandingProps> = ({ organizatio
     }
   };
 
-  const savePDFBranding = async () => {
+  const savePDFBrandingSettings = async () => {
+    if (!targetOrgId || !localPdfBranding) return;
+    
     setSaveStatus('saving');
     setSaveMessage('Saving PDF branding settings...');
     
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // In a real implementation, this would save to the database
-      console.log('Saving PDF branding:', pdfSettings);
+      await savePdfBranding(targetOrgId, localPdfBranding);
       
       setSaveStatus('saved');
       setSaveMessage('PDF branding settings saved successfully!');
@@ -208,16 +195,14 @@ const OrganizationBranding: React.FC<OrganizationBrandingProps> = ({ organizatio
     }
   };
 
-  const saveEmailBranding = async () => {
+  const saveEmailBrandingSettings = async () => {
+    if (!targetOrgId || !localEmailBranding) return;
+    
     setSaveStatus('saving');
     setSaveMessage('Saving email branding settings...');
     
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // In a real implementation, this would save to the database
-      console.log('Saving email branding:', emailBranding);
+      await saveEmailBranding(targetOrgId, localEmailBranding);
       
       setSaveStatus('saved');
       setSaveMessage('Email branding settings saved successfully!');
@@ -325,15 +310,15 @@ const OrganizationBranding: React.FC<OrganizationBrandingProps> = ({ organizatio
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <FormInput
                   label="Company Name"
-                  value={webBranding.companyName}
-                  onChange={(e) => handleWebBrandingChange('companyName', e.target.value)}
+                  value={localWebBranding?.company_name || ''}
+                  onChange={(e) => setLocalWebBranding(prev => prev ? { ...prev, company_name: e.target.value } : null)}
                   helperText="Name displayed in the application header and emails"
                 />
                 
                 <FormInput
                   label="Logo URL"
-                  value={webBranding.logoUrl}
-                  onChange={(e) => handleWebBrandingChange('logoUrl', e.target.value)}
+                  value={localWebBranding?.logo_url || ''}
+                  onChange={(e) => setLocalWebBranding(prev => prev ? { ...prev, logo_url: e.target.value } : null)}
                   helperText="URL to your company logo (recommended size: 200x60px)"
                 />
               </div>
@@ -346,14 +331,14 @@ const OrganizationBranding: React.FC<OrganizationBrandingProps> = ({ organizatio
                   <div className="flex items-center space-x-2">
                     <input
                       type="color"
-                      value={webBranding.primaryColor}
-                      onChange={(e) => handleWebBrandingChange('primaryColor', e.target.value)}
+                      value={localWebBranding?.primary_color || '#2563EB'}
+                      onChange={(e) => setLocalWebBranding(prev => prev ? { ...prev, primary_color: e.target.value } : null)}
                       className="w-12 h-10 border border-gray-300 rounded cursor-pointer"
                     />
                     <input
                       type="text"
-                      value={webBranding.primaryColor}
-                      onChange={(e) => handleWebBrandingChange('primaryColor', e.target.value)}
+                      value={localWebBranding?.primary_color || '#2563EB'}
+                      onChange={(e) => setLocalWebBranding(prev => prev ? { ...prev, primary_color: e.target.value } : null)}
                       className="flex-1 px-3 py-2 border border-gray-300 rounded-md"
                     />
                   </div>
@@ -566,7 +551,7 @@ const OrganizationBranding: React.FC<OrganizationBrandingProps> = ({ organizatio
                   Reset to Defaults
                 </Button>
                 <Button
-                  onClick={saveWebBranding}
+                  onClick={saveWebBrandingSettings}
                   disabled={saveStatus === 'saving'}
                 >
                   <Save className="h-4 w-4 mr-2" />
@@ -709,7 +694,7 @@ const OrganizationBranding: React.FC<OrganizationBrandingProps> = ({ organizatio
                   Reset to Defaults
                 </Button>
                 <Button
-                  onClick={savePDFBranding}
+                  onClick={savePDFBrandingSettings}
                   disabled={saveStatus === 'saving'}
                 >
                   <Save className="h-4 w-4 mr-2" />
@@ -855,7 +840,7 @@ const OrganizationBranding: React.FC<OrganizationBrandingProps> = ({ organizatio
                   Reset to Defaults
                 </Button>
                 <Button
-                  onClick={saveEmailBranding}
+                  onClick={saveEmailBrandingSettings}
                   disabled={saveStatus === 'saving'}
                 >
                   <Save className="h-4 w-4 mr-2" />

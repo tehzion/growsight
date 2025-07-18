@@ -11,6 +11,12 @@ export default {
         'ipad-pro': '1024px',
       },
       colors: {
+        // Brand colors that use CSS variables
+        brand: {
+          primary: 'var(--brand-primary, #2563EB)',
+          secondary: 'var(--brand-secondary, #7E22CE)',
+          accent: 'var(--brand-accent, #14B8A6)',
+        },
         primary: {
           50: '#EFF6FF',
           100: '#DBEAFE',
@@ -86,6 +92,7 @@ export default {
       },
       fontFamily: {
         sans: ['Inter', 'sans-serif'],
+        brand: ['var(--brand-font-family, Inter)', 'sans-serif'],
       },
       boxShadow: {
         card: '0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.24)',

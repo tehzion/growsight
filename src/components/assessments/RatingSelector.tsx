@@ -23,7 +23,7 @@ const RatingSelector: React.FC<RatingSelectorProps> = ({
             key={rating}
             type="button"
             className={`
-              w-10 h-10 rounded-full flex items-center justify-center transition-all duration-200 font-medium
+              w-12 h-12 rounded-full flex items-center justify-center transition-all duration-200 font-medium text-sm
               ${disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}
               ${value === rating 
                 ? 'bg-primary-600 text-white border-2 border-primary-600 shadow-lg transform scale-110' 

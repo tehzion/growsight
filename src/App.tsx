@@ -2,6 +2,8 @@ import { useEffect } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuthStore } from './stores/authStore';
 import { useProfileStore } from './stores/profileStore';
+import { useOrganizationStore } from './stores/organizationStore';
+import { useBrandingStore } from './stores/brandingStore';
 import Layout from './components/layout/Layout';
 import AuthLayout from './components/layout/AuthLayout';
 import Dashboard from './pages/Dashboard';
@@ -54,6 +56,8 @@ import SessionMonitor from './components/security/SessionMonitor';
 function App() {
   const { user, refreshSession, logout, updateActivity, validateSession } = useAuthStore();
   const { fetchProfile } = useProfileStore();
+  const { currentOrganization } = useOrganizationStore();
+  const { loadBranding, resetBranding } = useBrandingStore();
   
   // Validate environment on app start
   useEffect(() => {
@@ -81,6 +85,15 @@ function App() {
       fetchProfile(user.id);
     }
   }, [user, fetchProfile]);
+
+  // Load branding when organization changes
+  useEffect(() => {
+    if (currentOrganization?.id) {
+      loadBranding(currentOrganization.id);
+    } else {
+      resetBranding();
+    }
+  }, [currentOrganization?.id, loadBranding, resetBranding]);
 
   // Set up session security event listeners
   useEffect(() => {

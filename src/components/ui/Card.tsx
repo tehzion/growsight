@@ -20,7 +20,7 @@ interface CardHeaderProps {
 
 export const CardHeader = ({ children, className = '' }: CardHeaderProps) => {
   return (
-    <div className={`px-6 py-4 border-b border-gray-200 bg-gray-50 ${className}`}>
+    <div className={`px-4 py-3 sm:px-6 sm:py-4 border-b border-gray-200 bg-gray-50 ${className}`}>
       {children}
     </div>
   );
@@ -44,7 +44,7 @@ interface CardContentProps {
 
 export const CardContent = ({ children, className = '' }: CardContentProps) => {
   return (
-    <div className={`p-6 ${className}`}>{children}</div>
+    <div className={`p-4 sm:p-6 ${className}`}>{children}</div>
   );
 };
 
@@ -55,7 +55,7 @@ interface CardFooterProps {
 
 export const CardFooter = ({ children, className = '' }: CardFooterProps) => {
   return (
-    <div className={`px-6 py-4 border-t border-gray-200 bg-gray-50 ${className}`}>
+    <div className={`px-4 py-3 sm:px-6 sm:py-4 border-t border-gray-200 bg-gray-50 ${className}`}>
       {children}
     </div>
   );
