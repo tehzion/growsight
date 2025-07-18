@@ -162,9 +162,13 @@ class Assessment360ExportService {
         };
       }
 
-      // Import PDF libraries dynamically
-      const jsPDF = (await import('jspdf')).default;
-      const html2canvas = (await import('html2canvas')).default;
+      // Import PDF libraries dynamically to avoid conflicts
+      const [jsPDFModule, html2canvasModule] = await Promise.all([
+        import('jspdf'),
+        import('html2canvas')
+      ]);
+      const jsPDF = jsPDFModule.default;
+      const html2canvas = html2canvasModule.default;
 
       const pdf = new jsPDF('landscape', 'mm', 'a4');
       const pageWidth = pdf.internal.pageSize.getWidth();
@@ -320,8 +324,9 @@ class Assessment360ExportService {
         };
       }
 
-      // Import Excel library dynamically
-      const XLSX = await import('xlsx');
+      // Import Excel library dynamically to avoid conflicts
+      const XLSXModule = await import('xlsx');
+      const XLSX = XLSXModule;
 
       // Prepare worksheet data
       const worksheetData = data.map(row => ({

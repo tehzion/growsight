@@ -5,8 +5,20 @@ import { useAssessmentResultsStore } from '../../stores/assessmentResultsStore';
 import ReportGenerator from '../../components/reports/ReportGenerator';
 import Button from '../../components/ui/Button';
 import { Download, RefreshCw } from 'lucide-react';
-import html2canvas from 'html2canvas';
-import jsPDF from 'jspdf';
+// Dynamic imports to avoid build conflicts
+let html2canvas: any;
+let jsPDF: any;
+
+const loadPDFDependencies = async () => {
+  if (!html2canvas || !jsPDF) {
+    const [html2canvasModule, jsPDFModule] = await Promise.all([
+      import('html2canvas'),
+      import('jspdf')
+    ]);
+    html2canvas = html2canvasModule.default;
+    jsPDF = jsPDFModule.default;
+  }
+};
 
 const AdminAssessmentReport: React.FC = () => {
   const { userId, assessmentId } = useParams<{ userId: string; assessmentId: string }>();
@@ -23,6 +35,7 @@ const AdminAssessmentReport: React.FC = () => {
     const reportElement = document.getElementById('assessment-report-admin');
     if (reportElement) {
       try {
+        await loadPDFDependencies();
         const canvas = await html2canvas(reportElement, { scale: 2 });
         const imgData = canvas.toDataURL('image/png');
         const pdf = new jsPDF('p', 'mm', 'a4');

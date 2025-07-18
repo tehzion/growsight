@@ -12,6 +12,7 @@ export default defineConfig(({ mode }) => ({
   },
   optimizeDeps: {
     exclude: ['lucide-react'],
+    include: ['html2canvas', 'jspdf']
   },
   build: {
     outDir: 'dist',
@@ -19,14 +20,70 @@ export default defineConfig(({ mode }) => ({
     minify: mode === 'production' ? 'terser' : 'esbuild',
     rollupOptions: {
       output: {
-        manualChunks: {
-          vendor: ['react', 'react-dom'],
-          router: ['react-router-dom'],
-          ui: ['lucide-react'],
-          charts: ['recharts'],
-          forms: ['react-hook-form', '@hookform/resolvers', 'zod'],
-          state: ['zustand'],
-          utils: ['date-fns']
+        manualChunks: (id) => {
+          // Large vendor libraries
+          if (id.includes('node_modules/react') || id.includes('node_modules/react-dom')) {
+            return 'vendor';
+          }
+          if (id.includes('node_modules/react-router-dom')) {
+            return 'router';
+          }
+          if (id.includes('node_modules/zustand')) {
+            return 'state';
+          }
+          
+          // PDF-related libraries
+          if (id.includes('node_modules/jspdf') || id.includes('node_modules/html2canvas')) {
+            return 'pdf';
+          }
+          
+          // Charts and visualization
+          if (id.includes('node_modules/recharts')) {
+            return 'charts';
+          }
+          
+          // Form libraries
+          if (id.includes('node_modules/react-hook-form') || 
+              id.includes('node_modules/@hookform/resolvers') || 
+              id.includes('node_modules/zod')) {
+            return 'forms';
+          }
+          
+          // UI libraries
+          if (id.includes('node_modules/lucide-react')) {
+            return 'ui';
+          }
+          
+          // Utility libraries
+          if (id.includes('node_modules/date-fns') || 
+              id.includes('node_modules/dompurify') ||
+              id.includes('node_modules/xlsx')) {
+            return 'utils';
+          }
+          
+          // Supabase and database related
+          if (id.includes('node_modules/@supabase')) {
+            return 'database';
+          }
+          
+          // Other large node_modules
+          if (id.includes('node_modules/')) {
+            return 'vendor-misc';
+          }
+          
+          // Dynamic chunks for large app modules
+          if (id.includes('src/pages/admin')) {
+            return 'admin';
+          }
+          if (id.includes('src/components/admin')) {
+            return 'admin';
+          }
+          if (id.includes('src/services/')) {
+            return 'services';
+          }
+          if (id.includes('src/stores/')) {
+            return 'stores';
+          }
         }
       }
     },

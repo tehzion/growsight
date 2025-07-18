@@ -1,5 +1,15 @@
-import jsPDF from 'jspdf';
-import html2canvas from 'html2canvas';
+// Dynamic imports to avoid build conflicts
+let jsPDF: any;
+let html2canvas: any;
+
+const loadDependencies = async () => {
+  if (!jsPDF) {
+    jsPDF = (await import('jspdf')).default;
+  }
+  if (!html2canvas) {
+    html2canvas = (await import('html2canvas')).default;
+  }
+};
 
 export interface PDFExportOptions {
   title: string;
@@ -50,7 +60,7 @@ export interface AssessmentData {
 }
 
 export class PDFExporter {
-  private doc: jsPDF;
+  private doc: any;
   private options: PDFExportOptions;
   private currentY: number = 20;
   private pageWidth: number;
@@ -59,14 +69,20 @@ export class PDFExporter {
 
   constructor(options: PDFExportOptions) {
     this.options = options;
-    this.doc = new jsPDF({
-      orientation: options.orientation || 'portrait',
-      format: options.format || 'a4',
-      unit: 'mm'
-    });
-    
-    this.pageWidth = this.doc.internal.pageSize.getWidth();
-    this.pageHeight = this.doc.internal.pageSize.getHeight();
+  }
+
+  private async initializePDF() {
+    if (!this.doc) {
+      await loadDependencies();
+      this.doc = new jsPDF({
+        orientation: this.options.orientation || 'portrait',
+        format: this.options.format || 'a4',
+        unit: 'mm'
+      });
+      
+      this.pageWidth = this.doc.internal.pageSize.getWidth();
+      this.pageHeight = this.doc.internal.pageSize.getHeight();
+    }
   }
 
   private addHeader() {
@@ -178,6 +194,7 @@ export class PDFExporter {
   }
 
   public async exportAssessmentResults(data: AssessmentData): Promise<Blob> {
+    await this.initializePDF();
     this.addHeader();
 
     // Analytics Overview
@@ -270,6 +287,8 @@ export class PDFExporter {
   }
 
   public async exportElementAsPDF(elementId: string, filename: string): Promise<void> {
+    await loadDependencies();
+    
     const element = document.getElementById(elementId);
     if (!element) {
       throw new Error(`Element with id ${elementId} not found`);
@@ -296,6 +315,8 @@ export class PDFExporter {
   }
 
   public static async exportChartAsPDF(chartElement: HTMLElement, filename: string): Promise<void> {
+    await loadDependencies();
+    
     const canvas = await html2canvas(chartElement, {
       scale: 2,
       useCORS: true,

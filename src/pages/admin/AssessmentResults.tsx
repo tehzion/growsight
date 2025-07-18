@@ -27,8 +27,20 @@ import {
   MessageSquare,
   ExternalLink
 } from 'lucide-react';
-import html2canvas from 'html2canvas';
-import jsPDF from 'jspdf';
+// Dynamic imports to avoid build conflicts
+let html2canvas: any;
+let jsPDF: any;
+
+const loadPDFDependencies = async () => {
+  if (!html2canvas || !jsPDF) {
+    const [html2canvasModule, jsPDFModule] = await Promise.all([
+      import('html2canvas'),
+      import('jspdf')
+    ]);
+    html2canvas = html2canvasModule.default;
+    jsPDF = jsPDFModule.default;
+  }
+};
 import ReportGenerator from '../../components/reports/ReportGenerator';
 
 interface AssessmentResultsProps {}
@@ -148,6 +160,7 @@ export const AssessmentResults: React.FC<AssessmentResultsProps> = () => {
     try {
       const reportElement = document.getElementById('assessment-report-admin');
       if (reportElement) {
+        await loadPDFDependencies();
         const canvas = await html2canvas(reportElement, { scale: 2 });
         const imgData = canvas.toDataURL('image/png');
         const pdf = new jsPDF('p', 'mm', 'a4');
