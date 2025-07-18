@@ -322,6 +322,10 @@ docker compose up -d
 
 # Verify deployment
 docker compose ps
+
+# Ensure deploy user has write permissions to the deployment directory
+sudo chown -R deploy:www-data /opt/growsight
+sudo chmod -R g+w /opt/growsight
 ```
 
 ## GitHub Actions Deployment Setup
