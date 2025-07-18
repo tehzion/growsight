@@ -103,7 +103,7 @@ const getConfig = (): AppConfig => {
     },
     app: {
       name: import.meta.env.VITE_APP_NAME || 'Leadership 360',
-      url: import.meta.env.VITE_APP_URL || (isDevelopment ? 'http://localhost:3000' : 'https://your-domain.com'),
+      url: import.meta.env.VITE_APP_URL || (isDevelopment ? 'http://localhost:3000' : ''),
       supportEmail: import.meta.env.VITE_SUPPORT_EMAIL || 'support@leadership360.com',
       environment: isDevelopment ? 'development' : isStaging ? 'staging' : 'production',
       version: import.meta.env.VITE_APP_VERSION || '1.0.0',
@@ -123,7 +123,7 @@ const getConfig = (): AppConfig => {
       csp: {
         reportOnly: import.meta.env.VITE_CSP_REPORT_ONLY === 'true',
         reportUri: import.meta.env.VITE_CSP_REPORT_URI,
-        upgradeInsecureRequests: import.meta.env.VITE_CSP_UPGRADE_INSECURE_REQUESTS !== 'false' ? true : false,
+        upgradeInsecureRequests: import.meta.env.VITE_CSP_UPGRADE_INSECURE_REQUESTS !== 'false',
         scriptSrc: parseCSPSources(import.meta.env.VITE_CSP_SCRIPT_SRC),
         styleSrc: parseCSPSources(import.meta.env.VITE_CSP_STYLE_SRC),
         imgSrc: parseCSPSources(import.meta.env.VITE_CSP_IMG_SRC),
