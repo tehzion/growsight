@@ -1,5 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { supabase } from '../lib/supabase';
+import { handleSupabaseError } from '../lib/supabaseError';
 import { UserRelationship, RelationshipType } from '../types';
 
 interface RelationshipState {
@@ -17,46 +19,6 @@ interface RelationshipState {
   getUserRelationships: (userId: string, type?: RelationshipType) => UserRelationship[];
 }
 
-// Mock relationships for demo
-const defaultMockRelationships: UserRelationship[] = [
-  {
-    id: 'rel-1',
-    userId: '3', // John Doe
-    relatedUserId: '4', // Jane Smith
-    relationshipType: 'peer',
-    createdById: '2', // Org Admin
-    createdAt: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString(),
-    updatedAt: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString(),
-  },
-  {
-    id: 'rel-2',
-    userId: '3', // John Doe
-    relatedUserId: '2', // Michael Chen (Org Admin as supervisor)
-    relationshipType: 'supervisor',
-    createdById: '2',
-    createdAt: new Date(Date.now() - 8 * 24 * 60 * 60 * 1000).toISOString(),
-    updatedAt: new Date(Date.now() - 8 * 24 * 60 * 60 * 1000).toISOString(),
-  },
-  {
-    id: 'rel-3',
-    userId: '5', // Mike Wilson
-    relatedUserId: '3', // John Doe
-    relationshipType: 'team_member',
-    createdById: '2',
-    createdAt: new Date(Date.now() - 6 * 24 * 60 * 60 * 1000).toISOString(),
-    updatedAt: new Date(Date.now() - 6 * 24 * 60 * 60 * 1000).toISOString(),
-  },
-  {
-    id: 'rel-4',
-    userId: '5', // Mike Wilson
-    relatedUserId: '6', // Lisa Brown
-    relationshipType: 'peer',
-    createdById: '2',
-    createdAt: new Date(Date.now() - 4 * 24 * 60 * 60 * 1000).toISOString(),
-    updatedAt: new Date(Date.now() - 4 * 24 * 60 * 60 * 1000).toISOString(),
-  }
-];
-
 export const useRelationshipStore = create<RelationshipState>()(
   persist(
     (set, get) => ({
@@ -67,70 +29,172 @@ export const useRelationshipStore = create<RelationshipState>()(
       fetchRelationships: async (userId?: string) => {
         set({ isLoading: true, error: null });
         try {
-          await new Promise(resolve => setTimeout(resolve, 300));
-          
-          const { relationships: currentRelationships } = get();
-          const allRelationships = currentRelationships.length > 0 ? currentRelationships : defaultMockRelationships;
-          
-          const filteredRelationships = userId 
-            ? allRelationships.filter(r => r.userId === userId || r.relatedUserId === userId)
-            : allRelationships;
-          
-          set({ relationships: filteredRelationships, isLoading: false });
-        } catch {
-          set({ error: 'Failed to fetch relationships', isLoading: false });
+          let query = supabase
+            .from('user_relationships')
+            .select(`
+              *,
+              users!user_relationships_user_id_fkey(*),
+              related_users:users!user_relationships_related_user_id_fkey(*)
+            `)
+            .eq('is_active', true);
+
+          if (userId) {
+            query = query.or(`user_id.eq.${userId},related_user_id.eq.${userId}`);
+          }
+
+          const { data, error } = await query.order('created_at', { ascending: false });
+
+          if (error) throw error;
+
+          const relationships: UserRelationship[] = (data || []).map((item: any) => ({
+            id: item.id,
+            userId: item.user_id,
+            relatedUserId: item.related_user_id,
+            relationshipType: item.relationship_type,
+            createdById: item.created_by_id,
+            createdAt: item.created_at,
+            updatedAt: item.updated_at,
+          }));
+
+          set({ relationships, isLoading: false });
+        } catch (error) {
+          set({ error: handleSupabaseError(error), isLoading: false });
         }
       },
 
       createRelationship: async (data) => {
         set({ isLoading: true, error: null });
         try {
-          await new Promise(resolve => setTimeout(resolve, 500));
-          
-          const newRelationship: UserRelationship = {
-            id: `rel-${Date.now()}`,
-            ...data,
-            createdById: 'current-user-id', // Would be actual user ID
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
+          // Get current user
+          const { data: { user } } = await supabase.auth.getUser();
+          if (!user) throw new Error('User not authenticated');
+
+          // Check for existing relationship
+          const { data: existingRelationship, error: checkError } = await supabase
+            .from('user_relationships')
+            .select('id')
+            .or(`and(user_id.eq.${data.userId},related_user_id.eq.${data.relatedUserId}),and(user_id.eq.${data.relatedUserId},related_user_id.eq.${data.userId})`)
+            .eq('is_active', true)
+            .single();
+
+          if (checkError && checkError.code !== 'PGRST116') {
+            throw checkError;
+          }
+
+          if (existingRelationship) {
+            throw new Error('A relationship already exists between these users');
+          }
+
+          // Validate that users exist and are in the same organization
+          const { data: users, error: usersError } = await supabase
+            .from('users')
+            .select('id, organization_id')
+            .in('id', [data.userId, data.relatedUserId])
+            .eq('is_active', true);
+
+          if (usersError) throw usersError;
+
+          if (!users || users.length !== 2) {
+            throw new Error('One or both users not found');
+          }
+
+          if (users[0].organization_id !== users[1].organization_id) {
+            throw new Error('Users must be in the same organization');
+          }
+
+          const { data: newRelationship, error } = await supabase
+            .from('user_relationships')
+            .insert({
+              user_id: data.userId,
+              related_user_id: data.relatedUserId,
+              relationship_type: data.relationshipType,
+              created_by_id: user.id,
+              is_active: true,
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            })
+            .select()
+            .single();
+
+          if (error) throw error;
+
+          const relationship: UserRelationship = {
+            id: newRelationship.id,
+            userId: newRelationship.user_id,
+            relatedUserId: newRelationship.related_user_id,
+            relationshipType: newRelationship.relationship_type,
+            createdById: newRelationship.created_by_id,
+            createdAt: newRelationship.created_at,
+            updatedAt: newRelationship.updated_at,
           };
-          
+
           set(state => ({
-            relationships: [...state.relationships, newRelationship],
+            relationships: [relationship, ...state.relationships],
             isLoading: false,
           }));
-        } catch {
-          set({ error: 'Failed to create relationship', isLoading: false });
+        } catch (error) {
+          set({ error: handleSupabaseError(error), isLoading: false });
         }
       },
 
       updateRelationship: async (id, data) => {
         set({ isLoading: true, error: null });
         try {
-          await new Promise(resolve => setTimeout(resolve, 300));
-          
+          const updateData: Record<string, any> = {
+            updated_at: new Date().toISOString()
+          };
+
+          if (data.relationshipType) updateData.relationship_type = data.relationshipType;
+
+          const { data: updatedRelationship, error } = await supabase
+            .from('user_relationships')
+            .update(updateData)
+            .eq('id', id)
+            .select()
+            .single();
+
+          if (error) throw error;
+
+          const relationship: UserRelationship = {
+            id: updatedRelationship.id,
+            userId: updatedRelationship.user_id,
+            relatedUserId: updatedRelationship.related_user_id,
+            relationshipType: updatedRelationship.relationship_type,
+            createdById: updatedRelationship.created_by_id,
+            createdAt: updatedRelationship.created_at,
+            updatedAt: updatedRelationship.updated_at,
+          };
+
           set(state => ({
             relationships: state.relationships.map(rel =>
-              rel.id === id ? { ...rel, ...data, updatedAt: new Date().toISOString() } : rel
+              rel.id === id ? relationship : rel
             ),
             isLoading: false,
           }));
-        } catch {
-          set({ error: 'Failed to update relationship', isLoading: false });
+        } catch (error) {
+          set({ error: handleSupabaseError(error), isLoading: false });
         }
       },
 
       deleteRelationship: async (id) => {
         set({ isLoading: true, error: null });
         try {
-          await new Promise(resolve => setTimeout(resolve, 300));
-          
+          const { error } = await supabase
+            .from('user_relationships')
+            .update({ 
+              is_active: false,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', id);
+
+          if (error) throw error;
+
           set(state => ({
             relationships: state.relationships.filter(rel => rel.id !== id),
             isLoading: false,
           }));
-        } catch {
-          set({ error: 'Failed to delete relationship', isLoading: false });
+        } catch (error) {
+          set({ error: handleSupabaseError(error), isLoading: false });
         }
       },
 
