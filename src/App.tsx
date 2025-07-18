@@ -320,14 +320,18 @@ function App() {
               </ErrorBoundary>
             } />
             <Route path="/branding" element={
-              <ErrorBoundary>
-                <Branding />
-              </ErrorBoundary>
+              <RoleProtectedRoute allowedRoles={['super_admin']}>
+                <ErrorBoundary>
+                  <Branding />
+                </ErrorBoundary>
+              </RoleProtectedRoute>
             } />
-            <Route path="/organization-branding" element={
-              <ErrorBoundary>
-                <OrganizationBrandingPage />
-              </ErrorBoundary>
+            <Route path="/admin/branding" element={
+              <RoleProtectedRoute allowedRoles={['org_admin']}>
+                <ErrorBoundary>
+                  <OrganizationBrandingPage />
+                </ErrorBoundary>
+              </RoleProtectedRoute>
             } />
 
             {/* User Routes */}
