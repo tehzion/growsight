@@ -78,13 +78,13 @@ export const BulkOperationsManager: React.FC = () => {
 
   const [operations, setOperations] = useState<BulkOperation[]>([]);
   const [templates, setTemplates] = useState<BulkTemplate[]>([]);
-  const [_selectedOperation] = useState<BulkOperation | null>(null);
+  // const [selectedOperation, setSelectedOperation] = useState<BulkOperation | null>(null);
   const [activeTab, setActiveTab] = useState<'operations' | 'templates' | 'create'>('operations');
   const [operationType, setOperationType] = useState<string>('user_import');
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [previewData, setPreviewData] = useState<Record<string, unknown>[]>([]);
   const [validationResults, setValidationResults] = useState<ValidationError[]>([]);
-  const [_showApprovalDialog] = useState(false);
+  // const [showApprovalDialog, setShowApprovalDialog] = useState(false);
 
   // Check permissions
   const canCreateBulkOps = rbac.hasPermission(user, 'users.create.bulk');
@@ -94,9 +94,9 @@ export const BulkOperationsManager: React.FC = () => {
   useEffect(() => {
     loadOperations();
     loadTemplates();
-  }, []);
+  }, [loadOperations, loadTemplates]);
 
-  const loadOperations = () => {
+  const loadOperations = React.useCallback(() => {
     // Mock data - in real implementation, load from API
     const mockOperations: BulkOperation[] = [
       {
@@ -136,9 +136,9 @@ export const BulkOperationsManager: React.FC = () => {
       }
     ];
     setOperations(mockOperations);
-  };
+  }, []);
 
-  const loadTemplates = () => {
+  const loadTemplates = React.useCallback(() => {
     const mockTemplates: BulkTemplate[] = [
       {
         id: 'user_import_template',
@@ -160,7 +160,7 @@ export const BulkOperationsManager: React.FC = () => {
       }
     ];
     setTemplates(mockTemplates);
-  };
+  }, []);
 
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -179,7 +179,7 @@ export const BulkOperationsManager: React.FC = () => {
       
       const data = lines.slice(1).map((line, index) => {
         const values = line.split(',').map(v => v.trim());
-        const row: any = { _rowIndex: index + 2 }; // +2 for header and 0-based index
+        const row: Record<string, unknown> = { _rowIndex: index + 2 }; // +2 for header and 0-based index
         headers.forEach((header, i) => {
           row[header] = values[i];
         });
@@ -192,7 +192,7 @@ export const BulkOperationsManager: React.FC = () => {
     reader.readAsText(file);
   };
 
-  const validateData = (data: any[]) => {
+  const validateData = (data: Record<string, unknown>[]) => {
     const errors: ValidationError[] = [];
     const template = templates.find(t => t.type === operationType);
     
@@ -246,7 +246,7 @@ export const BulkOperationsManager: React.FC = () => {
 
     const operation: BulkOperation = {
       id: Date.now().toString(),
-      type: operationType as any,
+      type: operationType as BulkOperation['type'],
       title: `${operationType.replace('_', ' ')} - ${uploadedFile.name}`,
       description: `Bulk ${operationType.replace('_', ' ')} operation`,
       createdBy: user?.id || '',
@@ -472,7 +472,7 @@ export const BulkOperationsManager: React.FC = () => {
           ].concat(canCreateBulkOps ? [{ id: 'create', name: 'Create', icon: Upload }] : []).map((tab) => (
             <button
               key={tab.id}
-              onClick={() => setActiveTab(tab.id as any)}
+              onClick={() => setActiveTab(tab.id as 'operations' | 'templates' | 'create')}
               className={`flex items-center gap-2 py-2 px-1 border-b-2 font-medium text-sm ${
                 activeTab === tab.id
                   ? 'border-blue-500 text-blue-600'

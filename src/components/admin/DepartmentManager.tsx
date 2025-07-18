@@ -153,7 +153,7 @@ const DepartmentManager: React.FC = () => {
     });
     
     // Build tree structure
-    const rootDepartments: (Department & { children: any[] })[] = [];
+    const rootDepartments: (Department & { children: Department[] })[] = [];
     
     departmentMap.forEach(dept => {
       if (dept.parentDepartmentId && departmentMap.has(dept.parentDepartmentId)) {

@@ -8,8 +8,8 @@ import {
   CheckCircle, 
   AlertTriangle,
   Info,
-  FileSpreadsheet,
-  FilePlus,
+  // FileSpreadsheet,
+  // FilePlus,
   Clock,
   RefreshCw,
   AlertCircle,
@@ -17,7 +17,7 @@ import {
   Building,
   BarChart3
 } from 'lucide-react';
-import { Card, CardHeader, CardTitle, CardContent, CardFooter } from '../ui/Card';
+import { Card } from '../ui/Card';
 import Button from '../ui/Button';
 import { useAuthStore } from '../../stores/authStore';
 import { useOrganizationStore } from '../../stores/organizationStore';
@@ -31,17 +31,17 @@ interface ImportExportManagerProps {
 export const ImportExportManager: React.FC<ImportExportManagerProps> = ({ onImportComplete }) => {
   const { user } = useAuthStore();
   const { currentOrganization } = useOrganizationStore();
-  const { departments } = useDepartmentStore();
+  // const { departments } = useDepartmentStore();
   
-  const [activeTab, setActiveTab] = useState<'import' | 'export'>('import');
+  // const [activeTab, setActiveTab] = useState<'import' | 'export'>('import');
   const [importType, setImportType] = useState<'users' | 'assessments' | 'responses'>('users');
   const [exportType, setExportType] = useState<'users' | 'assessments' | 'responses' | 'results' | 'analytics'>('users');
-  const [selectedDepartment, setSelectedDepartment] = useState<string>('');
-  const [anonymizeExport, setAnonymizeExport] = useState<boolean>(true);
-  const [includeHeaders, setIncludeHeaders] = useState<boolean>(true);
+  // const [selectedDepartment, setSelectedDepartment] = useState<string>('');
+  // const [anonymizeExport, setAnonymizeExport] = useState<boolean>(true);
+  // const [includeHeaders, setIncludeHeaders] = useState<boolean>(true);
   
-  const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [error, setError] = useState<string | null>(null);
+  // const [isLoading, setIsLoading] = useState<boolean>(false);
+  // const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   
   const [recentImports, setRecentImports] = useState<ImportLog[]>([]);
