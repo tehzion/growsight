@@ -21,8 +21,8 @@ jobs:
         username: ${{ secrets.USERNAME }}
         key: ${{ secrets.SSH_KEY }}
         script: |
-          cd /opt/leadership
-          git config --global --add safe.directory /opt/leadership
+          cd ${{ secrets.DEPLOY_PATH }}
+          git config --global --add safe.directory ${{ secrets.DEPLOY_PATH }}
           ssh-keyscan github.com >> ~/.ssh/known_hosts
           git pull origin deploy
           npm install

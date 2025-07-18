@@ -231,9 +231,9 @@ sudo apt update && sudo apt install -y nodejs npm
 # Create directories manually
 ADMIN_USER="$(whoami)"
 
-sudo mkdir -p /opt/leadership
-sudo chown -R www-data:www-data /opt/leadership
-cd /opt/leadership
+sudo mkdir -p /opt/growsight
+sudo chown -R www-data:www-data /opt/growsight
+cd /opt/growsight
 
 # Deploy Key
 ssh-keygen -t ed25519 -C "kidd.tang@gmail.com"
@@ -269,19 +269,19 @@ sudo chown deploy:deploy /home/deploy/.ssh/authorized_keys
 sudo cat /home/deploy/.ssh/id_ed25519.pub
 
 # Configure git safe directory for deploy user
-sudo -u deploy git config --global --add safe.directory /opt/leadership
+sudo -u deploy git config --global --add safe.directory /opt/growsight
 
 # Test GitHub access as deploy user
 sudo -u deploy ssh -T git@github.com
 
 # Set ownership and permissions for deployment directory
-sudo chown -R www-data:www-data /opt/leadership
-sudo chmod -R g+rw /opt/leadership
+sudo chown -R www-data:www-data /opt/growsight
+sudo chmod -R g+rw /opt/growsight
 
 # Clone repository and setup directories
-# Forked: git clone git@github.com:kiddtang/leadership.git .
-git clone git@github.com:tehzion/leadership.git .
-git config --global --add safe.directory /opt/leadership
+# Forked: git clone git@github.com:kiddtang/growsight.git .
+git clone git@github.com:tehzion/growsight.git .
+git config --global --add safe.directory /opt/growsight
 git checkout deploy
 ```
 
@@ -290,18 +290,18 @@ git checkout deploy
 cp .env.example .env
 
 # Set ownership and permissions for deployment directory
-sudo chown -R www-data:www-data /opt/leadership
-sudo find /opt/leadership -type d -exec chmod 775 {} \;  # dirs: rwxrwxr-x
-sudo find /opt/leadership -type f -exec chmod 664 {} \;  # files: rw-r--r--
-sudo find /opt/leadership -type d -exec chmod g+s {} \;  # setgid on dirs
-sudo chown root:www-data /opt/leadership/.env
-sudo chmod 640 /opt/leadership/.env
+sudo chown -R www-data:www-data /opt/growsight
+sudo find /opt/growsight -type d -exec chmod 775 {} \;  # dirs: rwxrwxr-x
+sudo find /opt/growsight -type f -exec chmod 664 {} \;  # files: rw-r--r--
+sudo find /opt/growsight -type d -exec chmod g+s {} \;  # setgid on dirs
+sudo chown root:www-data /opt/growsight/.env
+sudo chmod 640 /opt/growsight/.env
 ```
 
 ### 3. Deploy Services
 
 ```bash
-cd /opt/leadership/
+cd /opt/growsight/
 
 docker compose pull
 
@@ -310,12 +310,12 @@ sudo chmod +x build-and-deploy.sh
 RUN_MIGRATIONS=true ./build-and-deploy.sh
 
 # Reset ownership and permissions for deployment directory
-sudo chown -R www-data:www-data /opt/leadership
-sudo find /opt/leadership -type d -exec chmod 775 {} \;  # dirs: rwxrwxr-x
-sudo find /opt/leadership -type f -exec chmod 664 {} \;  # files: rw-r--r--
-sudo find /opt/leadership -type d -exec chmod g+s {} \;  # setgid on dirs
-sudo chown root:www-data /opt/leadership/.env
-sudo chmod 640 /opt/leadership/.env
+sudo chown -R www-data:www-data /opt/growsight
+sudo find /opt/growsight -type d -exec chmod 775 {} \;  # dirs: rwxrwxr-x
+sudo find /opt/growsight -type f -exec chmod 664 {} \;  # files: rw-r--r--
+sudo find /opt/growsight -type d -exec chmod g+s {} \;  # setgid on dirs
+sudo chown root:www-data /opt/growsight/.env
+sudo chmod 640 /opt/growsight/.env
 
 # Start containers
 docker compose up -d
@@ -332,7 +332,7 @@ Secure deployment setup using dedicated deploy user (best practice).
 
 #### Security Benefits:
 - Deploy user has no sudo access
-- Limited to /opt/leadership directory only
+- Limited to /opt/growsight directory only
 - Separate from admin user credentials
 - GitHub deploy key shared between admin and deploy users
 - SSH login keys remain separate and secure
@@ -346,6 +346,7 @@ Repository Settings → Secrets and variables → Actions → Repository secrets
 | `SSH_PORT` | Your custom SSH port (from ~/.ssh/custom_port) |
 | `USERNAME` | `deploy` |
 | `SSH_KEY` | Contents of `/home/deploy/.ssh/id_ed25519` (private key) |
+| `DEPLOY_PATH` | `/opt/growsight` (or your custom deployment path) |
 
 **Note:** Use Repository secrets (not Environment secrets) for simpler setup.
 
