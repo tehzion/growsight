@@ -3,6 +3,13 @@ export default {
   content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}'],
   theme: {
     extend: {
+      screens: {
+        'tablet': '768px',
+        'tablet-landscape': { 'raw': '(min-width: 768px) and (orientation: landscape)' },
+        'tablet-portrait': { 'raw': '(min-width: 768px) and (orientation: portrait)' },
+        'ipad': '768px',
+        'ipad-pro': '1024px',
+      },
       colors: {
         primary: {
           50: '#EFF6FF',

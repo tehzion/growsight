@@ -242,7 +242,7 @@ const Dashboard = () => {
       
       {/* Analytics Overview - Only for Admin levels */}
       {analytics && !isSubscriber && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 tablet:grid-cols-2 lg:grid-cols-4 gap-4 tablet:gap-6">
           <Card className="bg-gradient-to-br from-primary-50 to-primary-100 border-l-4 border-primary-500">
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
@@ -352,7 +352,7 @@ const Dashboard = () => {
 
       {/* Subscriber Dashboard - Assignment Focused */}
       {isSubscriber && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 tablet:grid-cols-2 lg:grid-cols-4 gap-4 tablet:gap-6">
           <Card className="bg-gradient-to-br from-primary-50 to-primary-100 border-l-4 border-primary-500">
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
@@ -459,7 +459,7 @@ const Dashboard = () => {
 
       {/* Performance Metrics for Super Admin */}
       {isSuperAdmin && analytics && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 tablet:grid-cols-2 lg:grid-cols-3 gap-4 tablet:gap-6">
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center">
@@ -552,7 +552,7 @@ const Dashboard = () => {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 tablet:grid-cols-2 lg:grid-cols-3 gap-4 tablet:gap-6">
               {analytics.competencyAnalytics.map(comp => (
                 <div key={comp.competencyId} className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-sm transition-shadow">
                   <div className="flex items-center justify-between mb-2">
@@ -698,7 +698,7 @@ const Dashboard = () => {
       </Card>
       
       {/* Quick Links for Admins */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 tablet:grid-cols-2 lg:grid-cols-3 gap-4 tablet:gap-6">
         {isSuperAdmin && (
           <Card className="hover:shadow-card-hover transition-shadow">
             <CardContent className="p-6">

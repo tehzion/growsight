@@ -169,7 +169,7 @@ const Sidebar = ({ isOpen, toggleSidebar, user }: SidebarProps) => {
       
       {/* Sidebar */}
       <div 
-        className={`fixed inset-y-0 left-0 z-30 w-64 bg-primary-800 text-white transform transition duration-300 ease-in-out md:translate-x-0 md:static md:inset-auto md:h-screen ${
+        className={`fixed inset-y-0 left-0 z-30 w-64 bg-primary-800 text-white transform transition duration-300 ease-in-out lg:translate-x-0 lg:static lg:inset-auto lg:h-screen ${
           isOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
       >

@@ -62,9 +62,9 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
     };
     
     const sizes = {
-      sm: 'px-3 py-1.5 text-sm',
-      md: 'px-4 py-2.5 text-base',
-      lg: 'px-6 py-3 text-lg',
+      sm: 'px-4 py-2 text-sm min-h-[44px]', // Touch-friendly minimum height
+      md: 'px-6 py-3 text-base min-h-[44px]', // Touch-friendly minimum height
+      lg: 'px-8 py-4 text-lg min-h-[48px]', // Larger touch target
     };
     
     const width = fullWidth ? 'w-full' : '';

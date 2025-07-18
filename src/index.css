@@ -1,3 +1,50 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Tablet and iPad optimizations */
+@layer base {
+  /* Touch-friendly interactions */
+  * {
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+  }
+  
+  /* Smooth scrolling for iOS Safari */
+  .smooth-scroll {
+    -webkit-overflow-scrolling: touch;
+  }
+  
+  /* Minimum touch targets for accessibility */
+  button, a, input, select, textarea {
+    min-height: 44px;
+  }
+  
+  /* iPad Safari specific fixes */
+  @media screen and (max-width: 1024px) {
+    /* Prevent zoom on input focus */
+    input, select, textarea {
+      font-size: 16px;
+    }
+    
+    /* Better button spacing for touch */
+    button {
+      padding: 12px 16px;
+    }
+  }
+  
+  /* Tablet-specific utilities */
+  @media (min-width: 768px) and (max-width: 1024px) {
+    .tablet-grid-2 {
+      grid-template-columns: repeat(2, 1fr);
+    }
+    
+    .tablet-grid-3 {
+      grid-template-columns: repeat(3, 1fr);
+    }
+    
+    .tablet-spacing {
+      padding: 1.5rem;
+    }
+  }
+}
