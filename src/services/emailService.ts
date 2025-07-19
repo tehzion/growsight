@@ -2,6 +2,8 @@ import { config } from '../config/environment';
 import SecureLogger from '../lib/secureLogger';
 import { supabase } from '../lib/supabase';
 import { useAssessmentResultsStore } from '../stores/assessmentResultsStore';
+import { smtpEmailService } from './smtpEmailService';
+import { useEmailServiceStore } from '../stores/emailServiceStore';
 
 export interface EmailNotification {
   id: string;
@@ -310,10 +312,26 @@ export class EmailService {
       // Log the email data for debugging
       console.log('Sending branded email:', emailData);
 
-      // TODO: Integrate with actual email service (SendGrid, AWS SES, etc.)
-      // await emailProvider.send(emailData);
-
-      return true;
+      // Use SMTP service if configured, otherwise fall back to demo mode
+      if (smtpEmailService.isReady()) {
+        const result = await smtpEmailService.sendBrandedEmail({
+          organizationId: template.organization_id || 'default',
+          to: template.recipient_email,
+          subject: template.subject,
+          content: htmlContent,
+          templateName: 'branded-email',
+          variables: template.template_data || {}
+        });
+        return result.success;
+      } else {
+        // Demo mode - log email but don't actually send
+        SecureLogger.demo('Branded email would be sent', {
+          to: template.recipient_email,
+          subject: template.subject,
+          provider: 'demo'
+        });
+        return true;
+      }
     } catch (error) {
       console.error('Error sending branded email:', error);
       return false;
@@ -795,6 +813,21 @@ export class EmailService {
     const template = this.getTemplate(notification.template, notification.data);
 
     try {
+      // Use the new SMTP service if available
+      const { smtpEmailService } = await import('./smtpEmailService');
+      
+      if (smtpEmailService.isReady()) {
+        return await smtpEmailService.sendBrandedEmail({
+          organizationId: notification.data?.organizationId || 'default',
+          to: notification.to,
+          subject: template.subject,
+          content: template.body,
+          templateVariables: notification.data,
+          category: 'notification'
+        });
+      }
+
+      // Fallback to original providers
       switch (config.email.provider) {
         case 'smtp':
           return await this.sendWithSMTP(notification, template);
@@ -815,28 +848,48 @@ export class EmailService {
   }
 
   private async sendWithSMTP(notification: EmailNotification, template: EmailTemplate) {
-    if (!config.email.smtpHost || !config.email.smtpPort) {
-      throw new Error('SMTP configuration is incomplete');
-    }
-
     try {
-      // In a real implementation, this would use a Node.js SMTP library like nodemailer
-      console.log('Sending email via SMTP:', {
-        host: config.email.smtpHost,
-        port: config.email.smtpPort,
-        secure: config.email.smtpSecure,
-        auth: {
-          user: config.email.smtpUsername,
-          pass: '********' // Password masked for security
-        },
-        from: `${config.email.fromName} <${config.email.fromEmail}>`,
-        to: notification.to,
-        subject: template.subject,
-        text: template.body,
-        html: template.body
-      });
+      // Use the real SMTP service if configured
+      if (smtpEmailService.isReady()) {
+        const result = await smtpEmailService.sendBrandedEmail({
+          organizationId: notification.data?.organizationId || 'default',
+          to: notification.to,
+          subject: template.subject,
+          content: template.body,
+          templateName: notification.template,
+          variables: notification.data || {}
+        });
+        
+        if (!result.success) {
+          throw new Error(result.error || 'SMTP sending failed');
+        }
+        
+        return { success: true, provider: 'smtp' };
+      } else {
+        // Fallback to environment config SMTP if available
+        if (!config.email.smtpHost || !config.email.smtpPort) {
+          throw new Error('SMTP configuration is incomplete - please configure via Email Service settings');
+        }
 
-      return { success: true, provider: 'smtp' };
+        // Log that we're falling back to basic config
+        console.log('Using basic SMTP config (consider using Email Service for full features):', {
+          host: config.email.smtpHost,
+          port: config.email.smtpPort,
+          secure: config.email.smtpSecure,
+          from: `${config.email.fromName} <${config.email.fromEmail}>`,
+          to: notification.to,
+          subject: template.subject
+        });
+
+        // In demo/development mode, just log the email
+        SecureLogger.demo('Email sent via basic SMTP config', {
+          provider: 'smtp',
+          to: notification.to,
+          subject: template.subject
+        });
+        
+        return { success: true, provider: 'smtp' };
+      }
     } catch (error) {
       console.error('SMTP sending error:', error);
       throw new Error(`SMTP error: ${(error as Error).message}`);

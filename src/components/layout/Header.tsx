@@ -1,6 +1,6 @@
 import { ChevronDown, LogOut, Menu, User, Shield, Eye, Settings, KeyRound, UserCircle, Bell, BellDot, MessageSquare, CheckCircle, AlertTriangle, AlertCircle, Info } from 'lucide-react';
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { Organization, User as UserType } from '../../types';
 import { useNotificationStore } from '../../stores/notificationStore';
 import { useSupportStore } from '../../stores/supportStore';
@@ -353,6 +353,15 @@ const Header = ({ toggleSidebar, user, onLogout, currentOrganization }: HeaderPr
                 </>
               )}
             </div>
+
+            {/* Compliance Link */}
+            <Link
+              to="/compliance"
+              className="text-gray-600 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium"
+            >
+              <Shield className="h-4 w-4 inline mr-1" />
+              Privacy & GDPR
+            </Link>
           </div>
         </div>
       </div>

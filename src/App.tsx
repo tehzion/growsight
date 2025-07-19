@@ -8,6 +8,7 @@ import { useBrandingStore } from './stores/brandingStore';
 import { config, validateEnvironment } from './config/environment';
 import SecureLogger from './lib/secureLogger';
 import ContentSecurityPolicy from './lib/security/contentSecurityPolicy';
+import { initializeSecurity, securityManager } from './lib/security';
 
 // Layouts
 import AuthLayout from './components/layout/AuthLayout';
@@ -53,6 +54,8 @@ import SystemHealth from './pages/admin/SystemHealth';
 import SecuritySettings from './pages/admin/SecuritySettings';
 import NotificationSettings from './pages/admin/NotificationSettings';
 import EmailTemplates from './pages/admin/EmailTemplates';
+import EmailServiceConfig from './components/admin/EmailServiceConfig';
+import EmailTemplateManager from './components/admin/EmailTemplateManager';
 import AuditLogs from './pages/admin/AuditLogs';
 import BackupRestore from './pages/admin/BackupRestore';
 import APIKeys from './pages/admin/APIKeys';
@@ -73,27 +76,53 @@ import ErrorBoundary from './components/ui/ErrorBoundary';
 import Assessment360Selector from './components/assessments/Assessment360Selector';
 import SessionMonitor from './components/security/SessionMonitor';
 
+// Compliance Pages
+import GDPRCompliance from './pages/compliance/GDPRCompliance';
+
 function App() {
   const { user, refreshSession, logout, updateActivity, validateSession } = useAuthStore();
   const { fetchProfile } = useProfileStore();
   const { currentOrganization } = useOrganizationStore();
   const { loadBranding, resetBranding } = useBrandingStore();
   
-  // Initialize Content Security Policy
+  // Initialize Security Features
   useEffect(() => {
-    try {
-      ContentSecurityPolicy.applyCSP();
-      console.info('CSP applied successfully with domain:', ContentSecurityPolicy.getCurrentDomain());
-      // Debug CSP configuration
-      ContentSecurityPolicy.debugCSP();
-    } catch (error) {
-      console.error('Failed to apply CSP:', error);
-      SecureLogger.error('CSP application failed', {
-        type: 'security',
-        error: error instanceof Error ? error.message : 'Unknown error',
-        context: 'csp_initialization'
-      });
-    }
+    const initSecurity = async () => {
+      try {
+        // Initialize comprehensive security features
+        await initializeSecurity({
+          environment: config.environment,
+          domain: config.app.domain,
+          allowedOrigins: [config.app.url, config.api.url],
+          enableGDPR: true,
+          enableSessionEncryption: true,
+          enableSecurityHeaders: true
+        });
+
+        // Legacy CSP initialization (now handled by security manager)
+        ContentSecurityPolicy.applyCSP();
+        console.info('🔒 Security features initialized successfully');
+        
+        // Validate security configuration
+        const validation = securityManager.validateSecurityConfig();
+        if (!validation.valid) {
+          console.warn('⚠️ Security configuration issues:', validation.issues);
+        }
+        if (validation.recommendations.length > 0) {
+          console.info('💡 Security recommendations:', validation.recommendations);
+        }
+        
+      } catch (error) {
+        console.error('❌ Security initialization failed:', error);
+        SecureLogger.error('Security initialization failed', {
+          type: 'security',
+          error: error instanceof Error ? error.message : 'Unknown error',
+          context: 'security_initialization'
+        });
+      }
+    };
+
+    initSecurity();
   }, []);
   
   // Validate environment on app start
@@ -353,6 +382,18 @@ function App() {
                   </ErrorBoundary>
                 } />
 
+                <Route path="/email-service" element={
+                  <ErrorBoundary>
+                    <EmailServiceConfig />
+                  </ErrorBoundary>
+                } />
+
+                <Route path="/email-template-manager" element={
+                  <ErrorBoundary>
+                    <EmailTemplateManager />
+                  </ErrorBoundary>
+                } />
+
                 <Route path="/reporting" element={
                   <ErrorBoundary>
                     <RoleProtectedRoute 
@@ -430,6 +471,15 @@ function App() {
                   <ErrorBoundary>
                     <SubscriberAssessments />
                   </ErrorBoundary>
+                } />
+
+                {/* Compliance Routes */}
+                <Route path="/compliance" element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <GDPRCompliance />
+                    </Layout>
+                  </ProtectedRoute>
                 } />
 
                 {/* Default redirect */}

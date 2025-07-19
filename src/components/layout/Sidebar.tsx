@@ -28,6 +28,7 @@ import { User as UserType } from '../../types';
 import { useAuthStore } from '../../stores/authStore';
 import { useOrganizationStore } from '../../stores/organizationStore';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { NavLink } from 'react-router-dom';
 
 interface SidebarProps {
   isOpen: boolean;
@@ -49,6 +50,7 @@ const Sidebar = ({ isOpen, toggleSidebar, user }: SidebarProps) => {
     { path: '/assessments', label: 'Assessments', icon: <ClipboardList className="h-5 w-5" />, roles: ['super_admin', 'org_admin', 'subscriber'], permission: 'create_assessments' },
     { path: '/templates', label: 'Templates', icon: <Layers className="h-5 w-5" />, roles: ['super_admin'] },
     { path: '/email-templates', label: 'Email Templates', icon: <Mail className="h-5 w-5" />, roles: ['super_admin'] },
+    { path: '/email-service', label: 'Email Service', icon: <Settings className="h-5 w-5" />, roles: ['super_admin', 'org_admin'] },
     { path: '/reporting', label: 'Reporting', icon: <BarChart3 className="h-5 w-5" />, roles: ['super_admin', 'org_admin'] },
     { path: '/assessment-assignments', label: 'Assignments', icon: <UserCheck className="h-5 w-5" />, roles: ['org_admin'], permission: 'assign_assessments' },
     { path: '/results', label: 'Analytics', icon: <BarChart4 className="h-5 w-5" />, roles: ['super_admin', 'org_admin'], permission: 'view_results' },

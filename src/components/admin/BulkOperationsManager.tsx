@@ -13,7 +13,8 @@ import {
   Settings,
   Eye,
   Play,
-  Save
+  Save,
+  X
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
 import Button from '../ui/Button';
@@ -56,6 +57,9 @@ interface BulkTemplate {
   description: string;
   fields: TemplateField[];
   validationRules: ValidationRule[];
+  isSystem?: boolean;
+  csvTemplate?: string;
+  instructions?: string;
 }
 
 interface TemplateField {
@@ -73,19 +77,124 @@ interface ValidationRule {
   message: string;
 }
 
+// Default bulk operation templates
+const getDefaultTemplates = (): BulkTemplate[] => [
+  {
+    id: 'user-import-template',
+    name: 'User Import Template',
+    type: 'user_import',
+    description: 'Import users in bulk with email, name, role, and optional department information',
+    isSystem: true,
+    instructions: 'Upload a CSV file with user information. Required fields: email, firstName, lastName, role. Optional: department, jobTitle, phone, location.',
+    csvTemplate: 'email,firstName,lastName,role,department,jobTitle,phone,location\njohn.doe@company.com,John,Doe,employee,Engineering,Software Engineer,+1234567890,New York',
+    fields: [
+      { name: 'email', type: 'email', required: true },
+      { name: 'firstName', type: 'text', required: true },
+      { name: 'lastName', type: 'text', required: true },
+      { name: 'role', type: 'select', required: true, options: ['employee', 'reviewer', 'org_admin', 'subscriber'] },
+      { name: 'department', type: 'text', required: false },
+      { name: 'jobTitle', type: 'text', required: false },
+      { name: 'phone', type: 'text', required: false },
+      { name: 'location', type: 'text', required: false }
+    ],
+    validationRules: [
+      { field: 'email', rule: 'required', message: 'Email is required' },
+      { field: 'email', rule: 'email', message: 'Must be a valid email address' },
+      { field: 'firstName', rule: 'required', message: 'First name is required' },
+      { field: 'firstName', rule: 'min_length', value: 2, message: 'First name must be at least 2 characters' },
+      { field: 'lastName', rule: 'required', message: 'Last name is required' },
+      { field: 'lastName', rule: 'min_length', value: 2, message: 'Last name must be at least 2 characters' },
+      { field: 'role', rule: 'required', message: 'Role is required' }
+    ]
+  },
+  {
+    id: 'assessment-assignment-template',
+    name: 'Assessment Assignment Template',
+    type: 'assessment_assign',
+    description: 'Assign assessments to multiple users with due dates and custom instructions',
+    isSystem: true,
+    instructions: 'Upload a CSV file with assessment assignment information. Required fields: userEmail, assessmentId. Optional: dueDate, customInstructions.',
+    csvTemplate: 'userEmail,assessmentId,dueDate,customInstructions\njohn.doe@company.com,assessment-123,2024-12-31,Please complete by end of month',
+    fields: [
+      { name: 'userEmail', type: 'email', required: true },
+      { name: 'assessmentId', type: 'text', required: true },
+      { name: 'dueDate', type: 'date', required: false },
+      { name: 'customInstructions', type: 'text', required: false }
+    ],
+    validationRules: [
+      { field: 'userEmail', rule: 'required', message: 'User email is required' },
+      { field: 'userEmail', rule: 'email', message: 'Must be a valid email address' },
+      { field: 'assessmentId', rule: 'required', message: 'Assessment ID is required' }
+    ]
+  },
+  {
+    id: 'role-change-template',
+    name: 'Role Change Template',
+    type: 'role_change',
+    description: 'Update user roles in bulk operations',
+    isSystem: true,
+    instructions: 'Upload a CSV file with role change information. Required fields: userEmail, newRole. Optional: reason, effectiveDate.',
+    csvTemplate: 'userEmail,newRole,reason,effectiveDate\njohn.doe@company.com,org_admin,Promotion to team lead,2024-01-01',
+    fields: [
+      { name: 'userEmail', type: 'email', required: true },
+      { name: 'newRole', type: 'select', required: true, options: ['employee', 'reviewer', 'org_admin', 'subscriber'] },
+      { name: 'reason', type: 'text', required: false },
+      { name: 'effectiveDate', type: 'date', required: false }
+    ],
+    validationRules: [
+      { field: 'userEmail', rule: 'required', message: 'User email is required' },
+      { field: 'userEmail', rule: 'email', message: 'Must be a valid email address' },
+      { field: 'newRole', rule: 'required', message: 'New role is required' }
+    ]
+  },
+  {
+    id: 'notification-send-template',
+    name: 'Bulk Notification Template',
+    type: 'notification_send',
+    description: 'Send notifications to multiple users simultaneously',
+    isSystem: true,
+    instructions: 'Upload a CSV file with notification information. Required fields: userEmail, subject, message. Optional: urgency, category.',
+    csvTemplate: 'userEmail,subject,message,urgency,category\njohn.doe@company.com,Important Update,Please review the new policy,high,policy',
+    fields: [
+      { name: 'userEmail', type: 'email', required: true },
+      { name: 'subject', type: 'text', required: true },
+      { name: 'message', type: 'text', required: true },
+      { name: 'urgency', type: 'select', required: false, options: ['low', 'normal', 'high', 'urgent'] },
+      { name: 'category', type: 'text', required: false }
+    ],
+    validationRules: [
+      { field: 'userEmail', rule: 'required', message: 'User email is required' },
+      { field: 'userEmail', rule: 'email', message: 'Must be a valid email address' },
+      { field: 'subject', rule: 'required', message: 'Subject is required' },
+      { field: 'message', rule: 'required', message: 'Message is required' },
+      { field: 'message', rule: 'min_length', value: 10, message: 'Message must be at least 10 characters' }
+    ]
+  }
+];
+
 export const BulkOperationsManager: React.FC = () => {
   const { user } = useAuthStore();
   const rbac = EnhancedRBAC.getInstance();
 
   const [operations, setOperations] = useState<BulkOperation[]>([]);
   const [templates, setTemplates] = useState<BulkTemplate[]>([]);
-  // const [selectedOperation, setSelectedOperation] = useState<BulkOperation | null>(null);
+  const [selectedOperation, setSelectedOperation] = useState<BulkOperation | null>(null);
   const [activeTab, setActiveTab] = useState<'operations' | 'templates' | 'create'>('operations');
   const [operationType, setOperationType] = useState<string>('user_import');
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [previewData, setPreviewData] = useState<Record<string, unknown>[]>([]);
   const [validationResults, setValidationResults] = useState<ValidationError[]>([]);
   // const [showApprovalDialog, setShowApprovalDialog] = useState(false);
+  const [selectedTemplate, setSelectedTemplate] = useState<BulkTemplate | null>(null);
+  const [showTemplateModal, setShowTemplateModal] = useState(false);
+  const [templateForm, setTemplateForm] = useState({
+    name: '',
+    type: 'user_import',
+    description: '',
+    fields: [] as TemplateField[],
+    validationRules: [] as ValidationRule[],
+    instructions: ''
+  });
 
   // Check permissions
   const canCreateBulkOps = rbac.hasPermission(user, 'users.create.bulk');
@@ -139,11 +248,42 @@ export const BulkOperationsManager: React.FC = () => {
   }, [user?.organizationId]);
 
   const loadTemplates = React.useCallback(async () => {
-    // TODO: Load real bulk operation templates from Supabase or API
-    // Example:
-    // const { data: templates, error } = await supabase.from('bulk_templates').select('*').eq('organization_id', user?.organizationId);
-    // setTemplates(templates || []);
-    setTemplates([]);
+    try {
+      // Load templates from Supabase
+      const { data: templatesData, error } = await supabase
+        .from('bulk_operation_templates')
+        .select('*')
+        .or(`organization_id.eq.${user?.organizationId},is_system.eq.true`)
+        .order('is_system', { ascending: false })
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.warn('Failed to load templates from database, using defaults:', error);
+        setTemplates(getDefaultTemplates());
+        return;
+      }
+
+      // Transform database data to template format
+      const transformedTemplates: BulkTemplate[] = templatesData?.map((tmpl: any) => ({
+        id: tmpl.id,
+        name: tmpl.name,
+        type: tmpl.operation_type,
+        description: tmpl.description,
+        fields: tmpl.fields || [],
+        validationRules: tmpl.validation_rules || [],
+        isSystem: tmpl.is_system || false
+      })) || [];
+
+      // Add default templates if none exist
+      const combinedTemplates = transformedTemplates.length > 0 
+        ? transformedTemplates 
+        : getDefaultTemplates();
+
+      setTemplates(combinedTemplates);
+    } catch (error) {
+      console.error('Failed to load templates:', error);
+      setTemplates(getDefaultTemplates());
+    }
   }, [user?.organizationId]);
 
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -312,6 +452,112 @@ export const BulkOperationsManager: React.FC = () => {
         ));
       }
     }, 1000);
+  };
+
+  // Template management functions
+  const downloadTemplate = (template: BulkTemplate) => {
+    if (!template.csvTemplate) return;
+    
+    const blob = new Blob([template.csvTemplate], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${template.name.toLowerCase().replace(/\s+/g, '-')}-template.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
+  };
+
+  const createTemplate = async () => {
+    try {
+      const newTemplate: BulkTemplate = {
+        id: `template-${Date.now()}`,
+        ...templateForm,
+        isSystem: false
+      };
+
+      // Save to database if available
+      if (user?.organizationId) {
+        const { error } = await supabase
+          .from('bulk_operation_templates')
+          .insert({
+            name: templateForm.name,
+            operation_type: templateForm.type,
+            description: templateForm.description,
+            fields: templateForm.fields,
+            validation_rules: templateForm.validationRules,
+            instructions: templateForm.instructions,
+            organization_id: user.organizationId,
+            is_system: false,
+            created_by: user.id,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          });
+
+        if (error) {
+          console.error('Failed to save template:', error);
+        }
+      }
+
+      setTemplates([newTemplate, ...templates]);
+      setShowTemplateModal(false);
+      resetTemplateForm();
+    } catch (error) {
+      console.error('Failed to create template:', error);
+    }
+  };
+
+  const deleteTemplate = async (templateId: string) => {
+    if (!window.confirm('Are you sure you want to delete this template?')) return;
+
+    try {
+      // Delete from database if it's not a system template
+      const template = templates.find(t => t.id === templateId);
+      if (template && !template.isSystem && user?.organizationId) {
+        await supabase
+          .from('bulk_operation_templates')
+          .delete()
+          .eq('id', templateId)
+          .eq('organization_id', user.organizationId);
+      }
+
+      setTemplates(templates.filter(t => t.id !== templateId));
+    } catch (error) {
+      console.error('Failed to delete template:', error);
+    }
+  };
+
+  const resetTemplateForm = () => {
+    setTemplateForm({
+      name: '',
+      type: 'user_import',
+      description: '',
+      fields: [],
+      validationRules: [],
+      instructions: ''
+    });
+  };
+
+  const addField = () => {
+    setTemplateForm(prev => ({
+      ...prev,
+      fields: [...prev.fields, { name: '', type: 'text', required: false }]
+    }));
+  };
+
+  const removeField = (index: number) => {
+    setTemplateForm(prev => ({
+      ...prev,
+      fields: prev.fields.filter((_, i) => i !== index)
+    }));
+  };
+
+  const updateField = (index: number, field: Partial<TemplateField>) => {
+    setTemplateForm(prev => ({
+      ...prev,
+      fields: prev.fields.map((f, i) => i === index ? { ...f, ...field } : f)
+    }));
   };
 
   const OperationCard: React.FC<{ operation: BulkOperation }> = ({ operation }) => (
@@ -506,31 +752,142 @@ export const BulkOperationsManager: React.FC = () => {
 
         {activeTab === 'templates' && (
           <div className="space-y-4">
-            {templates.map((template) => (
-              <Card key={template.id}>
-                <CardHeader>
-                  <CardTitle>{template.name}</CardTitle>
-                  <p className="text-sm text-gray-600">{template.description}</p>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-2">
-                    <div className="text-sm font-medium">Fields:</div>
-                    <div className="flex flex-wrap gap-2">
-                      {template.fields.map((field) => (
-                        <span 
-                          key={field.name}
-                          className={`px-2 py-1 rounded text-xs ${
-                            field.required ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-800'
-                          }`}
-                        >
-                          {field.name} ({field.type})
-                        </span>
-                      ))}
+            {/* Template Header */}
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900">Bulk Operation Templates</h2>
+                <p className="text-sm text-gray-600">Manage templates for different bulk operations</p>
+              </div>
+              {canCreateBulkOps && (
+                <Button onClick={() => setShowTemplateModal(true)}>
+                  <Upload className="h-4 w-4 mr-2" />
+                  Create Template
+                </Button>
+              )}
+            </div>
+
+            {/* Templates Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {templates.map((template) => (
+                <Card key={template.id} className="hover:shadow-md transition-shadow">
+                  <CardHeader className="pb-3">
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center space-x-2">
+                          <CardTitle className="text-lg">{template.name}</CardTitle>
+                          {template.isSystem && (
+                            <span className="px-2 py-1 text-xs bg-blue-100 text-blue-700 rounded-full">
+                              System
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-sm text-gray-600 mt-1">{template.description}</p>
+                      </div>
                     </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    {/* Template Type */}
+                    <div className="flex items-center space-x-2">
+                      <span className="text-sm font-medium text-gray-700">Type:</span>
+                      <span className="px-2 py-1 text-xs bg-gray-100 text-gray-700 rounded">
+                        {template.type.replace('_', ' ')}
+                      </span>
+                    </div>
+
+                    {/* Fields Preview */}
+                    <div>
+                      <div className="text-sm font-medium text-gray-700 mb-2">Fields ({template.fields.length}):</div>
+                      <div className="flex flex-wrap gap-1">
+                        {template.fields.slice(0, 6).map((field) => (
+                          <span 
+                            key={field.name}
+                            className={`px-2 py-1 rounded text-xs ${
+                              field.required ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-800'
+                            }`}
+                          >
+                            {field.name}
+                          </span>
+                        ))}
+                        {template.fields.length > 6 && (
+                          <span className="px-2 py-1 text-xs bg-gray-100 text-gray-500 rounded">
+                            +{template.fields.length - 6} more
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Validation Rules Count */}
+                    <div className="flex items-center space-x-2">
+                      <span className="text-sm font-medium text-gray-700">Validation Rules:</span>
+                      <span className="text-sm text-gray-600">{template.validationRules.length}</span>
+                    </div>
+
+                    {/* Instructions Preview */}
+                    {template.instructions && (
+                      <div>
+                        <div className="text-sm font-medium text-gray-700 mb-1">Instructions:</div>
+                        <p className="text-xs text-gray-600 line-clamp-2">{template.instructions}</p>
+                      </div>
+                    )}
+
+                    {/* Actions */}
+                    <div className="flex items-center gap-2 pt-2 border-t border-gray-100">
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={() => downloadTemplate(template)}
+                        disabled={!template.csvTemplate}
+                      >
+                        <FileText className="h-3 w-3 mr-1" />
+                        Download CSV
+                      </Button>
+                      
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={() => {
+                          setSelectedTemplate(template);
+                          setOperationType(template.type);
+                          setActiveTab('create');
+                        }}
+                      >
+                        <Play className="h-3 w-3 mr-1" />
+                        Use Template
+                      </Button>
+                      
+                      {!template.isSystem && (
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          onClick={() => deleteTemplate(template.id)}
+                          className="text-red-600 hover:text-red-700"
+                        >
+                          <XCircle className="h-3 w-3 mr-1" />
+                          Delete
+                        </Button>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+
+            {/* Empty State */}
+            {templates.length === 0 && (
+              <div className="text-center py-12">
+                <FileText className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                <h3 className="text-lg font-medium text-gray-900 mb-2">No Templates Available</h3>
+                <p className="text-gray-600 mb-4">
+                  Create your first bulk operation template to get started
+                </p>
+                {canCreateBulkOps && (
+                  <Button onClick={() => setShowTemplateModal(true)}>
+                    <Upload className="h-4 w-4 mr-2" />
+                    Create Template
+                  </Button>
+                )}
+              </div>
+            )}
           </div>
         )}
 
@@ -645,6 +1002,181 @@ export const BulkOperationsManager: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* Template Creation Modal */}
+      {showTemplateModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-hidden">
+            <div className="flex items-center justify-between p-6 border-b border-gray-200">
+              <h2 className="text-xl font-semibold">Create Bulk Operation Template</h2>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowTemplateModal(false);
+                  resetTemplateForm();
+                }}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+            
+            <div className="p-6 overflow-y-auto" style={{ maxHeight: 'calc(90vh - 120px)' }}>
+              <div className="space-y-6">
+                {/* Basic Info */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Template Name
+                    </label>
+                    <input
+                      type="text"
+                      value={templateForm.name}
+                      onChange={(e) => setTemplateForm(prev => ({ ...prev, name: e.target.value }))}
+                      className="w-full border border-gray-300 rounded-md px-3 py-2"
+                      placeholder="e.g., Custom User Import"
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Operation Type
+                    </label>
+                    <select
+                      value={templateForm.type}
+                      onChange={(e) => setTemplateForm(prev => ({ ...prev, type: e.target.value }))}
+                      className="w-full border border-gray-300 rounded-md px-3 py-2"
+                    >
+                      <option value="user_import">User Import</option>
+                      <option value="user_update">User Update</option>
+                      <option value="assessment_assign">Assessment Assignment</option>
+                      <option value="role_change">Role Change</option>
+                      <option value="notification_send">Notification Send</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Description
+                  </label>
+                  <textarea
+                    value={templateForm.description}
+                    onChange={(e) => setTemplateForm(prev => ({ ...prev, description: e.target.value }))}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2"
+                    rows={3}
+                    placeholder="Describe what this template is used for..."
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Instructions
+                  </label>
+                  <textarea
+                    value={templateForm.instructions}
+                    onChange={(e) => setTemplateForm(prev => ({ ...prev, instructions: e.target.value }))}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2"
+                    rows={2}
+                    placeholder="Instructions for users on how to use this template..."
+                  />
+                </div>
+
+                {/* Fields */}
+                <div>
+                  <div className="flex items-center justify-between mb-4">
+                    <label className="block text-sm font-medium text-gray-700">
+                      Template Fields
+                    </label>
+                    <Button variant="outline" size="sm" onClick={addField}>
+                      <Upload className="h-3 w-3 mr-1" />
+                      Add Field
+                    </Button>
+                  </div>
+                  
+                  <div className="space-y-3">
+                    {templateForm.fields.map((field, index) => (
+                      <div key={index} className="grid grid-cols-12 gap-3 items-end">
+                        <div className="col-span-3">
+                          <input
+                            type="text"
+                            value={field.name}
+                            onChange={(e) => updateField(index, { name: e.target.value })}
+                            className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
+                            placeholder="Field name"
+                          />
+                        </div>
+                        <div className="col-span-2">
+                          <select
+                            value={field.type}
+                            onChange={(e) => updateField(index, { type: e.target.value as TemplateField['type'] })}
+                            className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
+                          >
+                            <option value="text">Text</option>
+                            <option value="email">Email</option>
+                            <option value="select">Select</option>
+                            <option value="date">Date</option>
+                            <option value="number">Number</option>
+                          </select>
+                        </div>
+                        <div className="col-span-3">
+                          {field.type === 'select' && (
+                            <input
+                              type="text"
+                              value={field.options?.join(', ') || ''}
+                              onChange={(e) => updateField(index, { options: e.target.value.split(',').map(o => o.trim()) })}
+                              className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
+                              placeholder="option1, option2, option3"
+                            />
+                          )}
+                        </div>
+                        <div className="col-span-2 flex items-center">
+                          <input
+                            type="checkbox"
+                            checked={field.required}
+                            onChange={(e) => updateField(index, { required: e.target.checked })}
+                            className="mr-2"
+                          />
+                          <span className="text-sm text-gray-700">Required</span>
+                        </div>
+                        <div className="col-span-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => removeField(index)}
+                            className="text-red-600 hover:text-red-700"
+                          >
+                            <XCircle className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Actions */}
+                <div className="flex justify-end space-x-3 pt-6 border-t border-gray-200">
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setShowTemplateModal(false);
+                      resetTemplateForm();
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={createTemplate}
+                    disabled={!templateForm.name || !templateForm.description || templateForm.fields.length === 0}
+                  >
+                    <Save className="h-4 w-4 mr-2" />
+                    Create Template
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -7,6 +7,9 @@ import { User, LoginCredentials, AdminLoginCredentials } from '../types';
 import SecureLogger from '../lib/secureLogger';
 import SessionSecurity from '../lib/security/sessionSecurity';
 import SecureStorage from '../lib/security/secureStorage';
+import { withAuthMutex } from '../lib/security/authMutex';
+import { sessionEncryption } from '../lib/security/sessionEncryption';
+import { validationSchemas, validateInput } from '../lib/validation/schemas';
 
 interface AuthState {
   user: User | null;
@@ -51,10 +54,16 @@ export const useAuthStore = create<AuthState>()(
       login: async (credentials: LoginCredentials) => {
         set({ isLoading: true, error: null });
         try {
+          // Validate input credentials
+          const validation = validateInput(validationSchemas.login, credentials);
+          if (!validation.success) {
+            throw new Error(validation.errors?.join(', ') || 'Invalid login credentials');
+          }
+
           // Production Supabase login with enhanced error handling
-            if (!supabase) {
-              throw new Error('Database connection not available. Please check your configuration.');
-            }
+          if (!supabase) {
+            throw new Error('Database connection not available. Please check your configuration.');
+          }
 
             // Verify organization ID first
             const { data: orgData, error: orgError } = await supabase
@@ -86,58 +95,23 @@ export const useAuthStore = create<AuthState>()(
             }
 
             if (data.user) {
-              // Cancel any previous request
-              const currentController = get()._abortController;
-              if (currentController) {
-                currentController.abort();
-              }
-              
-              // Create new abort controller for this request
-              const abortController = new AbortController();
-              set({ _abortController: abortController });
+              // Use mutex to prevent race conditions in profile fetching
+              const profile = await withAuthMutex('fetch-user-profile', async () => {
+                const { data: profileData, error: profileError } = await supabase
+                  .from('users')
+                  .select('*')
+                  .eq('id', data.user.id)
+                  .single();
 
-              // Fetch user profile from database with race condition protection
-              let retries = 3;
-              let profile = null;
-              
-              while (retries > 0 && !profile && !abortController.signal.aborted) {
-                try {
-                  const { data: profileData, error: profileError } = await supabase
-                    .from('users')
-                    .select('*')
-                    .eq('id', data.user.id)
-                    .abortSignal(abortController.signal)
-                    .single();
-
-                  if (profileError) {
-                    if (profileError.code === 'PGRST116') {
-                      throw new Error('User profile not found. Please contact your administrator.');
-                    }
-                    throw profileError;
+                if (profileError) {
+                  if (profileError.code === 'PGRST116') {
+                    throw new Error('User profile not found. Please contact your administrator.');
                   }
-
-                  profile = profileData;
-                } catch (err: any) {
-                  if (err.name === 'AbortError') {
-                    // Request was cancelled, exit gracefully
-                    return;
-                  }
-                  retries--;
-                  if (retries === 0) throw err;
-                  
-                  // Use AbortController with timeout instead of raw setTimeout
-                  await new Promise((resolve, reject) => {
-                    const timeoutId = setTimeout(resolve, 1000);
-                    abortController.signal.addEventListener('abort', () => {
-                      clearTimeout(timeoutId);
-                      reject(new Error('AbortError'));
-                    });
-                  });
+                  throw profileError;
                 }
-              }
-              
-              // Clear abort controller after successful completion
-              set({ _abortController: null });
+
+                return profileData;
+              });
 
               if (!profile) {
                 throw new Error('Unable to load user profile. Please try again.');
@@ -690,30 +664,36 @@ export const useAuthStore = create<AuthState>()(
       refreshSession: async () => {
         if (supabase) {
           try {
-            const { data: { session } } = await supabase.auth.getSession();
-            if (session?.user) {
-              // Refresh user data from database
-              const { data: profile } = await supabase
-                .from('users')
-                .select('*')
-                .eq('id', session.user.id)
-                .single();
+            // Use mutex to prevent concurrent session refreshes
+            await withAuthMutex('refresh-session', async () => {
+              const { data: { session } } = await supabase.auth.getSession();
+              if (session?.user) {
+                // Refresh user data from database
+                const { data: profile } = await supabase
+                  .from('users')
+                  .select('*')
+                  .eq('id', session.user.id)
+                  .single();
 
-              if (profile) {
-                const user: User = {
-                  id: profile.id,
-                  email: profile.email,
-                  firstName: profile.first_name,
-                  lastName: profile.last_name,
-                  role: profile.role,
-                  organizationId: profile.organization_id,
-                  departmentId: profile.department_id,
-                  createdAt: profile.created_at,
-                  updatedAt: profile.updated_at
-                };
-                set({ user });
+                if (profile) {
+                  const user: User = {
+                    id: profile.id,
+                    email: profile.email,
+                    firstName: profile.first_name,
+                    lastName: profile.last_name,
+                    role: profile.role,
+                    organizationId: profile.organization_id,
+                    departmentId: profile.department_id,
+                    createdAt: profile.created_at,
+                    updatedAt: profile.updated_at
+                  };
+                  
+                  // Store user data with encryption
+                  await sessionEncryption.setSecureItem('current_user', JSON.stringify(user));
+                  set({ user });
+                }
               }
-            }
+            });
           } catch (error) {
             console.error('Session refresh error:', error);
             // Don't throw error for session refresh

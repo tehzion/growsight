@@ -284,6 +284,78 @@ CREATE TABLE IF NOT EXISTS assessment_notifications (
 );
 
 -- =====================================================================================
+-- GDPR COMPLIANCE TABLES
+-- =====================================================================================
+
+-- Consent Records Table
+CREATE TABLE IF NOT EXISTS consent_records (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL,
+    consent_type TEXT NOT NULL CHECK (consent_type IN ('marketing', 'analytics', 'functional', 'necessary')),
+    granted BOOLEAN NOT NULL DEFAULT false,
+    granted_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    withdrawn_at TIMESTAMP WITH TIME ZONE,
+    ip_address TEXT,
+    user_agent TEXT,
+    version TEXT NOT NULL DEFAULT '1.0',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Data Export Requests Table
+CREATE TABLE IF NOT EXISTS data_export_requests (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL,
+    request_type TEXT NOT NULL CHECK (request_type IN ('full_export', 'specific_data')),
+    data_types TEXT[],
+    format TEXT NOT NULL DEFAULT 'json' CHECK (format IN ('json', 'csv', 'pdf')),
+    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'processing', 'completed', 'failed')),
+    reason TEXT,
+    requested_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    completed_at TIMESTAMP WITH TIME ZONE,
+    download_url TEXT,
+    expires_at TIMESTAMP WITH TIME ZONE,
+    file_size BIGINT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Data Deletion Requests Table
+CREATE TABLE IF NOT EXISTS data_deletion_requests (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL,
+    request_type TEXT NOT NULL CHECK (request_type IN ('soft_delete', 'hard_delete')),
+    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'processing', 'completed', 'rejected')),
+    reason TEXT NOT NULL,
+    retention_period INTEGER NOT NULL DEFAULT 0,
+    confirm_deletion BOOLEAN NOT NULL DEFAULT false,
+    requested_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    approved_at TIMESTAMP WITH TIME ZONE,
+    completed_at TIMESTAMP WITH TIME ZONE,
+    approved_by UUID,
+    rejection_reason TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Data Processing Activities Table
+CREATE TABLE IF NOT EXISTS data_processing_activities (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL,
+    activity TEXT NOT NULL,
+    purpose TEXT NOT NULL,
+    legal_basis TEXT NOT NULL CHECK (legal_basis IN ('consent', 'contract', 'legal_obligation', 'vital_interests', 'public_task', 'legitimate_interests')),
+    data_types TEXT[] NOT NULL,
+    retention TEXT NOT NULL,
+    automated BOOLEAN NOT NULL DEFAULT false,
+    timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    ip_address TEXT,
+    user_agent TEXT,
+    metadata JSONB,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- =====================================================================================
 -- CREATE INDEXES IF THEY DON'T EXIST
 -- =====================================================================================
 
@@ -304,6 +376,23 @@ CREATE INDEX IF NOT EXISTS idx_support_tickets_status ON support_tickets(status)
 CREATE INDEX IF NOT EXISTS idx_assessment_notifications_assignment_id ON assessment_notifications(assignment_id);
 CREATE INDEX IF NOT EXISTS idx_assessment_notifications_user_id ON assessment_notifications(user_id);
 CREATE INDEX IF NOT EXISTS idx_assessment_notifications_status ON assessment_notifications(status);
+
+-- GDPR Compliance Indexes
+CREATE INDEX IF NOT EXISTS idx_consent_records_user_id ON consent_records(user_id);
+CREATE INDEX IF NOT EXISTS idx_consent_records_consent_type ON consent_records(consent_type);
+CREATE INDEX IF NOT EXISTS idx_consent_records_granted_at ON consent_records(granted_at);
+
+CREATE INDEX IF NOT EXISTS idx_data_export_requests_user_id ON data_export_requests(user_id);
+CREATE INDEX IF NOT EXISTS idx_data_export_requests_status ON data_export_requests(status);
+CREATE INDEX IF NOT EXISTS idx_data_export_requests_requested_at ON data_export_requests(requested_at);
+
+CREATE INDEX IF NOT EXISTS idx_data_deletion_requests_user_id ON data_deletion_requests(user_id);
+CREATE INDEX IF NOT EXISTS idx_data_deletion_requests_status ON data_deletion_requests(status);
+CREATE INDEX IF NOT EXISTS idx_data_deletion_requests_requested_at ON data_deletion_requests(requested_at);
+
+CREATE INDEX IF NOT EXISTS idx_data_processing_activities_user_id ON data_processing_activities(user_id);
+CREATE INDEX IF NOT EXISTS idx_data_processing_activities_timestamp ON data_processing_activities(timestamp);
+CREATE INDEX IF NOT EXISTS idx_data_processing_activities_legal_basis ON data_processing_activities(legal_basis);
 
 -- =====================================================================================
 -- CREATE FUNCTIONS
@@ -349,6 +438,40 @@ BEGIN
     );
 END;
 $$;
+
+-- GDPR Compliance Functions
+CREATE OR REPLACE FUNCTION get_user_consent_status(user_uuid UUID)
+RETURNS TABLE(consent_type TEXT, granted BOOLEAN, granted_at TIMESTAMP WITH TIME ZONE) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT DISTINCT ON (cr.consent_type)
+        cr.consent_type,
+        cr.granted,
+        cr.granted_at
+    FROM consent_records cr
+    WHERE cr.user_id = user_uuid
+    ORDER BY cr.consent_type, cr.granted_at DESC;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+CREATE OR REPLACE FUNCTION has_valid_consent(user_uuid UUID, consent_type_param TEXT)
+RETURNS BOOLEAN AS $$
+DECLARE
+    has_consent BOOLEAN;
+BEGIN
+    SELECT EXISTS (
+        SELECT 1 FROM consent_records cr
+        WHERE cr.user_id = user_uuid
+        AND cr.consent_type = consent_type_param
+        AND cr.granted = true
+        AND cr.withdrawn_at IS NULL
+        ORDER BY cr.granted_at DESC
+        LIMIT 1
+    ) INTO has_consent;
+    
+    RETURN has_consent;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- =====================================================================================
 -- CREATE TRIGGERS IF THEY DON'T EXIST
@@ -447,6 +570,12 @@ ALTER TABLE ticket_messages ENABLE ROW LEVEL SECURITY;
 ALTER TABLE ticket_attachments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE assessment_notifications ENABLE ROW LEVEL SECURITY;
 
+-- GDPR Compliance RLS
+ALTER TABLE consent_records ENABLE ROW LEVEL SECURITY;
+ALTER TABLE data_export_requests ENABLE ROW LEVEL SECURITY;
+ALTER TABLE data_deletion_requests ENABLE ROW LEVEL SECURITY;
+ALTER TABLE data_processing_activities ENABLE ROW LEVEL SECURITY;
+
 -- =====================================================================================
 -- GRANT PERMISSIONS
 -- =====================================================================================
@@ -454,6 +583,10 @@ ALTER TABLE assessment_notifications ENABLE ROW LEVEL SECURITY;
 GRANT EXECUTE ON FUNCTION update_updated_at_column() TO authenticated;
 GRANT EXECUTE ON FUNCTION has_org_admin_permission(uuid, text) TO authenticated;
 GRANT EXECUTE ON FUNCTION user_in_organization(uuid, text) TO authenticated;
+
+-- GDPR Compliance Function Permissions
+GRANT EXECUTE ON FUNCTION get_user_consent_status(uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION has_valid_consent(uuid, text) TO authenticated;
 
 -- =====================================================================================
 -- INSERT DEFAULT DATA
