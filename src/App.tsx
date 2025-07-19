@@ -34,39 +34,39 @@ import UserProfile from './pages/user/UserProfile';
 
 // Admin Pages
 import AdminDashboard from './pages/admin/AdminDashboard';
-import UserManagement from './pages/admin/UserManagement';
-import AssessmentManagement from './pages/admin/AssessmentManagement';
-import AssignmentManagement from './pages/admin/AssignmentManagement';
+import Users from './pages/admin/Users';
+import Assessments from './pages/admin/Assessments';
+import AssessmentAssignments from './pages/admin/AssessmentAssignments';
 import Results from './pages/admin/Results';
 import Analytics from './pages/admin/Analytics';
-import Reports from './pages/admin/Reports';
-import Settings from './pages/admin/Settings';
+import Reporting from './pages/admin/Reporting';
+import SystemSettings from './pages/admin/SystemSettings';
 import Branding from './pages/admin/Branding';
 import AccessRequests from './pages/admin/AccessRequests';
 import Assessment360Reporting from './pages/admin/Assessment360Reporting';
 import AdminAssessmentReport from './pages/admin/AdminAssessmentReport';
 import BulkOperations from './pages/admin/BulkOperations';
 import ImportExport from './pages/admin/ImportExport';
-import DepartmentManagement from './pages/admin/DepartmentManagement';
-import CompetencyManagement from './pages/admin/CompetencyManagement';
-import OrganizationManagement from './pages/admin/OrganizationManagement';
-import SystemHealth from './pages/admin/SystemHealth';
+import CompetencyManager from './pages/admin/CompetencyManager';
+import Organizations from './pages/admin/Organizations';
 import SecuritySettings from './pages/admin/SecuritySettings';
-import NotificationSettings from './pages/admin/NotificationSettings';
-import EmailTemplates from './pages/admin/EmailTemplates';
-import EmailServiceConfig from './components/admin/EmailServiceConfig';
-import EmailTemplateManager from './components/admin/EmailTemplateManager';
-import AuditLogs from './pages/admin/AuditLogs';
-import BackupRestore from './pages/admin/BackupRestore';
-import APIKeys from './pages/admin/APIKeys';
-import Webhooks from './pages/admin/Webhooks';
-import Integrations from './pages/admin/Integrations';
+import EmailTemplateManager from './pages/admin/EmailTemplateManager';
 
 // Root Pages
 import RootDashboard from './pages/root/RootDashboard';
 
 // Subscriber Pages
 import SubscriberAssessments from './pages/subscriber/SubscriberAssessments';
+
+// Missing Component Imports
+import RequestAccess from './pages/auth/RequestAccess';
+import AssessmentBuilder from './pages/admin/AssessmentBuilder';
+import AssessmentResults from './pages/admin/AssessmentResults';
+import PermissionManager from './pages/admin/PermissionManager';
+import TemplateManager from './pages/admin/TemplateManager';
+import OrganizationBrandingPage from './pages/admin/OrganizationBrandingPage';
+import UserResults from './pages/user/UserResults';
+import SupportHub from './pages/admin/SupportHub';
 
 // Protected Route Components
 import ProtectedRoute from './components/auth/ProtectedRoute';
@@ -382,11 +382,6 @@ function App() {
                   </ErrorBoundary>
                 } />
 
-                <Route path="/email-service" element={
-                  <ErrorBoundary>
-                    <EmailServiceConfig />
-                  </ErrorBoundary>
-                } />
 
                 <Route path="/email-template-manager" element={
                   <ErrorBoundary>
@@ -428,6 +423,39 @@ function App() {
                   <ErrorBoundary>
                     <AccessRequests />
                   </ErrorBoundary>
+                } />
+
+                {/* New Admin Pages */}
+                <Route path="/admin-dashboard" element={
+                  <RoleProtectedRoute allowedRoles={['super_admin', 'org_admin']}>
+                    <ErrorBoundary>
+                      <AdminDashboard />
+                    </ErrorBoundary>
+                  </RoleProtectedRoute>
+                } />
+
+                <Route path="/analytics" element={
+                  <RoleProtectedRoute allowedRoles={['super_admin', 'org_admin']}>
+                    <ErrorBoundary>
+                      <Analytics />
+                    </ErrorBoundary>
+                  </RoleProtectedRoute>
+                } />
+
+                <Route path="/bulk-operations" element={
+                  <RoleProtectedRoute allowedRoles={['super_admin', 'org_admin']}>
+                    <ErrorBoundary>
+                      <BulkOperations />
+                    </ErrorBoundary>
+                  </RoleProtectedRoute>
+                } />
+
+                <Route path="/security-settings" element={
+                  <RoleProtectedRoute allowedRoles={['super_admin', 'org_admin']}>
+                    <ErrorBoundary>
+                      <SecuritySettings />
+                    </ErrorBoundary>
+                  </RoleProtectedRoute>
                 } />
                 <Route path="/branding" element={
                   <RoleProtectedRoute allowedRoles={['super_admin']}>
