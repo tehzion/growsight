@@ -77,7 +77,7 @@ import Assessment360Selector from './components/assessments/Assessment360Selecto
 import SessionMonitor from './components/security/SessionMonitor';
 
 // Compliance Pages
-import GDPRCompliance from './pages/compliance/GDPRCompliance';
+import { GDPRCompliance } from './pages/compliance/GDPRCompliance';
 
 function App() {
   const { user, refreshSession, logout, updateActivity, validateSession } = useAuthStore();

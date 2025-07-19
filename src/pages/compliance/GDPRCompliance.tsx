@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Shield, FileText, Download, Trash2, Settings, Users, Database, Globe } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/Card';
-import { Button } from '../../components/ui/Button';
+import Button from '../../components/ui/Button';
 import { CookieConsent } from '../../components/compliance/CookieConsent';
 import { PrivacyPolicy } from '../../components/compliance/PrivacyPolicy';
 import { DataExportRequest } from '../../components/compliance/DataExportRequest';
