@@ -3,6 +3,7 @@ import { UserCheck, Calendar, Mail, Users, Clock, CheckCircle, AlertCircle, Sett
 import { Card, CardHeader, CardTitle, CardContent } from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import AssignmentManager from '../../components/assignments/AssignmentManager';
+import OrgAssignmentCreator from '../../components/assignments/OrgAssignmentCreator';
 import RelationshipManager from '../../components/relationships/RelationshipManager';
 import { useAssignmentStore } from '../../stores/assignmentStore';
 import { useAssessmentStore } from '../../stores/assessmentStore';
@@ -17,11 +18,12 @@ const AssessmentAssignments: React.FC = () => {
   const { assignments, fetchAssignments, updateAssignmentStatus, isLoading } = useAssignmentStore();
   const { assessments, fetchAssessments } = useAssessmentStore();
   const { users, fetchUsers } = useUserStore();
-  
+
   const [activeTab, setActiveTab] = useState<'assignments' | 'relationships'>('assignments');
   const [showAssignmentForm, setShowAssignmentForm] = useState(false);
+  const [showBulkAssignment, setShowBulkAssignment] = useState(false);
   const [selectedAssessment, setSelectedAssessment] = useState('');
-  const [editingDeadline, setEditingDeadline] = useState<{id: string, deadline: string} | null>(null);
+  const [editingDeadline, setEditingDeadline] = useState<{ id: string, deadline: string } | null>(null);
 
   // Check permissions
   const hasAssignPermission = currentOrganization?.orgAdminPermissions?.includes('assign_assessments');
@@ -59,7 +61,7 @@ const AssessmentAssignments: React.FC = () => {
 
   const getRelationshipBadge = (type?: RelationshipType) => {
     if (!type) return null;
-    
+
     const colors = {
       peer: 'bg-blue-100 text-blue-800',
       supervisor: 'bg-purple-100 text-purple-800',
@@ -112,6 +114,20 @@ const AssessmentAssignments: React.FC = () => {
     }
   };
 
+  // Show bulk assignment modal
+  if (showBulkAssignment) {
+    return (
+      <OrgAssignmentCreator
+        onClose={() => setShowBulkAssignment(false)}
+        onSuccess={() => {
+          fetchAssignments();
+          setShowBulkAssignment(false);
+        }}
+      />
+    );
+  }
+
+  // Show single assignment modal
   if (showAssignmentForm && selectedAssessment) {
     return (
       <AssignmentManager
@@ -156,11 +172,10 @@ const AssessmentAssignments: React.FC = () => {
           {hasAssignPermission && (
             <button
               onClick={() => setActiveTab('assignments')}
-              className={`py-2 px-1 border-b-2 font-medium text-sm ${
-                activeTab === 'assignments'
-                  ? 'border-primary-500 text-primary-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
+              className={`py-2 px-1 border-b-2 font-medium text-sm ${activeTab === 'assignments'
+                ? 'border-primary-500 text-primary-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
             >
               <UserCheck className="h-4 w-4 inline mr-2" />
               Assessment Assignments
@@ -169,11 +184,10 @@ const AssessmentAssignments: React.FC = () => {
           {hasRelationshipPermission && (
             <button
               onClick={() => setActiveTab('relationships')}
-              className={`py-2 px-1 border-b-2 font-medium text-sm ${
-                activeTab === 'relationships'
-                  ? 'border-primary-500 text-primary-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
+              className={`py-2 px-1 border-b-2 font-medium text-sm ${activeTab === 'relationships'
+                ? 'border-primary-500 text-primary-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
             >
               <Settings className="h-4 w-4 inline mr-2" />
               User Relationships
@@ -189,14 +203,50 @@ const AssessmentAssignments: React.FC = () => {
             <CardHeader>
               <CardTitle>Create New Assignment</CardTitle>
               <p className="text-sm text-gray-600">
-                Assign assessments to employees with specific reviewers based on their relationships
+                Assign assessments to employees with specific reviewers
               </p>
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
+                {/* Assignment Type Selection */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div
+                    className="p-4 border-2 border-gray-200 rounded-lg hover:border-primary-300 hover:bg-primary-50 cursor-pointer transition-all"
+                    onClick={() => {
+                      if (selectedAssessment) {
+                        setShowAssignmentForm(true);
+                      } else {
+                        alert('Please select an assessment first');
+                      }
+                    }}
+                  >
+                    <div className="flex items-center mb-2">
+                      <UserCheck className="h-5 w-5 text-primary-600 mr-2" />
+                      <h3 className="font-medium text-gray-900">Single Assignment</h3>
+                    </div>
+                    <p className="text-sm text-gray-600">
+                      Assign one employee to one reviewer with relationship-based matching
+                    </p>
+                  </div>
+
+                  <div
+                    className="p-4 border-2 border-gray-200 rounded-lg hover:border-primary-300 hover:bg-primary-50 cursor-pointer transition-all"
+                    onClick={() => setShowBulkAssignment(true)}
+                  >
+                    <div className="flex items-center mb-2">
+                      <Users className="h-5 w-5 text-primary-600 mr-2" />
+                      <h3 className="font-medium text-gray-900">Bulk Assignment</h3>
+                    </div>
+                    <p className="text-sm text-gray-600">
+                      Assign multiple employees to multiple reviewers at once
+                    </p>
+                  </div>
+                </div>
+
+                {/* Assessment Selection for Single Assignment */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Select Assessment
+                    Select Assessment (for Single Assignment)
                   </label>
                   <select
                     value={selectedAssessment}
@@ -210,14 +260,10 @@ const AssessmentAssignments: React.FC = () => {
                       </option>
                     ))}
                   </select>
+                  <p className="mt-1 text-xs text-gray-500">
+                    Note: Bulk assignment has its own assessment selector
+                  </p>
                 </div>
-                <Button
-                  onClick={() => setShowAssignmentForm(true)}
-                  disabled={!selectedAssessment}
-                  leftIcon={<UserCheck className="h-4 w-4" />}
-                >
-                  Create Assignment
-                </Button>
               </div>
             </CardContent>
           </Card>
@@ -242,15 +288,14 @@ const AssessmentAssignments: React.FC = () => {
                     const daysUntilDeadline = getDaysUntilDeadline(assignment.deadline);
                     const overdue = isOverdue(assignment.deadline);
                     const isEditingThisDeadline = editingDeadline?.id === assignment.id;
-                    
+
                     return (
                       <div
                         key={assignment.id}
-                        className={`p-4 rounded-lg border-2 ${
-                          overdue ? 'border-error-200 bg-error-50' : 
+                        className={`p-4 rounded-lg border-2 ${overdue ? 'border-error-200 bg-error-50' :
                           daysUntilDeadline && daysUntilDeadline <= 3 ? 'border-warning-200 bg-warning-50' :
-                          'border-gray-200 bg-white'
-                        }`}
+                            'border-gray-200 bg-white'
+                          }`}
                       >
                         <div className="flex items-start justify-between">
                           <div className="flex-1">
@@ -262,7 +307,7 @@ const AssessmentAssignments: React.FC = () => {
                               {getStatusBadge(assignment.status)}
                               {getRelationshipBadge(assignment.relationshipType)}
                             </div>
-                            
+
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm text-gray-600">
                               <div className="flex items-center">
                                 <Users className="h-4 w-4 mr-2" />
@@ -270,7 +315,7 @@ const AssessmentAssignments: React.FC = () => {
                                   {getUserName(assignment.employeeId)} → {getUserName(assignment.reviewerId)}
                                 </span>
                               </div>
-                              
+
                               {assignment.deadline && (
                                 <div className="flex items-center">
                                   <Calendar className="h-4 w-4 mr-2" />
@@ -305,9 +350,9 @@ const AssessmentAssignments: React.FC = () => {
                                         Due: {new Date(assignment.deadline).toLocaleDateString()}
                                         {daysUntilDeadline !== null && (
                                           <span className="ml-1">
-                                            ({overdue ? `${Math.abs(daysUntilDeadline)} days overdue` : 
+                                            ({overdue ? `${Math.abs(daysUntilDeadline)} days overdue` :
                                               daysUntilDeadline === 0 ? 'Due today' :
-                                              `${daysUntilDeadline} days left`})
+                                                `${daysUntilDeadline} days left`})
                                           </span>
                                         )}
                                       </span>
@@ -326,7 +371,7 @@ const AssessmentAssignments: React.FC = () => {
                                   )}
                                 </div>
                               )}
-                              
+
                               <div className="flex items-center">
                                 <Mail className="h-4 w-4 mr-2" />
                                 <span>
@@ -335,7 +380,7 @@ const AssessmentAssignments: React.FC = () => {
                               </div>
                             </div>
                           </div>
-                          
+
                           <div className="ml-4">
                             <span className="text-xs text-gray-500">
                               Created {new Date(assignment.createdAt).toLocaleDateString()}

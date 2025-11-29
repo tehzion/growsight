@@ -11,6 +11,16 @@ const loadDependencies = async () => {
   }
 };
 
+export interface BrandingOptions {
+  logoUrl?: string;
+  companyName?: string;
+  primaryColor?: string;
+  secondaryColor?: string;
+  footerText?: string;
+  includeTimestamp?: boolean;
+  includePageNumbers?: boolean;
+}
+
 export interface PDFExportOptions {
   title: string;
   subtitle?: string;
@@ -19,6 +29,7 @@ export interface PDFExportOptions {
   includeTables?: boolean;
   orientation?: 'portrait' | 'landscape';
   format?: 'a4' | 'letter';
+  branding?: BrandingOptions;
 }
 
 export interface AssessmentData {
@@ -79,18 +90,29 @@ export class PDFExporter {
         format: this.options.format || 'a4',
         unit: 'mm'
       });
-      
+
       this.pageWidth = this.doc.internal.pageSize.getWidth();
       this.pageHeight = this.doc.internal.pageSize.getHeight();
     }
   }
 
   private addHeader() {
+    const branding = this.options.branding;
+
+    // Set color for title
+    if (branding?.primaryColor) {
+      const rgb = this.hexToRgb(branding.primaryColor);
+      this.doc.setTextColor(rgb.r, rgb.g, rgb.b);
+    }
+
     // Add title
     this.doc.setFontSize(20);
     this.doc.setFont('helvetica', 'bold');
     this.doc.text(this.options.title, this.margin, this.currentY);
     this.currentY += 10;
+
+    // Reset to default color
+    this.doc.setTextColor(0, 0, 0);
 
     // Add subtitle if provided
     if (this.options.subtitle) {
@@ -100,19 +122,54 @@ export class PDFExporter {
       this.currentY += 8;
     }
 
-    // Add organization name if provided
-    if (this.options.organizationName) {
+    // Add organization/company name
+    const orgName = branding?.companyName || this.options.organizationName;
+    if (orgName) {
       this.doc.setFontSize(12);
       this.doc.setFont('helvetica', 'italic');
-      this.doc.text(`Organization: ${this.options.organizationName}`, this.margin, this.currentY);
+      this.doc.text(`Organization: ${orgName}`, this.margin, this.currentY);
       this.currentY += 8;
     }
 
-    // Add date
-    this.doc.setFontSize(10);
+    // Add date if timestamp is enabled
+    if (branding?.includeTimestamp !== false) {
+      this.doc.setFontSize(10);
+      this.doc.setFont('helvetica', 'normal');
+      this.doc.text(`Generated on: ${new Date().toLocaleDateString()}`, this.margin, this.currentY);
+      this.currentY += 15;
+    }
+  }
+
+  private addFooter(pageNumber?: number) {
+    const branding = this.options.branding;
+    const footerY = this.pageHeight - 10;
+
+    this.doc.setFontSize(8);
     this.doc.setFont('helvetica', 'normal');
-    this.doc.text(`Generated on: ${new Date().toLocaleDateString()}`, this.margin, this.currentY);
-    this.currentY += 15;
+    this.doc.setTextColor(128, 128, 128);
+
+    // Add custom footer text or default
+    const footerText = branding?.footerText || `© ${new Date().getFullYear()} ${branding?.companyName || 'Growsight'}. All rights reserved.`;
+    this.doc.text(footerText, this.margin, footerY);
+
+    // Add page numbers if enabled
+    if (branding?.includePageNumbers !== false && pageNumber) {
+      this.doc.text(`Page ${pageNumber}`, this.pageWidth - this.margin - 20, footerY);
+    }
+
+    // Reset text color
+    this.doc.setTextColor(0, 0, 0);
+  }
+
+  private hexToRgb(hex: string): { r: number; g: number; b: number } {
+    // Remove # if present
+    hex = hex.replace('#', '');
+
+    const r = parseInt(hex.substring(0, 2), 16);
+    const g = parseInt(hex.substring(2, 4), 16);
+    const b = parseInt(hex.substring(4, 6), 16);
+
+    return { r, g, b };
   }
 
   private addSection(title: string, content: string | string[]) {
@@ -131,7 +188,7 @@ export class PDFExporter {
     // Add content
     this.doc.setFontSize(10);
     this.doc.setFont('helvetica', 'normal');
-    
+
     if (Array.isArray(content)) {
       content.forEach(line => {
         if (this.currentY > this.pageHeight - 20) {
@@ -153,7 +210,7 @@ export class PDFExporter {
         this.currentY += 5;
       });
     }
-    
+
     this.currentY += 10;
   }
 
@@ -189,7 +246,7 @@ export class PDFExporter {
       });
       this.currentY += 6;
     });
-    
+
     this.currentY += 10;
   }
 
@@ -219,14 +276,14 @@ export class PDFExporter {
 
       // Top Strengths and Areas for Improvement
       if (data.analytics.topStrengths?.length > 0) {
-        const strengthsContent = data.analytics.topStrengths.map((strength, index) => 
+        const strengthsContent = data.analytics.topStrengths.map((strength, index) =>
           `Strength ${index + 1}: Question ID ${strength}`
         );
         this.addSection('Top Strengths', strengthsContent);
       }
 
       if (data.analytics.areasForImprovement?.length > 0) {
-        const improvementContent = data.analytics.areasForImprovement.map((area, index) => 
+        const improvementContent = data.analytics.areasForImprovement.map((area, index) =>
           `Area ${index + 1}: Question ID ${area}`
         );
         this.addSection('Areas for Improvement', improvementContent);
@@ -288,7 +345,7 @@ export class PDFExporter {
 
   public async exportElementAsPDF(elementId: string, filename: string): Promise<void> {
     await loadDependencies();
-    
+
     const element = document.getElementById(elementId);
     if (!element) {
       throw new Error(`Element with id ${elementId} not found`);
@@ -309,14 +366,14 @@ export class PDFExporter {
 
     const imgWidth = pdf.internal.pageSize.getWidth();
     const imgHeight = (canvas.height * imgWidth) / canvas.width;
-    
+
     pdf.addImage(imgData, 'PNG', 0, 0, imgWidth, imgHeight);
     pdf.save(filename);
   }
 
   public static async exportChartAsPDF(chartElement: HTMLElement, filename: string): Promise<void> {
     await loadDependencies();
-    
+
     const canvas = await html2canvas(chartElement, {
       scale: 2,
       useCORS: true,
@@ -333,7 +390,7 @@ export class PDFExporter {
 
     const imgWidth = pdf.internal.pageSize.getWidth();
     const imgHeight = (canvas.height * imgWidth) / canvas.width;
-    
+
     pdf.addImage(imgData, 'PNG', 0, 0, imgWidth, imgHeight);
     pdf.save(filename);
   }

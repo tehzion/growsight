@@ -18,13 +18,14 @@ const OrgAssignmentCreator: React.FC<OrgAssignmentCreatorProps> = ({ onClose, on
   const { users, fetchUsers } = useUserStore();
   const { assessments, fetchAssessments } = useAssessmentStore();
   const { createAssignment } = useAssignmentStore();
-  
+
   const [selectedAssessment, setSelectedAssessment] = useState('');
   const [selectedEmployees, setSelectedEmployees] = useState<string[]>([]);
   const [selectedReviewers, setSelectedReviewers] = useState<string[]>([]);
   const [deadline, setDeadline] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [departmentFilter, setDepartmentFilter] = useState('');
+  const [relationshipType, setRelationshipType] = useState<'peer' | 'supervisor' | 'team_member'>('peer');
   const [isLoading, setIsLoading] = useState(false);
   const [step, setStep] = useState<'assessment' | 'employees' | 'reviewers' | 'confirm'>('assessment');
 
@@ -36,12 +37,12 @@ const OrgAssignmentCreator: React.FC<OrgAssignmentCreatorProps> = ({ onClose, on
   }, [currentOrganization, fetchUsers, fetchAssessments]);
 
   // Filter users by organization and role
-  const organizationUsers = users.filter(user => 
+  const organizationUsers = users.filter(user =>
     user.organizationId === currentOrganization?.id &&
     ['employee', 'reviewer', 'subscriber'].includes(user.role)
   );
 
-  const orgAdmins = users.filter(user => 
+  const orgAdmins = users.filter(user =>
     user.organizationId === currentOrganization?.id &&
     user.role === 'org_admin'
   );
@@ -49,8 +50,8 @@ const OrgAssignmentCreator: React.FC<OrgAssignmentCreatorProps> = ({ onClose, on
   // Filter users by search term and department
   const filteredUsers = organizationUsers.filter(user => {
     const matchesSearch = user.firstName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         user.lastName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         user.email.toLowerCase().includes(searchTerm.toLowerCase());
+      user.lastName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      user.email.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesDepartment = !departmentFilter || user.department === departmentFilter;
     return matchesSearch && matchesDepartment;
   });
@@ -59,30 +60,49 @@ const OrgAssignmentCreator: React.FC<OrgAssignmentCreatorProps> = ({ onClose, on
   const departments = [...new Set(organizationUsers.map(user => user.department).filter(Boolean))];
 
   const handleCreateAssignment = async () => {
-    if (!selectedAssessment || selectedEmployees.length === 0 || !deadline) {
+    if (!selectedAssessment || selectedEmployees.length === 0 || selectedReviewers.length === 0 || !deadline) {
       alert('Please fill in all required fields');
       return;
     }
 
     setIsLoading(true);
     try {
-      // Create assignments for each selected employee
+      const assessment = assessments.find(a => a.id === selectedAssessment);
+      const totalAssignments = selectedEmployees.length * selectedReviewers.length;
+      let createdCount = 0;
+
+      // Create assignments for each employee-reviewer pair
       for (const employeeId of selectedEmployees) {
-        await createAssignment({
-          assessmentId: selectedAssessment,
-          employeeId: employeeId,
-          reviewerIds: selectedReviewers,
-          deadline: new Date(deadline).toISOString(),
-          organizationId: currentOrganization?.id || '',
-          createdBy: 'org_admin'
-        });
+        const employee = users.find(u => u.id === employeeId);
+
+        for (const reviewerId of selectedReviewers) {
+          const reviewer = users.find(u => u.id === reviewerId);
+
+          await createAssignment({
+            assessmentId: selectedAssessment,
+            employeeId: employeeId,
+            reviewerId: reviewerId,  // Single reviewer (not array)
+            reviewerId: reviewerId,  // Single reviewer (not array)
+            relationshipType: relationshipType,
+            deadline: deadline,
+            assessmentTitle: assessment?.title,
+            employeeEmail: employee?.email,
+            reviewerEmail: reviewer?.email,
+            employeeName: employee ? `${employee.firstName} ${employee.lastName}` : undefined,
+            reviewerName: reviewer ? `${reviewer.firstName} ${reviewer.lastName}` : undefined,
+            organizationName: currentOrganization?.name
+          });
+
+          createdCount++;
+        }
       }
-      
+
+      alert(`Successfully created ${createdCount} assignment${createdCount !== 1 ? 's' : ''}! Email notifications have been sent to all participants.`);
       onSuccess?.();
       onClose();
     } catch (error) {
       console.error('Failed to create assignment:', error);
-      alert('Failed to create assignment. Please try again.');
+      alert(`Failed to create assignment. Please try again.\n\nError: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setIsLoading(false);
     }
@@ -128,21 +148,19 @@ const OrgAssignmentCreator: React.FC<OrgAssignmentCreatorProps> = ({ onClose, on
           <div className="flex items-center justify-center mb-6">
             {['assessment', 'employees', 'reviewers', 'confirm'].map((stepName, index) => (
               <div key={stepName} className="flex items-center">
-                <div className={`flex items-center justify-center w-8 h-8 rounded-full text-sm font-medium ${
-                  step === stepName 
-                    ? 'bg-primary-600 text-white' 
-                    : index < ['assessment', 'employees', 'reviewers', 'confirm'].indexOf(step)
+                <div className={`flex items-center justify-center w-8 h-8 rounded-full text-sm font-medium ${step === stepName
+                  ? 'bg-primary-600 text-white'
+                  : index < ['assessment', 'employees', 'reviewers', 'confirm'].indexOf(step)
                     ? 'bg-green-600 text-white'
                     : 'bg-gray-200 text-gray-600'
-                }`}>
+                  }`}>
                   {index + 1}
                 </div>
                 {index < 3 && (
-                  <div className={`w-16 h-0.5 mx-2 ${
-                    index < ['assessment', 'employees', 'reviewers', 'confirm'].indexOf(step)
-                      ? 'bg-green-600'
-                      : 'bg-gray-200'
-                  }`} />
+                  <div className={`w-16 h-0.5 mx-2 ${index < ['assessment', 'employees', 'reviewers', 'confirm'].indexOf(step)
+                    ? 'bg-green-600'
+                    : 'bg-gray-200'
+                    }`} />
                 )}
               </div>
             ))}
@@ -156,11 +174,10 @@ const OrgAssignmentCreator: React.FC<OrgAssignmentCreatorProps> = ({ onClose, on
                 {assessments.map(assessment => (
                   <div
                     key={assessment.id}
-                    className={`p-4 border rounded-lg cursor-pointer transition-colors ${
-                      selectedAssessment === assessment.id
-                        ? 'border-primary-500 bg-primary-50'
-                        : 'border-gray-200 hover:border-gray-300'
-                    }`}
+                    className={`p-4 border rounded-lg cursor-pointer transition-colors ${selectedAssessment === assessment.id
+                      ? 'border-primary-500 bg-primary-50'
+                      : 'border-gray-200 hover:border-gray-300'
+                      }`}
                     onClick={() => setSelectedAssessment(assessment.id)}
                   >
                     <h4 className="font-medium text-gray-900">{assessment.title}</h4>
@@ -187,7 +204,7 @@ const OrgAssignmentCreator: React.FC<OrgAssignmentCreatorProps> = ({ onClose, on
           {step === 'employees' && (
             <div className="space-y-4">
               <h3 className="text-lg font-medium text-gray-900">Select Employees</h3>
-              
+
               {/* Search and Filter */}
               <div className="flex space-x-4">
                 <div className="flex-1">
@@ -216,13 +233,12 @@ const OrgAssignmentCreator: React.FC<OrgAssignmentCreatorProps> = ({ onClose, on
                 {filteredUsers.map(user => (
                   <div
                     key={user.id}
-                    className={`p-3 border-b border-gray-100 cursor-pointer transition-colors ${
-                      selectedEmployees.includes(user.id)
-                        ? 'bg-primary-50 border-primary-200'
-                        : 'hover:bg-gray-50'
-                    }`}
+                    className={`p-3 border-b border-gray-100 cursor-pointer transition-colors ${selectedEmployees.includes(user.id)
+                      ? 'bg-primary-50 border-primary-200'
+                      : 'hover:bg-gray-50'
+                      }`}
                     onClick={() => {
-                      setSelectedEmployees(prev => 
+                      setSelectedEmployees(prev =>
                         prev.includes(user.id)
                           ? prev.filter(id => id !== user.id)
                           : [...prev, user.id]
@@ -275,13 +291,12 @@ const OrgAssignmentCreator: React.FC<OrgAssignmentCreatorProps> = ({ onClose, on
                 {orgAdmins.map(admin => (
                   <div
                     key={admin.id}
-                    className={`p-4 border rounded-lg cursor-pointer transition-colors ${
-                      selectedReviewers.includes(admin.id)
-                        ? 'border-primary-500 bg-primary-50'
-                        : 'border-gray-200 hover:border-gray-300'
-                    }`}
+                    className={`p-4 border rounded-lg cursor-pointer transition-colors ${selectedReviewers.includes(admin.id)
+                      ? 'border-primary-500 bg-primary-50'
+                      : 'border-gray-200 hover:border-gray-300'
+                      }`}
                     onClick={() => {
-                      setSelectedReviewers(prev => 
+                      setSelectedReviewers(prev =>
                         prev.includes(admin.id)
                           ? prev.filter(id => id !== admin.id)
                           : [...prev, admin.id]
@@ -324,7 +339,7 @@ const OrgAssignmentCreator: React.FC<OrgAssignmentCreatorProps> = ({ onClose, on
           {step === 'confirm' && (
             <div className="space-y-4">
               <h3 className="text-lg font-medium text-gray-900">Confirm Assignment</h3>
-              
+
               <div className="space-y-4">
                 <Card>
                   <CardContent className="p-4">

@@ -25,6 +25,7 @@ import SetPassword from './pages/auth/SetPassword';
 
 // Main Pages
 import Dashboard from './pages/Dashboard';
+import DashboardRouter from './pages/DashboardRouter';
 import NotFound from './pages/NotFound';
 
 // User Pages
@@ -47,6 +48,7 @@ import Assessment360Reporting from './pages/admin/Assessment360Reporting';
 import AdminAssessmentReport from './pages/admin/AdminAssessmentReport';
 import BulkOperations from './pages/admin/BulkOperations';
 import ImportExport from './pages/admin/ImportExport';
+import TeamManagement from './pages/admin/TeamManagement';
 import CompetencyManager from './pages/admin/CompetencyManager';
 import Organizations from './pages/admin/Organizations';
 import SecuritySettings from './pages/admin/SecuritySettings';
@@ -66,6 +68,7 @@ import PermissionManager from './pages/admin/PermissionManager';
 import TemplateManager from './pages/admin/TemplateManager';
 import OrganizationBrandingPage from './pages/admin/OrganizationBrandingPage';
 import UserResults from './pages/user/UserResults';
+import MyGoals from './pages/user/MyGoals';
 import SupportHub from './pages/admin/SupportHub';
 
 // Protected Route Components
@@ -84,7 +87,7 @@ function App() {
   const { fetchProfile } = useProfileStore();
   const { currentOrganization } = useOrganizationStore();
   const { loadBranding, resetBranding } = useBrandingStore();
-  
+
   // Initialize Security Features
   useEffect(() => {
     const initSecurity = async () => {
@@ -102,7 +105,7 @@ function App() {
         // Legacy CSP initialization (now handled by security manager)
         ContentSecurityPolicy.applyCSP();
         console.info('🔒 Security features initialized successfully');
-        
+
         // Validate security configuration
         const validation = securityManager.validateSecurityConfig();
         if (!validation.valid) {
@@ -111,7 +114,7 @@ function App() {
         if (validation.recommendations.length > 0) {
           console.info('💡 Security recommendations:', validation.recommendations);
         }
-        
+
       } catch (error) {
         console.error('❌ Security initialization failed:', error);
         SecureLogger.error('Security initialization failed', {
@@ -124,7 +127,7 @@ function App() {
 
     initSecurity();
   }, []);
-  
+
   // Validate environment on app start
   useEffect(() => {
     const { isValid, errors } = validateEnvironment();
@@ -132,19 +135,19 @@ function App() {
       SecureLogger.warn('Environment validation failed', { errorCount: errors.length });
     }
   }, []);
-  
+
   // Refresh session on app start
   useEffect(() => {
     refreshSession();
-    
+
     // Set up session refresh interval
     const refreshInterval = setInterval(() => {
       refreshSession();
     }, Math.min(config.security.sessionTimeout, 3600000)); // Refresh at least every hour
-    
+
     return () => clearInterval(refreshInterval);
   }, [refreshSession]);
-  
+
   // Fetch user profile when user is authenticated
   useEffect(() => {
     if (user) {
@@ -215,7 +218,7 @@ function App() {
 
     // Listen for session expiration events
     window.addEventListener('sessionExpired', handleSessionExpired as EventListener);
-    
+
     // Monitor user activity
     window.addEventListener('focus', handleUserActivity);
     document.addEventListener('visibilitychange', handleVisibilityChange);
@@ -226,7 +229,7 @@ function App() {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [user, logout, updateActivity, validateSession]);
-  
+
   return (
     <ErrorBoundary>
       <ToastContainer position="top-right" />
@@ -249,7 +252,7 @@ function App() {
                 <RootDashboard />
               </ErrorBoundary>
             } />
-            
+
             {/* Auth Routes - Always accessible */}
             <Route element={<AuthLayout />}>
               <Route path="/login" element={
@@ -283,14 +286,15 @@ function App() {
                 </ErrorBoundary>
               } />
             </Route>
-            
+
             {/* Protected Routes */}
             <Route element={<ProtectedRoute />}>
               <Route element={<Layout />}>
                 {/* Admin Routes */}
+                {/* Smart Dashboard Router - Redirects based on role */}
                 <Route path="/dashboard" element={
                   <ErrorBoundary>
-                    <Dashboard />
+                    <DashboardRouter />
                   </ErrorBoundary>
                 } />
                 <Route path="/organizations" element={
@@ -340,9 +344,17 @@ function App() {
                   </ErrorBoundary>
                 } />
 
+                <Route path="/my-goals" element={
+                  <ErrorBoundary>
+                    <RoleProtectedRoute allowedRoles={['subscriber', 'employee', 'reviewer']}>
+                      <MyGoals />
+                    </RoleProtectedRoute>
+                  </ErrorBoundary>
+                } />
+
                 <Route path="/assessment-360" element={
                   <ErrorBoundary>
-                    <RoleProtectedRoute 
+                    <RoleProtectedRoute
                       allowedRoles={['super_admin', 'org_admin']}
                       requiredPermissions={['view_results']}
                       requiredFeature="reporting"
@@ -354,7 +366,7 @@ function App() {
 
                 <Route path="/assessment-360/:assessmentId/:participantId?" element={
                   <ErrorBoundary>
-                    <RoleProtectedRoute 
+                    <RoleProtectedRoute
                       allowedRoles={['super_admin', 'org_admin']}
                       requiredPermissions={['view_results']}
                       requiredFeature="reporting"
@@ -391,7 +403,7 @@ function App() {
 
                 <Route path="/reporting" element={
                   <ErrorBoundary>
-                    <RoleProtectedRoute 
+                    <RoleProtectedRoute
                       allowedRoles={['super_admin', 'org_admin']}
                       requiredPermissions={['view_reports']}
                       requiredFeature="reporting"
@@ -406,12 +418,19 @@ function App() {
                     <CompetencyManager />
                   </ErrorBoundary>
                 } />
+
+                <Route path="/teams" element={
+                  <ErrorBoundary>
+                    <TeamManagement />
+                  </ErrorBoundary>
+                } />
+
                 <Route path="/support" element={
                   <ErrorBoundary>
                     <SupportHub />
                   </ErrorBoundary>
                 } />
-                
+
                 {/* Super Admin System Management */}
                 <Route path="/system-settings" element={
                   <ErrorBoundary>
@@ -473,7 +492,7 @@ function App() {
                 } />
 
                 {/* User Routes */}
-                <Route path="/user-assessments" element={
+                <Route path="/my-assessments" element={
                   <ErrorBoundary>
                     <UserAssessments />
                   </ErrorBoundary>
@@ -488,7 +507,17 @@ function App() {
                     <UserProfile />
                   </ErrorBoundary>
                 } />
-                <Route path="/assessment/:id" element={
+
+                {/* My Results - Personal results page for subscribers, employees, and reviewers */}
+                <Route path="/my-results" element={
+                  <ErrorBoundary>
+                    <RoleProtectedRoute allowedRoles={['subscriber', 'employee', 'reviewer']}>
+                      <UserResults />
+                    </RoleProtectedRoute>
+                  </ErrorBoundary>
+                } />
+
+                <Route path="/my-assessments/:id" element={
                   <ErrorBoundary>
                     <AssessmentForm />
                   </ErrorBoundary>
@@ -514,11 +543,11 @@ function App() {
                 <Route path="/" element={<Navigate to="/dashboard" replace />} />
               </Route>
             </Route>
-            
+
             {/* 404 Route */}
             <Route path="*" element={<NotFound />} />
           </Routes>
-          
+
           {/* Session Monitor - only show for authenticated users */}
           {user && <SessionMonitor />}
         </div>

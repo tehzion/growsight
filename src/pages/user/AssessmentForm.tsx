@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { CheckCircle2, Save, ArrowLeft, ArrowRight, HelpCircle, AlertCircle } from 'lucide-react';
+import { CheckCircle2, Save, ArrowLeft, ArrowRight, HelpCircle, AlertCircle, User } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent, CardFooter } from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import AssessmentGuide from '../../components/assessments/AssessmentGuide';
@@ -9,14 +9,17 @@ import ProgressBar from '../../components/assessments/ProgressBar';
 import { useAuthStore } from '../../stores/authStore';
 import { useAssessmentStore } from '../../stores/assessmentStore';
 import { useAssessmentResultsStore } from '../../stores/assessmentResultsStore';
+import { supabase } from '../../lib/supabase';
 
 const AssessmentForm = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { user } = useAuthStore();
-  const { currentAssessment, fetchAssessment, isLoading } = useAssessmentStore();
+  const { currentAssessment, fetchAssessment, isLoading: isAssessmentLoading } = useAssessmentStore();
   const { saveAssessmentResult } = useAssessmentResultsStore();
-  
+
+  const [assignment, setAssignment] = useState<any>(null);
+  const [isLoadingAssignment, setIsLoadingAssignment] = useState(true);
   const [showGuide, setShowGuide] = useState(true);
   const [currentSectionIndex, setCurrentSectionIndex] = useState(0);
   const [responses, setResponses] = useState<Record<string, any>>({});
@@ -24,9 +27,41 @@ const AssessmentForm = () => {
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
 
   useEffect(() => {
-    if (id) {
-      fetchAssessment(id);
-    }
+    const loadAssignmentAndAssessment = async () => {
+      if (!id) return;
+
+      try {
+        setIsLoadingAssignment(true);
+        // 1. Fetch Assignment to get assessment_id and context
+        const { data: assignmentData, error: assignmentError } = await supabase
+          .from('assessment_assignments')
+          .select(`
+            *,
+            employees:users!assessment_assignments_employee_id_fkey (
+              first_name,
+              last_name,
+              email
+            )
+          `)
+          .eq('id', id)
+          .single();
+
+        if (assignmentError) throw assignmentError;
+
+        setAssignment(assignmentData);
+
+        // 2. Fetch Assessment Content using the correct assessment_id
+        if (assignmentData.assessment_id) {
+          await fetchAssessment(assignmentData.assessment_id);
+        }
+      } catch (error) {
+        console.error('Failed to load assignment:', error);
+      } finally {
+        setIsLoadingAssignment(false);
+      }
+    };
+
+    loadAssignmentAndAssessment();
   }, [id, fetchAssessment]);
 
   // Load saved responses from localStorage
@@ -57,7 +92,7 @@ const AssessmentForm = () => {
     }
   }, [responses, id, user]);
 
-  if (isLoading || !currentAssessment) {
+  if (isLoadingAssignment || isAssessmentLoading || !currentAssessment) {
     return (
       <div className="flex justify-center items-center h-64">
         <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary-500"></div>
@@ -95,10 +130,10 @@ const AssessmentForm = () => {
   };
 
   const calculateOverallProgress = () => {
-    const totalQuestions = currentAssessment.sections.reduce((acc, section) => 
+    const totalQuestions = currentAssessment.sections.reduce((acc, section) =>
       acc + section.questions.length, 0
     );
-    const answeredQuestions = Object.values(responses).filter(r => 
+    const answeredQuestions = Object.values(responses).filter(r =>
       r.rating || r.textResponse || r.selectedOptionId
     ).length;
     return totalQuestions > 0 ? (answeredQuestions / totalQuestions) * 100 : 0;
@@ -189,7 +224,7 @@ const AssessmentForm = () => {
         const sectionResponses = section.questions
           .map(q => responses[q.id]?.rating)
           .filter(rating => rating !== undefined && rating !== null);
-        
+
         if (sectionResponses.length > 0) {
           sectionAverages[section.title] = sectionResponses.reduce((sum, rating) => sum + rating, 0) / sectionResponses.length;
         }
@@ -199,8 +234,8 @@ const AssessmentForm = () => {
       const allRatings = Object.values(responses)
         .map(r => r.rating)
         .filter(rating => rating !== undefined && rating !== null);
-      const overallAverage = allRatings.length > 0 
-        ? allRatings.reduce((sum, rating) => sum + rating, 0) / allRatings.length 
+      const overallAverage = allRatings.length > 0
+        ? allRatings.reduce((sum, rating) => sum + rating, 0) / allRatings.length
         : 0;
 
       // Prepare submission data
@@ -220,12 +255,12 @@ const AssessmentForm = () => {
 
       // Save to database using the assessment results store
       await saveAssessmentResult(submissionData);
-      
+
       // Clear saved responses
       if (id && user) {
         localStorage.removeItem(`assessment_${id}_${user.id}`);
       }
-      
+
       alert('Assessment submitted successfully! Your responses have been recorded and will be reviewed.');
       navigate('/my-assessments');
     } catch (error) {
@@ -239,7 +274,7 @@ const AssessmentForm = () => {
   const invalidQuestions = getInvalidQuestions();
   const sectionProgress = calculateSectionProgress();
   const overallProgress = calculateOverallProgress();
-  
+
   return (
     <div className="space-y-6">
       <div className="border-b border-gray-200 pb-4 flex justify-between items-center">
@@ -274,31 +309,31 @@ const AssessmentForm = () => {
             isLoading={saveStatus === 'saving'}
             disabled={saveStatus === 'saving'}
           >
-            {saveStatus === 'saving' ? 'Saving...' : 
-             saveStatus === 'saved' ? 'Saved' : 
-             saveStatus === 'error' ? 'Error' : 'Save Progress'}
+            {saveStatus === 'saving' ? 'Saving...' :
+              saveStatus === 'saved' ? 'Saved' :
+                saveStatus === 'error' ? 'Error' : 'Save Progress'}
           </Button>
         </div>
       </div>
-      
+
       {/* Save Status Indicator */}
       {saveStatus === 'saved' && (
         <div className="bg-success-50 border border-success-200 text-success-700 px-4 py-2 rounded-md text-sm">
           ✓ Progress saved automatically
         </div>
       )}
-      
+
       {saveStatus === 'error' && (
         <div className="bg-error-50 border border-error-200 text-error-700 px-4 py-2 rounded-md text-sm">
           ✗ Failed to save progress. Please try again.
         </div>
       )}
-      
+
       {/* Instructions Guide */}
       {showGuide && (
         <AssessmentGuide role={user?.role === 'employee' ? 'employee' : 'reviewer'} />
       )}
-      
+
       {/* Progress Tracking */}
       <ProgressBar
         currentSection={currentSectionIndex + 1}
@@ -306,7 +341,7 @@ const AssessmentForm = () => {
         sectionProgress={sectionProgress}
         overallProgress={overallProgress}
       />
-      
+
       {/* Section Navigation */}
       {currentAssessment.sections.length > 1 && (
         <Card className="bg-gray-50">
@@ -320,8 +355,8 @@ const AssessmentForm = () => {
                     onClick={() => setCurrentSectionIndex(index)}
                     className={`
                       px-3 py-1 rounded-full text-sm font-medium transition-colors
-                      ${index === currentSectionIndex 
-                        ? 'bg-primary-600 text-white' 
+                      ${index === currentSectionIndex
+                        ? 'bg-primary-600 text-white'
                         : 'bg-white text-gray-600 hover:bg-gray-100'
                       }
                     `}
@@ -334,7 +369,7 @@ const AssessmentForm = () => {
           </CardContent>
         </Card>
       )}
-      
+
       {/* Current Section */}
       <Card>
         <CardHeader className="bg-primary-50 border-b border-primary-100">
@@ -343,7 +378,7 @@ const AssessmentForm = () => {
             <p className="text-sm text-gray-600 mt-1">{currentSection.description}</p>
           )}
           <div className="mt-2 text-sm text-gray-500">
-            Section {currentSectionIndex + 1} of {currentAssessment.sections.length} • 
+            Section {currentSectionIndex + 1} of {currentAssessment.sections.length} •
             {currentSection.questions.length} question{currentSection.questions.length !== 1 ? 's' : ''}
           </div>
         </CardHeader>
@@ -355,8 +390,8 @@ const AssessmentForm = () => {
               <span className="text-gray-600">{Math.round(sectionProgress)}% complete</span>
             </div>
             <div className="w-full bg-gray-200 rounded-full h-2">
-              <div 
-                className="bg-primary-600 h-2 rounded-full transition-all duration-300" 
+              <div
+                className="bg-primary-600 h-2 rounded-full transition-all duration-300"
                 style={{ width: `${sectionProgress}%` }}
               />
             </div>
@@ -366,7 +401,7 @@ const AssessmentForm = () => {
               </div>
             )}
           </div>
-          
+
           <div className="space-y-8">
             {currentSection.questions.map((question, index) => (
               <QuestionCard
@@ -389,7 +424,7 @@ const AssessmentForm = () => {
           >
             Previous Section
           </Button>
-          
+
           <div className="flex space-x-2">
             {currentSectionIndex === currentAssessment.sections.length - 1 ? (
               <Button
@@ -413,7 +448,7 @@ const AssessmentForm = () => {
           </div>
         </CardFooter>
       </Card>
-      
+
       {/* Completion Requirements */}
       {invalidQuestions.length > 0 && (
         <Card className="border-warning-200 bg-warning-50">

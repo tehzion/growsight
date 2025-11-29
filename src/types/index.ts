@@ -546,6 +546,17 @@ export interface EmailTemplate {
   created_at: string;
   updated_at: string;
   template_data?: Record<string, unknown>;
-  recipient_email?: string;
   recipient_name?: string;
+}
+
+export interface Goal {
+  id: string;
+  userId: string;
+  title: string;
+  description?: string;
+  status: 'pending' | 'in_progress' | 'completed' | 'cancelled';
+  dueDate?: string;
+  progress: number;
+  createdAt: string;
+  updatedAt: string;
 }

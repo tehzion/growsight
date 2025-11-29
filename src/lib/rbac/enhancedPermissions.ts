@@ -38,12 +38,12 @@ export interface PermissionGrant {
   scope?: string;
 }
 
-export type PermissionCategory = 
-  | 'user_management' 
-  | 'assessment_management' 
-  | 'analytics' 
-  | 'organization' 
-  | 'system' 
+export type PermissionCategory =
+  | 'user_management'
+  | 'assessment_management'
+  | 'analytics'
+  | 'organization'
+  | 'system'
   | 'collaboration'
   | 'development'
   | 'reporting';
@@ -249,8 +249,8 @@ export class EnhancedRBAC {
         'users.view',
         'assessments.assign',
         'analytics.view', 'analytics.personal',
-        'collaboration.peer_feedback',
-        'development.goals', 'development.personal', 'development.skills'
+        'collaboration.peer_feedback', 'collaboration.mentorship', 'collaboration.mentee',
+        'development.goals', 'development.personal', 'development.skills', 'development.skill_gap', 'development.career_path'
       ],
       employee: [
         'analytics.view', 'analytics.personal',
@@ -258,8 +258,30 @@ export class EnhancedRBAC {
         'development.goals', 'development.personal', 'development.skills', 'development.skill_gap', 'development.career_path'
       ],
       subscriber: [
-        'analytics.view', 'analytics.personal',
-        'development.goals', 'development.personal', 'development.skills'
+        // Analytics & Results
+        'analytics.view',
+        'analytics.personal',
+
+        // Assessment Management (limited - can create but not assign)
+        'assessments.create',
+        'assessments.create.custom',  // Can create custom assessments
+
+        // User Management (view-only)
+        'users.view',
+
+        // Export & Reporting (personal data only)
+        'reports.custom',
+        'reports.build',
+
+        // Collaboration
+        'collaboration.peer_feedback',
+
+        // Development
+        'development.goals',
+        'development.personal',
+        'development.skills',
+        'development.skill_gap',
+        'development.career_path'
       ]
     };
 
@@ -279,11 +301,11 @@ export class EnhancedRBAC {
     if (!rolePerms?.has(permissionId)) {
       // Check for granted permissions
       const grants = this.userGrants.get(user.id) || [];
-      const hasGrant = grants.some(grant => 
-        grant.permission === permissionId && 
+      const hasGrant = grants.some(grant =>
+        grant.permission === permissionId &&
         this.isGrantValid(grant, context)
       );
-      
+
       if (!hasGrant) return false;
     }
 
@@ -300,9 +322,9 @@ export class EnhancedRBAC {
    * Grant temporary permission to user
    */
   grantPermission(
-    userId: string, 
-    permissionId: string, 
-    grantedBy: string, 
+    userId: string,
+    permissionId: string,
+    grantedBy: string,
     expiresAt?: Date,
     conditions?: PermissionCondition[],
     scope?: string

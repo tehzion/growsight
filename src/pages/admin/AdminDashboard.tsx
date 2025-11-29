@@ -1,10 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { 
-  Users, 
-  Building2, 
-  FileText, 
-  BarChart3, 
-  AlertCircle, 
+import {
+  Users,
+  Building2,
+  FileText,
+  BarChart3,
+  AlertCircle,
   CheckCircle,
   Clock,
   TrendingUp,
@@ -40,14 +40,14 @@ interface SystemHealthItem {
 
 export const AdminDashboard: React.FC = () => {
   const { user } = useAuthStore();
-  const { 
-    metrics, 
-    systemHealth, 
-    fetchMetrics, 
-    fetchSystemHealth, 
-    isLoading: dashboardLoading 
+  const {
+    metrics,
+    systemHealth,
+    fetchMetrics,
+    fetchSystemHealth,
+    isLoading: dashboardLoading
   } = useDashboardStore();
-  
+
   const { users, fetchUsers, isLoading: usersLoading } = useUserStore();
   const { organizations, fetchOrganizations, isLoading: orgsLoading } = useOrganizationStore();
   const { assessments, fetchAssessments, isLoading: assessmentsLoading } = useAssessmentStore();
@@ -97,18 +97,18 @@ export const AdminDashboard: React.FC = () => {
   // Calculate dashboard metrics from available data
   const calculateMetrics = (): DashboardMetric[] => {
     const totalUsers = users?.length || 0;
-    const activeUsers = users?.filter(u => u.last_login && 
+    const activeUsers = users?.filter(u => u.last_login &&
       new Date(u.last_login) > new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
     )?.length || 0;
-    
+
     const totalOrgs = organizations?.length || 0;
     const activeOrgs = organizations?.filter(org => org.status === 'active')?.length || 0;
-    
+
     const totalAssessments = assessments?.length || 0;
     const publishedAssessments = assessments?.filter(a => a.status === 'published')?.length || 0;
-    
+
     const totalResults = results?.length || 0;
-    const completedToday = results?.filter(r => 
+    const completedToday = results?.filter(r =>
       new Date(r.created_at).toDateString() === new Date().toDateString()
     )?.length || 0;
 
@@ -155,7 +155,7 @@ export const AdminDashboard: React.FC = () => {
 
     const healthy = systemHealth.filter(item => item.status === 'healthy').length;
     const total = systemHealth.length;
-    
+
     let status: 'healthy' | 'warning' | 'error' = 'healthy';
     if (healthy < total * 0.8) status = 'error';
     else if (healthy < total) status = 'warning';
@@ -205,8 +205,8 @@ export const AdminDashboard: React.FC = () => {
           <div className="text-sm text-gray-500">
             Last updated: {lastRefresh.toLocaleTimeString()}
           </div>
-          <Button 
-            onClick={handleRefresh} 
+          <Button
+            onClick={handleRefresh}
             isLoading={refreshing}
             leftIcon={<Activity className="h-4 w-4" />}
           >
@@ -249,50 +249,7 @@ export const AdminDashboard: React.FC = () => {
         ))}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* System Health */}
-        <Card className="lg:col-span-2">
-          <CardHeader>
-            <CardTitle className="flex items-center space-x-2">
-              <Shield className="h-5 w-5" />
-              <span>System Health</span>
-              {getStatusIcon(systemStatus.status)}
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {isLoading ? (
-              <div className="space-y-3">
-                {[1, 2, 3].map(i => (
-                  <div key={i} className="animate-pulse flex space-x-4">
-                    <div className="rounded-full bg-gray-200 h-4 w-4"></div>
-                    <div className="h-4 bg-gray-200 rounded w-1/2"></div>
-                    <div className="h-4 bg-gray-200 rounded w-1/4"></div>
-                  </div>
-                ))}
-              </div>
-            ) : systemHealth && systemHealth.length > 0 ? (
-              <div className="space-y-3">
-                {systemHealth.map((item: SystemHealthItem, index) => (
-                  <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                    <div className="flex items-center space-x-3">
-                      {getStatusIcon(item.status)}
-                      <span className="font-medium">{item.service}</span>
-                    </div>
-                    <div className="text-sm text-gray-600">
-                      {item.response_time && `${item.response_time}ms`}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="text-center py-8">
-                <Database className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                <p className="text-gray-500">System health data unavailable</p>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
+      <div className="grid grid-cols-1 gap-6">
         {/* Quick Actions */}
         <Card>
           <CardHeader>
@@ -302,36 +259,36 @@ export const AdminDashboard: React.FC = () => {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            <Button 
-              fullWidth 
+            <Button
+              fullWidth
               variant="outline"
               leftIcon={<Users className="h-4 w-4" />}
             >
               Manage Users
             </Button>
-            <Button 
-              fullWidth 
+            <Button
+              fullWidth
               variant="outline"
               leftIcon={<Building2 className="h-4 w-4" />}
             >
               View Organizations
             </Button>
-            <Button 
-              fullWidth 
+            <Button
+              fullWidth
               variant="outline"
               leftIcon={<FileText className="h-4 w-4" />}
             >
               Create Assessment
             </Button>
-            <Button 
-              fullWidth 
+            <Button
+              fullWidth
               variant="outline"
               leftIcon={<BarChart3 className="h-4 w-4" />}
             >
               View Analytics
             </Button>
-            <Button 
-              fullWidth 
+            <Button
+              fullWidth
               variant="outline"
               leftIcon={<Shield className="h-4 w-4" />}
             >
@@ -353,7 +310,7 @@ export const AdminDashboard: React.FC = () => {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div className="text-center">
               <div className="text-2xl font-bold text-blue-600">
-                {users?.filter(u => 
+                {users?.filter(u =>
                   new Date(u.created_at) > new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
                 )?.length || 0}
               </div>
@@ -361,7 +318,7 @@ export const AdminDashboard: React.FC = () => {
             </div>
             <div className="text-center">
               <div className="text-2xl font-bold text-green-600">
-                {results?.filter(r => 
+                {results?.filter(r =>
                   new Date(r.created_at) > new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
                 )?.length || 0}
               </div>
@@ -369,7 +326,7 @@ export const AdminDashboard: React.FC = () => {
             </div>
             <div className="text-center">
               <div className="text-2xl font-bold text-purple-600">
-                {assessments?.filter(a => 
+                {assessments?.filter(a =>
                   new Date(a.created_at) > new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
                 )?.length || 0}
               </div>

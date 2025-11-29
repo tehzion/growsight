@@ -22,7 +22,7 @@ const UserAssessments = () => {
   const { userAssessments: storeUserAssessments, fetchUserAssessments, isLoading: storeLoading } = useAssessmentStore();
   const { fetchUserResults } = useAssessmentResultsStore();
   const { fetchUserReminders, reminders } = useReminderStore();
-  
+
   const [filters, setFilters] = useState<AssessmentFilter>({
     status: 'all',
     dueDate: 'all',
@@ -53,7 +53,7 @@ const UserAssessments = () => {
 
   const loadUserAssessments = async () => {
     if (!user?.id) return;
-    
+
     try {
       setIsLoading(true);
       const { data, error } = await supabase
@@ -101,29 +101,29 @@ const UserAssessments = () => {
       setIsLoading(false);
     }
   };
-    // Combine real user assessments with store assessments
-    const allAssessments = [
-      ...userAssessments,
-      ...storeUserAssessments
-        .filter(assessment => 
-          assessment.assignedOrganizations?.some(org => org.id === user?.organizationId)
-        )
-        .map(assessment => ({
-          id: assessment.id,
-          title: assessment.title,
-          description: assessment.description || 'No description provided',
-          status: 'pending' as const,
-          dueDate: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
-          completedAt: null,
-          progress: 0,
-          isPublished: true,
-          category: 'General',
-          estimatedTime: '30 minutes',
-          attempts: 0,
-          lastAttempt: null,
-          feedback: null,
-        }))
-    ];
+  // Combine real user assessments with store assessments
+  const allAssessments = [
+    ...userAssessments,
+    ...storeUserAssessments
+      .filter(assessment =>
+        assessment.assignedOrganizations?.some(org => org.id === user?.organizationId)
+      )
+      .map(assessment => ({
+        id: assessment.id,
+        title: assessment.title,
+        description: assessment.description || 'No description provided',
+        status: 'pending' as const,
+        dueDate: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
+        completedAt: null,
+        progress: 0,
+        isPublished: true,
+        category: 'General',
+        estimatedTime: '30 minutes',
+        attempts: 0,
+        lastAttempt: null,
+        feedback: null,
+      }))
+  ];
 
   // Filter assessments based on current filters
   const filteredAssessments = allAssessments.filter((assessment: any) => {
@@ -153,7 +153,7 @@ const UserAssessments = () => {
 
     // Search filter
     if (filters.search && !assessment.title.toLowerCase().includes(filters.search.toLowerCase()) &&
-        !assessment.description.toLowerCase().includes(filters.search.toLowerCase())) {
+      !assessment.description.toLowerCase().includes(filters.search.toLowerCase())) {
       return false;
     }
 
@@ -163,7 +163,7 @@ const UserAssessments = () => {
   const pendingAssessments = filteredAssessments.filter(a => a.status === 'pending');
   const inProgressAssessments = filteredAssessments.filter(a => a.status === 'in_progress');
   const completedAssessments = filteredAssessments.filter(a => a.status === 'completed');
-  
+
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'pending':
@@ -226,7 +226,7 @@ const UserAssessments = () => {
   }
 
   const analytics = getAnalyticsData();
-  
+
   return (
     <div className="space-y-6">
       <div className="border-b border-gray-200 pb-4">
@@ -296,8 +296,8 @@ const UserAssessments = () => {
                 </span>
               </div>
               <div className="w-full bg-blue-200 rounded-full h-2 mt-2">
-                <div 
-                  className="bg-blue-600 h-2 rounded-full transition-all duration-300" 
+                <div
+                  className="bg-blue-600 h-2 rounded-full transition-all duration-300"
                   style={{ width: `${(analytics.completed / analytics.total) * 100}%` }}
                 ></div>
               </div>
@@ -305,7 +305,7 @@ const UserAssessments = () => {
           </CardContent>
         </Card>
       )}
-      
+
       {/* Filters */}
       {showFilters && (
         <Card className="border-gray-200">
@@ -351,7 +351,7 @@ const UserAssessments = () => {
           </CardContent>
         </Card>
       )}
-      
+
       {/* New Assessments Alert */}
       {userAssessments.filter(a => a.assignedOrganizations?.some(org => org.id === user?.organizationId)).length > 0 && (
         <Card className="bg-primary-50 border-primary-200">
@@ -370,7 +370,7 @@ const UserAssessments = () => {
           </CardContent>
         </Card>
       )}
-      
+
       {/* Priority Assessments */}
       {(pendingAssessments.length > 0 || inProgressAssessments.length > 0) && (
         <section>
@@ -387,7 +387,7 @@ const UserAssessments = () => {
                         <h3 className="text-lg font-medium text-gray-900">{assessment.title}</h3>
                         {getStatusBadge(assessment.status)}
                       </div>
-                      
+
                       <p className="text-sm text-gray-600 mb-4 line-clamp-2">
                         {assessment.description}
                       </p>
@@ -397,7 +397,7 @@ const UserAssessments = () => {
                           <span className="bg-gray-100 px-2 py-1 rounded">{assessment.category}</span>
                           <span className="ml-2">• {assessment.estimatedTime}</span>
                         </div>
-                        
+
                         <div className="flex items-center text-sm text-gray-500">
                           <Clock className="h-4 w-4 mr-1" />
                           <span className={dueStatus.color}>
@@ -418,20 +418,20 @@ const UserAssessments = () => {
                           </div>
                         )}
                       </div>
-                      
+
                       <div className="mb-4">
                         <div className="flex items-center justify-between text-xs text-gray-500 mb-1">
                           <span>Progress</span>
                           <span>{assessment.progress}%</span>
                         </div>
                         <div className="w-full bg-gray-200 rounded-full h-2">
-                          <div 
-                            className="bg-primary-600 h-2 rounded-full transition-all duration-300" 
+                          <div
+                            className="bg-primary-600 h-2 rounded-full transition-all duration-300"
                             style={{ width: `${assessment.progress}%` }}
                           ></div>
                         </div>
                       </div>
-                      
+
                       <div className="mt-auto flex space-x-2">
                         <Button
                           variant="outline"
@@ -465,7 +465,7 @@ const UserAssessments = () => {
           </div>
         </section>
       )}
-      
+
       {/* Completed Assessments */}
       {completedAssessments.length > 0 && (
         <section>
@@ -479,7 +479,7 @@ const UserAssessments = () => {
                       <h3 className="text-lg font-medium text-gray-900">{assessment.title}</h3>
                       {getStatusBadge(assessment.status)}
                     </div>
-                    
+
                     <p className="text-sm text-gray-600 mb-4 line-clamp-2">
                       {assessment.description}
                     </p>
@@ -489,7 +489,7 @@ const UserAssessments = () => {
                         <span className="bg-gray-100 px-2 py-1 rounded">{assessment.category}</span>
                         <span className="ml-2">• {assessment.estimatedTime}</span>
                       </div>
-                      
+
                       <div className="flex items-center text-sm text-gray-500">
                         <CheckCircle2 className="h-4 w-4 mr-1 text-success-500" />
                         Completed on: {assessment.completedAt ? new Date(assessment.completedAt).toLocaleDateString() : 'Unknown'}
@@ -502,7 +502,7 @@ const UserAssessments = () => {
                         </div>
                       )}
                     </div>
-                    
+
                     <div className="mt-auto pt-4 flex space-x-2">
                       <Button
                         variant="outline"
@@ -542,7 +542,7 @@ const UserAssessments = () => {
                 ×
               </Button>
             </div>
-            
+
             <div className="space-y-4">
               <div>
                 <h3 className="font-medium text-gray-900 mb-2">Description</h3>
@@ -572,7 +572,7 @@ const UserAssessments = () => {
                 <div>
                   <h3 className="font-medium text-gray-900 mb-2">Previous Attempts</h3>
                   <p className="text-gray-600">
-                    Attempts: {selectedAssessment.attempts} • 
+                    Attempts: {selectedAssessment.attempts} •
                     Last attempt: {selectedAssessment.lastAttempt ? new Date(selectedAssessment.lastAttempt).toLocaleDateString() : 'Never'}
                   </p>
                 </div>

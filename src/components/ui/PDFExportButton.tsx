@@ -57,45 +57,53 @@ const PDFExportButton: React.FC<PDFExportButtonProps> = ({
     setShowProgress(true);
     setLocalError(null);
     clearError();
-    
+
     try {
-      let downloadUrl = '';
-      
+      let blob: Blob;
+
       // Determine if we should anonymize data based on user role
-      const shouldAnonymize = anonymizeData !== undefined ? anonymizeData : 
-                             (user?.role === 'org_admin' && exportType === 'results');
-      
+      const shouldAnonymize = anonymizeData !== undefined ? anonymizeData :
+        (user?.role === 'org_admin' && exportType === 'results');
+
       switch (exportType) {
         case 'analytics':
-          downloadUrl = await exportAnalytics(format, organizationId);
+          blob = await exportAnalytics(format, organizationId);
           break;
         case 'results':
-          downloadUrl = await exportResults(format, userId, shouldAnonymize);
+          blob = await exportResults(format, userId, shouldAnonymize);
           break;
         case 'assessments':
-          downloadUrl = await exportAssessments(format, organizationId);
+          blob = await exportAssessments(format, organizationId);
           break;
         case 'assignments':
-          downloadUrl = await exportAssignments(format, organizationId);
+          blob = await exportAssignments(format, organizationId);
           break;
+        default:
+          throw new Error('Invalid export type');
       }
-      
-      // Handle the actual download URL
-      if (downloadUrl) {
-        const link = document.createElement('a');
-        link.href = downloadUrl;
-        link.download = `${exportType}-export-${new Date().toISOString().split('T')[0]}.${format}`;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-      }
-      
+
+      // Create download URL from Blob
+      const url = window.URL.createObjectURL(blob);
+      const timestamp = new Date().toISOString().split('T')[0];
+      const filename = `${exportType}-export-${timestamp}.${format}`;
+
+      // Create and trigger download link
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+
+      // Cleanup
+      document.body.removeChild(link);
+      setTimeout(() => window.URL.revokeObjectURL(url), 100);
+
       // Show success message
       setSuccess(true);
       setTimeout(() => {
         setShowProgress(false);
       }, 500);
-      
+
     } catch (error) {
       console.error('Export failed:', error);
       const errorMessage = (error as Error).message || 'Export failed. Please try again.';
@@ -141,9 +149,9 @@ const PDFExportButton: React.FC<PDFExportButtonProps> = ({
         >
           {getLabel()}
         </Button>
-        
+
         {anonymizeData !== undefined && (
-          <div 
+          <div
             className="ml-1 text-gray-500 cursor-pointer"
             onMouseEnter={() => setShowPrivacyInfo(true)}
             onMouseLeave={() => setShowPrivacyInfo(false)}
@@ -157,7 +165,7 @@ const PDFExportButton: React.FC<PDFExportButtonProps> = ({
         )}
 
         {showSettingsButton && (
-          <div 
+          <div
             className="ml-1 text-gray-500 cursor-pointer"
             onClick={onSettingsClick}
             onMouseEnter={() => setShowSettingsInfo(true)}
@@ -167,7 +175,7 @@ const PDFExportButton: React.FC<PDFExportButtonProps> = ({
           </div>
         )}
       </div>
-      
+
       {showProgress && isExporting && (
         <div className="absolute top-full left-0 right-0 mt-2 bg-white border border-gray-200 rounded-lg p-3 shadow-lg z-10">
           <div className="flex items-center justify-between text-sm mb-2">
@@ -175,14 +183,14 @@ const PDFExportButton: React.FC<PDFExportButtonProps> = ({
             <span>{exportProgress}%</span>
           </div>
           <div className="w-full bg-gray-200 rounded-full h-2">
-            <div 
-              className="bg-primary-600 h-2 rounded-full transition-all duration-300" 
+            <div
+              className="bg-primary-600 h-2 rounded-full transition-all duration-300"
               style={{ width: `${exportProgress}%` }}
             />
           </div>
         </div>
       )}
-      
+
       {(localError || exportError) && (
         <div className="absolute top-full left-0 right-0 mt-2 bg-error-50 border border-error-200 rounded-lg p-3 shadow-lg z-10">
           <div className="flex items-center text-sm text-error-700">
@@ -191,7 +199,7 @@ const PDFExportButton: React.FC<PDFExportButtonProps> = ({
           </div>
         </div>
       )}
-      
+
       {showPrivacyInfo && (
         <div className="absolute top-full left-0 right-0 mt-2 bg-primary-50 border border-primary-200 rounded-lg p-3 shadow-lg z-10">
           <div className="flex items-center text-sm text-primary-700">
